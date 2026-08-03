@@ -113,6 +113,10 @@ on conflict do nothing;
 
 -- The column types come from the VALUES list, which is all text, so each one is
 -- cast explicitly on the way in.
+-- Unlike the inserts above, replies have no natural key to conflict on, so
+-- re-running the seed would quietly double them. The guard makes the whole
+-- file safe to run more than once, which matters because running it is the
+-- step people repeat while working out why a project looks empty.
 insert into public.replies (post_id, author_id, body, created_at)
 select p.id, v.author_id::uuid, v.body, v.created_at
   from (values
@@ -129,7 +133,12 @@ select p.id, v.author_id::uuid, v.body, v.created_at
   ) as v (room_slug, post_no, author_id, body, created_at)
   join public.posts p
     on p.room_slug = v.room_slug::citext
-   and p.post_no = v.post_no;
+   and p.post_no = v.post_no
+ where not exists (
+   select 1 from public.replies existing
+    where existing.post_id = p.id
+      and existing.body = v.body
+ );
 
 -- §3.4 — leave the allocator above every number the seed used, so the first
 -- real post continues the sequence instead of colliding with it.

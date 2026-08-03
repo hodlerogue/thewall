@@ -43,9 +43,19 @@ prints into `.env.local`. Needs Docker — the devcontainer has it.
 
 ### The real thing, deployed
 
-Set the four variables from `.env.example` in your host's environment, make
-sure `NEXT_PUBLIC_USE_FIXTURES` is **not** among them, and apply the schema and
-content to the project once:
+There are **two** things to apply, and running only the first leaves you with a
+working schema and no rooms:
+
+| File | What it makes |
+|---|---|
+| `supabase/migrations/*.sql` | the tables, policies and functions — **no rows** |
+| `supabase/seed.sql` | the five rooms and everything in them (§5) |
+
+The quickest route is the Supabase SQL Editor: paste each migration, then paste
+`seed.sql`. It is plain SQL with no psql-only syntax, and it is safe to run more
+than once.
+
+Or do both at once against the connection string:
 
 ```bash
 DATABASE_URL='postgresql://postgres:...@db.<ref>.supabase.co:5432/postgres' \
