@@ -7,9 +7,10 @@ import { createPresence } from '@/lib/data/presence'
 import { supabaseEnv } from '@/lib/data/supabaseEnv'
 import { httpSignupApi, supabaseWriter } from '@/lib/data/writer'
 import { fixtureEnv, type Env } from '@/lib/shell/env'
-import { renderRoom } from '@/lib/shell/render'
+import { renderPost, renderRoom, renderRoomList } from '@/lib/shell/render'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
 import { createClient, isConfigured } from '@/lib/supabase/client'
+import { locationToPath, pathToLocation } from '@/lib/shell/types'
 import type { Chip, Line, Location, Runner } from '@/lib/shell/types'
 
 const DEFAULT_ROOM = 'commons'
@@ -30,11 +31,17 @@ interface Boot {
  * depending on a database — there is deliberately no silent fallback, so a
  * missing project is reported rather than papered over.
  */
-export function Shell() {
+export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLocation?: Location }) {
   const [boot, setBoot] = useState<Boot | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
 
+  // A Location is a fresh object on every render, so the path is what the
+  // effect depends on — otherwise arriving anywhere would reload forever.
+  const targetPath = locationToPath(initialLocation)
+
   useEffect(() => {
+    const target = pathToLocation(targetPath)
+
     let cancelled = false
 
     async function load() {
@@ -72,7 +79,7 @@ export function Shell() {
           existingName = data?.name ?? null
         }
 
-        await presence.enter(DEFAULT_ROOM, existingName)
+        await presence.enter(target.room, existingName)
       }
 
       const session = new Session(signup, writer, existingName)
@@ -81,20 +88,21 @@ export function Shell() {
         const rooms = await env.listRooms()
         const ephemeral = rooms.filter((room) => room.ephemeral).map((room) => room.slug)
 
-        // §3.10 — you start in commons, and it sits in the list as a peer.
-        const commons = await env.getRoom(DEFAULT_ROOM)
+        // §3.4 — the URL is a location, so arriving at /music/12 puts you
+        // inside post 12 exactly as `go 12` would have.
+        const { lines, location } = await arriveAt(env, target, rooms)
 
         if (cancelled) return
         setBoot({
           run: createRunner(env, ephemeral, session),
           chipsFor: createChipsFor(ephemeral),
-          location: commons ? { room: commons.slug } : {},
+          location,
           name: existingName,
           lines: [
             { text: 'thewall.sh', tone: 'accent' },
             { text: 'type look to see what’s around you, or tap a command below.', tone: 'faint' },
             { text: '' },
-            ...(commons ? renderRoom(commons) : []),
+            ...lines,
           ],
         })
       } catch (error) {
@@ -106,7 +114,7 @@ export function Shell() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [targetPath])
 
   if (failure) {
     return (
@@ -137,6 +145,49 @@ export function Shell() {
       name={boot.name}
     />
   )
+}
+
+/**
+ * Renders whatever the URL pointed at. A room or post that isn't there is not
+ * an error page — it says so in one line and leaves you at the lobby, which is
+ * always somewhere real to be.
+ */
+async function arriveAt(
+  env: Env,
+  target: Location,
+  rooms: Awaited<ReturnType<Env['listRooms']>>,
+): Promise<{ lines: Line[]; location: Location }> {
+  if (target.room === undefined) {
+    return { lines: renderRoomList(rooms), location: {} }
+  }
+
+  const room = await env.getRoom(target.room)
+  if (!room) {
+    return {
+      lines: [
+        { text: `there’s no room called ${target.room}.`, tone: 'error' },
+        ...renderRoomList(rooms),
+      ],
+      location: {},
+    }
+  }
+
+  if (target.postId === undefined) {
+    return { lines: renderRoom(room), location: { room: room.slug } }
+  }
+
+  const post = await env.getPost(room.slug, target.postId)
+  if (!post) {
+    return {
+      lines: [
+        { text: `there’s no post ${target.postId} in ${room.slug}.`, tone: 'error' },
+        ...renderRoom(room),
+      ],
+      location: { room: room.slug },
+    }
+  }
+
+  return { lines: renderPost(post), location: { room: room.slug, postId: post.id } }
 }
 
 /**

@@ -61,9 +61,24 @@ export function promptLabel(name: string | null, location: Location): string {
   return `${name ?? 'guest'}:${path}$`
 }
 
-/** The path half of the prompt is also the URL (§3.4) — one value, two surfaces. */
+/**
+ * The path half of the prompt is also the URL (§3.4) — one value, two
+ * surfaces, which is why `thewall.sh/music/12` costs nothing to support.
+ *
+ * The lobby has its own address rather than living at `/`, because `/` is the
+ * front door and §3.10 puts arrivals in commons. If they shared a path, the
+ * redirect that starts you in commons would also make `leave` impossible.
+ */
 export function locationToPath(location: Location): string {
-  if (location.room === undefined) return '/'
+  if (location.room === undefined) return '/lobby'
   if (location.postId === undefined) return `/${location.room}`
   return `/${location.room}/${location.postId}`
+}
+
+export function pathToLocation(pathname: string): Location {
+  const [room, postId] = pathname.split('/').filter(Boolean)
+  if (room === undefined || room === 'lobby') return {}
+  return postId !== undefined && /^\d+$/.test(postId)
+    ? { room, postId: Number(postId) }
+    : { room }
 }

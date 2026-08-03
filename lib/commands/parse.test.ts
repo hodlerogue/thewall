@@ -4,6 +4,7 @@ import { COMMANDS, findCommand, nearestCommand } from '@/lib/commands/registry'
 import { chipsForContext, createRunner } from '@/lib/commands/run'
 import { fixtureEnv } from '@/lib/shell/env'
 import { Session } from '@/lib/shell/session'
+import { locationToPath, pathToLocation, promptLabel } from '@/lib/shell/types'
 import type { Context, Location } from '@/lib/shell/types'
 
 const EPHEMERAL = ['commons']
@@ -220,13 +221,33 @@ describe('§3.6 — the palette is a glossary derived from the registry', () => 
 })
 
 describe('the prompt path is the url path (§3.4)', () => {
-  it('round-trips every location shape', async () => {
-    const { locationToPath } = await import('@/lib/shell/types')
-    const cases: [Location, string][] = [
-      [{}, '/'],
-      [{ room: 'music' }, '/music'],
-      [{ room: 'music', postId: 12 }, '/music/12'],
-    ]
+  const cases: [Location, string][] = [
+    // The lobby has its own address so `/` can put arrivals in commons (§3.10)
+    // without making `leave` impossible.
+    [{}, '/lobby'],
+    [{ room: 'music' }, '/music'],
+    [{ room: 'music', postId: 12 }, '/music/12'],
+  ]
+
+  it('turns every location into a path', () => {
     for (const [location, path] of cases) expect(locationToPath(location)).toBe(path)
+  })
+
+  it('turns every path back into the same location', () => {
+    for (const [location, path] of cases) expect(pathToLocation(path)).toEqual(location)
+  })
+
+  it('reads / as the lobby, since that is where the redirect starts from', () => {
+    expect(pathToLocation('/')).toEqual({})
+  })
+
+  it('ignores a post segment that was never an address', () => {
+    expect(pathToLocation('/music/twelve')).toEqual({ room: 'music' })
+  })
+
+  it('agrees with the prompt about where you are', () => {
+    expect(promptLabel(null, pathToLocation('/music/12'))).toBe('guest:music/12$')
+    expect(promptLabel('jameson', pathToLocation('/music/12'))).toBe('jameson:music/12$')
+    expect(promptLabel('jameson', pathToLocation('/lobby'))).toBe('jameson:lobby$')
   })
 })

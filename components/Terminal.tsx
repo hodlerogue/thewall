@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Palette } from '@/components/Palette'
 import type { Chip, Line, Location, Runner } from '@/lib/shell/types'
-import { promptLabel } from '@/lib/shell/types'
+import { locationToPath, pathToLocation, promptLabel } from '@/lib/shell/types'
 
 export function Terminal({
   initialLines,
@@ -82,12 +82,37 @@ export function Terminal({
 
       const result = await run(text, location)
       setLines((prev) => [...prev, ...result.lines])
-      if (result.location) setLocation(result.location)
+
+      if (result.location) {
+        setLocation(result.location)
+        // §3.4 — the prompt path and the URL are the same value, so moving
+        // updates the address bar. pushState rather than a router navigation:
+        // this is the same page, and a navigation would throw away scrollback.
+        const path = locationToPath(result.location)
+        if (path !== window.location.pathname) {
+          window.history.pushState({}, '', path)
+        }
+      }
+
       // §3.9 — the prompt stops saying `guest` the moment there is a name.
       if (result.identity !== undefined) setName(result.identity)
     },
     [location, name, run],
   )
+
+  // Back and forward are navigation too, so they move you the same way `go`
+  // and `leave` do, and print where you landed.
+  useEffect(() => {
+    const onPop = async () => {
+      const target = pathToLocation(window.location.pathname)
+      setLocation(target)
+      const result = await run('look', target)
+      setLines((prev) => [...prev, { text: '', tone: 'faint' }, ...result.lines])
+    }
+
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [run])
 
   const label = promptLabel(name, location)
 
