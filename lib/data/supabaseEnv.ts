@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Presence } from '@/lib/data/presence'
 import type { Env } from '@/lib/shell/env'
 import type { Post, Room, RoomSummary } from '@/lib/shell/model'
 
@@ -11,7 +12,7 @@ import type { Post, Room, RoomSummary } from '@/lib/shell/model'
  * (§3.10); if that were done here instead, every future query would have to
  * remember to do it too.
  */
-export function supabaseEnv(client: SupabaseClient, name: string | null = null): Env {
+export function supabaseEnv(client: SupabaseClient, presence?: Presence): Env {
   return {
     async listRooms(): Promise<RoomSummary[]> {
       // §3.11 — one round trip for the whole lobby, including proof of life.
@@ -106,16 +107,10 @@ export function supabaseEnv(client: SupabaseClient, name: string | null = null):
       }
     },
 
-    async who(): Promise<string[]> {
-      // Presence arrives with the realtime channel in Phase 4; until then this
-      // is who has an account rather than who is looking at it right now.
-      const { data, error } = await client.from('profiles').select('name').limit(20)
-      if (error) throw error
-      return (data ?? []).map((row) => row.name)
-    },
-
-    currentName() {
-      return name
+    async who() {
+      // Who is actually here, from the room's realtime channel — not who has
+      // an account. Without a channel (server-side render), nobody is "here".
+      return presence?.present() ?? { names: [], guests: 0 }
     },
   }
 }

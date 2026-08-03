@@ -10,7 +10,7 @@ export function Terminal({
   initialLocation,
   run,
   chipsFor,
-  name = null,
+  name: initialName = null,
 }: {
   initialLines: readonly Line[]
   initialLocation: Location
@@ -20,6 +20,7 @@ export function Terminal({
 }) {
   const [lines, setLines] = useState<Line[]>([...initialLines])
   const [location, setLocation] = useState<Location>(initialLocation)
+  const [name, setName] = useState<string | null>(initialName)
   const [input, setInput] = useState('')
 
   const scrollbackRef = useRef<HTMLDivElement>(null)
@@ -82,6 +83,8 @@ export function Terminal({
       const result = await run(text, location)
       setLines((prev) => [...prev, ...result.lines])
       if (result.location) setLocation(result.location)
+      // §3.9 — the prompt stops saying `guest` the moment there is a name.
+      if (result.identity !== undefined) setName(result.identity)
     },
     [location, name, run],
   )

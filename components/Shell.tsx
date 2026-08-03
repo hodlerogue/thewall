@@ -3,9 +3,12 @@
 import { useEffect, useState } from 'react'
 import { Terminal } from '@/components/Terminal'
 import { createChipsFor, createRunner } from '@/lib/commands/run'
+import { createPresence } from '@/lib/data/presence'
 import { supabaseEnv } from '@/lib/data/supabaseEnv'
+import { httpSignupApi, supabaseWriter } from '@/lib/data/writer'
 import { fixtureEnv, type Env } from '@/lib/shell/env'
 import { renderRoom } from '@/lib/shell/render'
+import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
 import { createClient, isConfigured } from '@/lib/supabase/client'
 import type { Chip, Line, Location, Runner } from '@/lib/shell/types'
 
@@ -16,6 +19,7 @@ interface Boot {
   chipsFor: (location: Location) => readonly Chip[]
   lines: Line[]
   location: Location
+  name: string | null
 }
 
 /**
@@ -43,7 +47,35 @@ export function Shell() {
         return
       }
 
-      const env: Env = useFixtures ? fixtureEnv() : supabaseEnv(createClient())
+      let env: Env
+      let writer: Writer
+      let signup: SignupApi
+      let existingName: string | null = null
+
+      if (useFixtures) {
+        env = fixtureEnv()
+        writer = fixtureWriter()
+        signup = fixtureSignup()
+      } else {
+        const client = createClient()
+        const presence = createPresence(client)
+        env = supabaseEnv(client, presence)
+        writer = supabaseWriter(client)
+        signup = httpSignupApi()
+
+        // Someone returning through a magic link is already signed in.
+        const {
+          data: { user },
+        } = await client.auth.getUser()
+        if (user) {
+          const { data } = await client.from('profiles').select('name').eq('id', user.id).maybeSingle()
+          existingName = data?.name ?? null
+        }
+
+        await presence.enter(DEFAULT_ROOM, existingName)
+      }
+
+      const session = new Session(signup, writer, existingName)
 
       try {
         const rooms = await env.listRooms()
@@ -54,9 +86,10 @@ export function Shell() {
 
         if (cancelled) return
         setBoot({
-          run: createRunner(env, ephemeral),
+          run: createRunner(env, ephemeral, session),
           chipsFor: createChipsFor(ephemeral),
           location: commons ? { room: commons.slug } : {},
+          name: existingName,
           lines: [
             { text: 'thewall.sh', tone: 'accent' },
             { text: 'type look to see what’s around you, or tap a command below.', tone: 'faint' },
@@ -101,7 +134,37 @@ export function Shell() {
       initialLocation={boot.location}
       run={boot.run}
       chipsFor={boot.chipsFor}
-      name={null}
+      name={boot.name}
     />
   )
+}
+
+/**
+ * Fixture-mode stand-ins, so the mobile gate can walk the whole signup flow
+ * without a database. Nothing here runs when Supabase is configured.
+ */
+function fixtureWriter(): Writer {
+  let next = 100
+  return {
+    async post() {
+      return next++
+    },
+    async reply() {},
+  }
+}
+
+function fixtureSignup(): SignupApi {
+  const taken = new Set(['jameson', 'marisol', 'tuck', 'ren', 'dev'])
+  return {
+    async checkName(name: string) {
+      const available = !taken.has(name)
+      return {
+        available,
+        alternates: available ? [] : [`${name}_`, `${name}1`, `the${name}`],
+      }
+    },
+    async create(name: string) {
+      return { ok: true as const, name }
+    },
+  }
 }

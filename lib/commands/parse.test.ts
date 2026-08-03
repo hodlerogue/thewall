@@ -3,10 +3,20 @@ import { parse } from '@/lib/commands/parse'
 import { COMMANDS, findCommand, nearestCommand } from '@/lib/commands/registry'
 import { chipsForContext, createRunner } from '@/lib/commands/run'
 import { fixtureEnv } from '@/lib/shell/env'
+import { Session } from '@/lib/shell/session'
 import type { Context, Location } from '@/lib/shell/types'
 
 const EPHEMERAL = ['commons']
-const run = createRunner(fixtureEnv(), EPHEMERAL)
+
+// These tests are about parsing and navigation, so they run as someone who
+// already has a name — the signup flow has its own suite.
+const signedIn = new Session(
+  { async checkName() { return { available: true, alternates: [] } },
+    async create(name) { return { ok: true as const, name } } },
+  { async post() { return 1 }, async reply() {} },
+  'tester',
+)
+const run = createRunner(fixtureEnv(), EPHEMERAL, signedIn)
 const text = (lines: { text: string }[]) => lines.map((l) => l.text).join('\n')
 
 /** The §3.5 table, transcribed from the doc rather than from the code. */

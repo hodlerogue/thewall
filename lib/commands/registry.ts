@@ -14,6 +14,7 @@
 
 import type { Env } from '@/lib/shell/env'
 import { renderPost, renderRoom, renderRoomList } from '@/lib/shell/render'
+import type { Session } from '@/lib/shell/session'
 import type { Context, Line, Location, RunResult } from '@/lib/shell/types'
 
 export interface HandlerArgs {
@@ -23,6 +24,8 @@ export interface HandlerArgs {
   env: Env
   /** A real room slug, for errors that name the fix. */
   hint: string
+  /** Who you are, and the machinery that asks if you aren't anyone yet (§3.9). */
+  session: Session
 }
 
 export type Handler = (args: HandlerArgs) => Promise<RunResult>
@@ -135,14 +138,20 @@ export const COMMANDS: readonly Command[] = [
     insert: () => 'say ',
     // §3.7 — the canonical example: name the fix, don't report a failure.
     wrongContext: (_c, hint) => `you have to be in a room first. try: go ${hint}`,
-    async run({ arg, context }) {
+    async run({ arg, context, location, session }) {
       if (arg === '') {
-        return error(context === 'post' ? 'say what? try: say i agree' : 'say what? type say and then your sentence.')
+        return error(
+          context === 'post' ? 'say what? try: say i agree' : 'say what? type say and then your sentence.',
+        )
       }
-      // Phase 4 owns the deferred-signup flow and the write path (§3.9).
-      return {
-        lines: [{ text: '(saying things arrives with signup in phase 4)', tone: 'faint' }],
+
+      // §3.9 — the sentence is captured first, then the account is asked for.
+      // Friction lands at peak motivation, and nothing typed is ever lost.
+      if (session.name() === null) {
+        return { lines: session.begin({ location, body: arg }) }
       }
+
+      return { lines: await session.write(location, arg) }
     },
   },
 
@@ -154,17 +163,26 @@ export const COMMANDS: readonly Command[] = [
     detail: () => 'lists who’s around right now.',
     insert: () => 'who',
     wrongContext: () => '',
-    async run({ location, env }) {
-      const names = await env.who(location.room)
+    async run({ location, env, session }) {
+      const { names, guests } = await env.who(location.room)
+
       const lines: Line[] = [
         names.length > 0
           ? { text: names.join(', '), tone: 'dim' }
-          : { text: 'nobody right now.', tone: 'faint' },
+          : { text: 'nobody signed in right now.', tone: 'faint' },
       ]
-      // §3.9 — guest state is ambient, never nagging, but `who` says why.
-      if (env.currentName() === null) {
+
+      if (guests > 0) {
         lines.push({
-          text: 'you’re reading as a guest, so you’re not on this list. say something and you will be.',
+          text: `and ${guests} ${guests === 1 ? 'person' : 'people'} reading without a name.`,
+          tone: 'faint',
+        })
+      }
+
+      // §3.9 — guest state is ambient, never nagging, but `who` says why.
+      if (session.name() === null) {
+        lines.push({
+          text: 'you’re one of them — say something and you’ll be on the list.',
           tone: 'faint',
         })
       }

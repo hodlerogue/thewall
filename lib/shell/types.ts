@@ -35,6 +35,8 @@ export interface RunResult {
   lines: Line[]
   /** Present when the command moved you. Absent means you stayed put. */
   location?: Location
+  /** Present when signup finished, so the prompt can stop saying `guest`. */
+  identity?: string | null
 }
 
 export type Runner = (

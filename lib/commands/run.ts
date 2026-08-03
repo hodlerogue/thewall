@@ -1,6 +1,7 @@
 import { parse } from '@/lib/commands/parse'
 import { CHIP_SETS, COMMANDS, findCommand, nearestCommand } from '@/lib/commands/registry'
 import type { Env } from '@/lib/shell/env'
+import type { Session } from '@/lib/shell/session'
 import type { Chip, Context, Location, RunResult, Runner } from '@/lib/shell/types'
 import { contextOf } from '@/lib/shell/types'
 
@@ -11,8 +12,19 @@ import { contextOf } from '@/lib/shell/types'
  * description*, wrong-context commands name the fix. There are no error codes
  * and nothing ever says "invalid syntax".
  */
-export function createRunner(env: Env, ephemeralRooms: readonly string[]): Runner {
+export function createRunner(
+  env: Env,
+  ephemeralRooms: readonly string[],
+  session: Session,
+): Runner {
   return async (input: string, location: Location): Promise<RunResult> => {
+    // §3.9 — mid-signup, what you type is an answer, not a command. Without
+    // this, a name like "read" would be parsed as a verb and swallowed.
+    if (session.isAsking()) {
+      const { lines, identity } = await session.answer(input)
+      return { lines, identity }
+    }
+
     const parsed = parse(input)
     if (!parsed) return { lines: [] }
 
@@ -39,7 +51,7 @@ export function createRunner(env: Env, ephemeralRooms: readonly string[]): Runne
       }
     }
 
-    return parsed.command.run({ arg: parsed.arg, location, context, env, hint })
+    return parsed.command.run({ arg: parsed.arg, location, context, env, hint, session })
   }
 }
 
