@@ -15,6 +15,17 @@
 [build.environment]
   NODE_VERSION = "22"
 
+  # Netlify scans the build output for the values of your environment
+  # variables and fails the build when it finds one. NEXT_PUBLIC_* values are
+  # compiled into the client bundle on purpose — that is what the prefix
+  # means — so without this the scanner correctly finds the anon key in the
+  # JavaScript and stops the deploy.
+  #
+  # SUPABASE_SERVICE_ROLE_KEY is deliberately NOT listed. It bypasses every
+  # RLS policy in the schema, it must never reach the browser, and leaving it
+  # scanned means the build fails loudly if it ever does.
+  SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,NEXT_PUBLIC_SITE_URL"
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
