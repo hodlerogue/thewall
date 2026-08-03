@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'thewall.sh',
+  title: 'thewall.social',
   description: 'a place you navigate by typing.',
 }
 

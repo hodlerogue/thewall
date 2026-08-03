@@ -1,4 +1,4 @@
-# thewall.sh
+# thewall.social
 
 A social site where the entire interface is a command prompt. Rooms, posts and
 replies are navigated the way a filesystem is navigated.
@@ -55,7 +55,7 @@ both are correctness rather than preference:
 
 **Location is the only navigation state.** `{room?, postId?}` drives the prompt
 string, the palette set, the valid command set and the URL at once — which is
-why `thewall.sh/music/12` and `go 12` are the same address (§3.4). The lobby
+why `thewall.social/music/12` and `go 12` are the same address (§3.4). The lobby
 lives at `/lobby` so that `/` can put arrivals in commons without making `leave`
 impossible.
 

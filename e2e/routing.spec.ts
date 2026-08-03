@@ -2,7 +2,8 @@ import { expect, test, type Page } from '@playwright/test'
 
 /**
  * §3.4 — "thewall.sh/music/12 is the same address as the prompt. Shareable URLs
- * fall out of the design at zero cost."
+ * fall out of the design at zero cost." (The doc's words; the domain is now
+ * thewall.social, and the property is what matters.)
  *
  * That only holds if it works in both directions: a URL has to put you where
  * the prompt would have, and moving in the prompt has to update the URL.

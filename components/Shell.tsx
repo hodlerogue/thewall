@@ -99,7 +99,7 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
           location,
           name: existingName,
           lines: [
-            { text: 'thewall.sh', tone: 'accent' },
+            { text: 'thewall.social', tone: 'accent' },
             { text: 'type look to see what’s around you, or tap a command below.', tone: 'faint' },
             { text: '' },
             ...lines,

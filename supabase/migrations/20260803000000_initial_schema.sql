@@ -1,4 +1,4 @@
--- thewall.sh — initial schema
+-- thewall.social — initial schema
 --
 -- Two design claims from the decision document are enforced here rather than in
 -- application code, because both are correctness properties and neither should

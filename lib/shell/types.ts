@@ -63,7 +63,7 @@ export function promptLabel(name: string | null, location: Location): string {
 
 /**
  * The path half of the prompt is also the URL (§3.4) — one value, two
- * surfaces, which is why `thewall.sh/music/12` costs nothing to support.
+ * surfaces, which is why `thewall.social/music/12` costs nothing to support.
  *
  * The lobby has its own address rather than living at `/`, because `/` is the
  * front door and §3.10 puts arrivals in commons. If they shared a path, the
