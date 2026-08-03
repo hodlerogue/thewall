@@ -118,7 +118,15 @@ impossible.
 
 **Signup is an input mode, not a page** (§3.9). The sentence you typed is held
 before the first question and posted the moment the account exists, so it is
-never retyped; `cancel` returns to reading with nothing lost.
+never retyped; `cancel` returns to reading with nothing lost. No email
+verification gates posting — §4.7's lean is unverified posting at launch, so
+the link is a key for next time rather than a gate.
+
+**Someone else speaking where you stand appears without asking.** §6 put
+realtime in the stack for presence, but presence alone left commons — a
+hallway, per §3.10 — unable to show you a word until you typed `look`. Posts
+and replies now arrive live for wherever you are standing, and the whole thing
+degrades to nothing if the channel cannot connect.
 
 ## The pipe
 

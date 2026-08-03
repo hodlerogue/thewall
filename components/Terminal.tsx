@@ -12,12 +12,15 @@ export function Terminal({
   run,
   chipsFor,
   name: initialName = null,
+  subscribe,
 }: {
   initialLines: readonly Line[]
   initialLocation: Location
   run: Runner
   chipsFor: (location: Location) => readonly Chip[]
   name?: string | null
+  /** Live arrivals for wherever you are standing. Absent in fixtures mode. */
+  subscribe?: (location: Location, append: (lines: Line[]) => void) => () => void
 }) {
   const [lines, setLines] = useState<Line[]>([...initialLines])
   const [location, setLocation] = useState<Location>(initialLocation)
@@ -127,6 +130,15 @@ export function Terminal({
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [run])
+
+  // Someone else speaking where you are standing. Re-subscribes on every move,
+  // because what counts as "here" changes with you.
+  useEffect(() => {
+    if (!subscribe) return
+    return subscribe(location, (incoming) => {
+      setLines((prev) => [...prev, { text: '' }, ...incoming])
+    })
+  }, [subscribe, location.room, location.postId])
 
   const label = promptLabel(name, location)
 

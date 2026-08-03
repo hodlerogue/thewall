@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Terminal } from '@/components/Terminal'
 import { createChipsFor, createRunner } from '@/lib/commands/run'
+import { createLive, type Live } from '@/lib/data/live'
 import { createPresence } from '@/lib/data/presence'
 import { supabaseEnv } from '@/lib/data/supabaseEnv'
 import { httpSignupApi, supabaseWriter } from '@/lib/data/writer'
@@ -22,6 +23,7 @@ interface Boot {
   lines: Line[]
   location: Location
   name: string | null
+  subscribe?: Live['subscribe']
 }
 
 /**
@@ -63,6 +65,8 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
       let writer: Writer
       let signup: SignupApi
       let existingName: string | null = null
+      let userId: string | null = null
+      let live: Live | undefined
 
       if (useFixtures) {
         env = fixtureEnv()
@@ -80,9 +84,23 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
           data: { user },
         } = await client.auth.getUser()
         if (user) {
+          userId = user.id
           const { data } = await client.from('profiles').select('name').eq('id', user.id).maybeSingle()
           existingName = data?.name ?? null
         }
+
+        const ephemeralSlugs = (await env.listRooms())
+          .filter((room) => room.ephemeral)
+          .map((room) => room.slug)
+
+        // Signing up gives you an id partway through the session, and without
+        // this the live feed would start echoing your own posts back at you.
+        client.auth.onAuthStateChange((_event, session) => {
+          userId = session?.user?.id ?? null
+        })
+
+        // Read at event time rather than captured, for the same reason.
+        live = createLive(client, ephemeralSlugs, () => userId)
 
         await presence.enter(target.room, existingName)
       }
@@ -103,6 +121,7 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
           chipsFor: createChipsFor(ephemeral),
           location,
           name: existingName,
+          subscribe: live?.subscribe,
           lines: [
             { text: 'thewall.social', tone: 'accent' },
             ...(useFixtures
@@ -157,6 +176,7 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
       run={boot.run}
       chipsFor={boot.chipsFor}
       name={boot.name}
+      subscribe={boot.subscribe}
     />
   )
 }
