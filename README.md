@@ -29,7 +29,7 @@ open the forwarded URL on your phone. It has to be Public — Private ports need
 GitHub auth the phone browser won't have, which shows up as a login page rather
 than the site.
 
-### The real thing
+### The real thing, locally
 
 ```bash
 npm install
@@ -40,6 +40,23 @@ npm run dev
 
 Paste the `API URL`, `anon key` and `service_role key` that `supabase start`
 prints into `.env.local`. Needs Docker — the devcontainer has it.
+
+### The real thing, deployed
+
+Set the four variables from `.env.example` in your host's environment, make
+sure `NEXT_PUBLIC_USE_FIXTURES` is **not** among them, and apply the schema and
+content to the project once:
+
+```bash
+DATABASE_URL='postgresql://postgres:...@db.<ref>.supabase.co:5432/postgres' \
+  ./scripts/db-deploy.sh
+```
+
+Use that rather than `supabase db push`: push applies migrations and stops
+there, leaving five empty rooms, which §5 calls worse than having no rooms.
+
+Then add your deployed origin to **Authentication → URL Configuration →
+Redirect URLs** in Supabase, or the magic link is refused on arrival.
 
 There is no fallback if the keys are missing: the prompt says what's absent
 rather than quietly serving fixtures, so you always know which one you're
