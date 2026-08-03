@@ -10,7 +10,7 @@
  */
 
 import { DEFAULT_ROOM, ROOMS } from '@/lib/shell/fixtures'
-import type { Post, Room, RoomSummary } from '@/lib/shell/model'
+import type { Post, PostHit, PostQuery, Room, RoomSummary } from '@/lib/shell/model'
 
 export interface Presence {
   names: string[]
@@ -22,6 +22,8 @@ export interface Env {
   getRoom(slug: string): Promise<Room | undefined>
   getPost(slug: string, id: number): Promise<Post | undefined>
   who(roomSlug: string | undefined): Promise<Presence>
+  /** §4.8 — the pipe's source. Crosses rooms, so hits carry their address. */
+  searchPosts(query: PostQuery): Promise<PostHit[]>
 }
 
 /** In-memory Env over the §5 seed content, for tests and the mobile gate. */
@@ -58,6 +60,27 @@ export function fixtureEnv(rooms: Room[] = ROOMS): Env {
     },
     async who() {
       return { names: ['jameson', 'marisol', 'tuck'], guests: 2 }
+    },
+
+    async searchPosts(query) {
+      const hits = rooms
+        // Ephemeral rooms are skipped: their posts have no permanent address,
+        // so a result from commons would be something you cannot `go` to.
+        .filter((room) => !room.ephemeral && (query.room === undefined || room.slug === query.room))
+        .flatMap((room) =>
+          room.posts.map((post) => ({
+            room: room.slug,
+            id: post.id,
+            author: post.author,
+            body: post.body,
+            createdAt: post.createdAt,
+          })),
+        )
+        .filter((hit) => query.by === undefined || hit.author === query.by)
+        .filter((hit) => query.since === undefined || hit.createdAt >= query.since)
+
+      hits.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      return hits.slice(0, query.limit)
     },
   }
 }

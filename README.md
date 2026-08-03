@@ -26,8 +26,8 @@ rather than quietly serving fixtures.
 ## Testing
 
 ```bash
-npm test           # 57 unit tests: parser, alias table, teaching errors, signup flow
-npm run test:e2e   # 20 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm test           # 83 unit tests: parser, alias table, teaching errors, signup, the pipe
+npm run test:e2e   # 25 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
 npm run test:db    # 27 assertions against the real migration, on a throwaway database
 ```
 
@@ -63,16 +63,30 @@ impossible.
 before the first question and posted the moment the account exists, so it is
 never retyped; `cancel` returns to reading with nothing lost.
 
+## The pipe
+
+§4.8 asks for exactly one working pipe, "documented only inside `what posts`,
+discoverable by the curious. Don't advertise it." So:
+
+```
+posts --room=music --since=7d | count
+posts --by=jameson | go
+```
+
+`posts` is absent from `help`, absent from every palette, and excluded from the
+"did you mean" pool. `what posts` is its entire documentation. Only `posts`
+opts into `|` splitting, which is why `say the chord was a|b|c` stays a
+sentence rather than becoming a broken pipeline.
+
+The doc's own example reaches for `--tag`. There are no tags — rooms do that
+job — and saying exactly that is more use than listing the flags that do exist.
+
 ## Not built, on purpose
 
 Notifications (§4.1 says design first), private messages, user-created rooms
 (§4.2 leans fixed-set at launch), reply-to-reply (§4.3 makes flatness a stated
 constraint, and the schema has no `parent_id` so it cannot reappear by
 accident), and moderation beyond a manual kill switch.
-
-Pipes (§4.8) are unbuilt. The doc is right that they are what separates a real
-interface from a terminal costume — if this earns more hours, that is the first
-thing to spend them on.
 
 ## Theme
 

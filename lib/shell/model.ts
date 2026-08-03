@@ -37,6 +37,26 @@ export interface RoomSummary {
   latest?: { author: string; body: string; createdAt: Date }
 }
 
+/**
+ * A post found by searching rather than by standing somewhere, so it carries
+ * its own address (§4.8). Room included because a search crosses rooms and the
+ * result has to stay something you can `go` to.
+ */
+export interface PostHit {
+  room: string
+  id: number
+  author: string
+  body: string
+  createdAt: Date
+}
+
+export interface PostQuery {
+  room?: string
+  by?: string
+  since?: Date
+  limit: number
+}
+
 /** Coarse on purpose: "2h ago" is the resolution a conversation actually has. */
 export function formatAgo(then: Date, now: Date = new Date()): string {
   const seconds = Math.max(0, Math.floor((now.getTime() - then.getTime()) / 1000))

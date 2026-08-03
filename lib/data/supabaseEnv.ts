@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Presence } from '@/lib/data/presence'
 import type { Env } from '@/lib/shell/env'
-import type { Post, Room, RoomSummary } from '@/lib/shell/model'
+import type { Post, PostHit, Room, RoomSummary } from '@/lib/shell/model'
 
 /**
  * The Env the commands actually run against.
@@ -111,6 +111,32 @@ export function supabaseEnv(client: SupabaseClient, presence?: Presence): Env {
       // Who is actually here, from the room's realtime channel — not who has
       // an account. Without a channel (server-side render), nobody is "here".
       return presence?.present() ?? { names: [], guests: 0 }
+    },
+
+    async searchPosts(query): Promise<PostHit[]> {
+      let request = client
+        .from('posts')
+        // Ephemeral rooms are excluded: their posts have no permanent address,
+        // so a hit from commons would be somewhere you cannot `go` (§3.10).
+        .select('post_no, body, created_at, room_slug, rooms!inner(ephemeral), author:profiles!inner(name)')
+        .eq('rooms.ephemeral', false)
+        .order('created_at', { ascending: false })
+        .limit(query.limit)
+
+      if (query.room) request = request.eq('room_slug', query.room)
+      if (query.by) request = request.eq('profiles.name', query.by)
+      if (query.since) request = request.gte('created_at', query.since.toISOString())
+
+      const { data, error } = await request
+      if (error) throw error
+
+      return (data ?? []).map((row) => ({
+        room: row.room_slug,
+        id: row.post_no,
+        author: authorName(row.author),
+        body: row.body,
+        createdAt: new Date(row.created_at),
+      }))
     },
   }
 }

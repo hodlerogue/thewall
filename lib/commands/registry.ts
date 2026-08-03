@@ -12,7 +12,9 @@
  * was a joke. Aliasing is never announced.
  */
 
+import { parseFlags, parseSince, splitStages } from '@/lib/commands/pipeline'
 import type { Env } from '@/lib/shell/env'
+import { formatAgo, type PostHit, type PostQuery } from '@/lib/shell/model'
 import { renderPost, renderRoom, renderRoomList } from '@/lib/shell/render'
 import type { Session } from '@/lib/shell/session'
 import type { Context, Line, Location, RunResult } from '@/lib/shell/types'
@@ -33,6 +35,14 @@ export type Handler = (args: HandlerArgs) => Promise<RunResult>
 export interface Command {
   verb: string
   aliases: readonly string[]
+  /**
+   * §4.8 — kept out of `help`, the palette and the "did you mean" pool, so it
+   * is found by curiosity rather than advertised. `what posts` still explains
+   * it in full, which is the whole of its documentation.
+   */
+  hidden?: boolean
+  /** Opts into `|` splitting. Without it, a pipe is just a character. */
+  pipeable?: boolean
   /** `verb — what it does`, phrased for where you are standing. */
   gloss: (context: Context) => string
   /** Plain English, for `what <command>` (§3.8). */
@@ -260,14 +270,143 @@ export const COMMANDS: readonly Command[] = [
     async run({ context }) {
       const lines: Line[] = [{ text: 'from here you can type:', tone: 'faint' }]
       for (const command of COMMANDS) {
-        if (!command.contexts.includes(context)) continue
+        // §4.8 — the pipe is not on this list. That is the point of it.
+        if (command.hidden || !command.contexts.includes(context)) continue
         lines.push({ text: `${command.verb} — ${command.gloss(context)}`, tone: 'dim' })
       }
       lines.push({ text: 'what <command> explains any of them.', tone: 'faint' })
       return { lines }
     },
   },
+
+  {
+    // §4.8 — the one pipe. "If it never ships, this is a themed UI. If it
+    // ships, it justifies the premise entirely."
+    verb: 'posts',
+    aliases: ['find', 'search'],
+    hidden: true,
+    pipeable: true,
+    contexts: ALL,
+    gloss: () => 'find posts across rooms',
+    detail: () =>
+      'finds posts across every room. narrow it with --room, --by, --since or --limit, and pipe the result somewhere: posts --by=jameson --since=7d | count, or | go to open the newest one.',
+    insert: () => 'posts ',
+    wrongContext: () => '',
+    async run({ arg, location, env }) {
+      // Only this command splits on `|`. That is why `say i love a|b` keeps
+      // its pipe instead of becoming half a sentence and a broken pipeline.
+      const [source = '', ...rest] = arg.split('|')
+      const sinks = splitStages(rest.join('|'))
+
+      const query = buildQuery(source, location)
+      if ('problem' in query) return error(query.problem)
+
+      const hits = await env.searchPosts(query.query)
+
+      if (sinks.length === 0) return { lines: renderHits(hits) }
+      if (sinks.length > 1) {
+        return error('one pipe at a time for now. try: posts --since=7d | count')
+      }
+
+      const sink = sinks[0].head.toLowerCase()
+
+      if (sink === 'count') {
+        return {
+          lines: [
+            {
+              text: hits.length === 1 ? '1 post' : `${hits.length} posts`,
+              tone: hits.length === 0 ? 'faint' : 'dim',
+            },
+          ],
+        }
+      }
+
+      if (sink === 'go') {
+        const first = hits[0]
+        if (!first) return { lines: [{ text: 'nothing matched, so there’s nowhere to go.', tone: 'faint' }] }
+        const post = await env.getPost(first.room, first.id)
+        if (!post) return error(`post ${first.id} isn’t there anymore.`)
+        return { lines: renderPost(post), location: { room: first.room, postId: first.id } }
+      }
+
+      return error(`i can’t pipe into ${sink}. try: | count, or | go`)
+    },
+  },
 ]
+
+const FLAG_NAMES = ['room', 'by', 'since', 'limit']
+
+function buildQuery(
+  input: string,
+  location: Location,
+): { query: PostQuery } | { problem: string } {
+  const { values, loose } = parseFlags(input)
+
+  for (const name of values.keys()) {
+    if (FLAG_NAMES.includes(name)) continue
+    // The doc's own example reaches for --tag. Rooms already do that job, and
+    // saying so is more use than listing the flags that do exist.
+    if (name === 'tag') {
+      return { problem: 'there are no tags — rooms do that job. try: posts --room=poker' }
+    }
+    return { problem: `i don’t know --${name}. try: ${FLAG_NAMES.map((f) => `--${f}`).join(', ')}` }
+  }
+
+  if (loose.length > 0) {
+    return { problem: `posts takes flags, not words. try: posts --by=${loose[0].toLowerCase()}` }
+  }
+
+  const query: PostQuery = { limit: 20 }
+
+  const room = values.get('room')
+  if (room !== undefined) {
+    if (room === '') return { problem: 'which room? try: posts --room=music' }
+    query.room = room.toLowerCase()
+  } else if (location.room !== undefined) {
+    // Standing somewhere is itself a filter; naming the room again would be
+    // busywork. --room from anywhere still overrides it.
+    query.room = location.room
+  }
+
+  const by = values.get('by')
+  if (by !== undefined) {
+    if (by === '') return { problem: 'said by whom? try: posts --by=marisol' }
+    query.by = by.toLowerCase()
+  }
+
+  const since = values.get('since')
+  if (since !== undefined) {
+    const from = parseSince(since)
+    if (!from) return { problem: `${since} isn’t a length of time. try: --since=7d, 24h, or 30m` }
+    query.since = from
+  }
+
+  const limit = values.get('limit')
+  if (limit !== undefined) {
+    const parsed = Number(limit)
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
+      return { problem: 'how many? a whole number from 1 to 100.' }
+    }
+    query.limit = parsed
+  }
+
+  return { query }
+}
+
+function renderHits(hits: readonly PostHit[]): Line[] {
+  if (hits.length === 0) {
+    return [{ text: 'nothing matched.', tone: 'faint' }]
+  }
+
+  const lines: Line[] = []
+  for (const hit of hits) {
+    // The address comes first and includes the room, because a search crosses
+    // rooms and the result has to remain somewhere you can go.
+    lines.push({ text: `${hit.room}/${hit.id}  ${hit.author}, ${formatAgo(hit.createdAt)}`, tone: 'dim' })
+    lines.push({ text: hit.body, depth: 1 })
+  }
+  return lines
+}
 
 /**
  * §3.6 — the palette set changes by context, so it never exceeds ~6 items
@@ -296,9 +435,14 @@ export function allWords(): string[] {
   return [...BY_NAME.keys()]
 }
 
+/** Everything a "did you mean" may propose — hidden commands excluded (§4.8). */
+function suggestableWords(): string[] {
+  return [...BY_NAME.entries()].filter(([, c]) => !c.hidden).map(([word]) => word)
+}
+
 /** §3.7 — unknown input guesses the nearest verb, and shows its description. */
 export function nearestCommand(word: string): Command | undefined {
-  const near = nearestSlug(word, allWords())
+  const near = nearestSlug(word, suggestableWords())
   return near ? BY_NAME.get(near) : undefined
 }
 
