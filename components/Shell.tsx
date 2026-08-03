@@ -7,6 +7,7 @@ import { createPresence } from '@/lib/data/presence'
 import { supabaseEnv } from '@/lib/data/supabaseEnv'
 import { httpSignupApi, supabaseWriter } from '@/lib/data/writer'
 import { fixtureEnv, type Env } from '@/lib/shell/env'
+import { describeError } from '@/lib/shell/errors'
 import { renderPost, renderRoom, renderRoomList } from '@/lib/shell/render'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
 import { createClient, isConfigured } from '@/lib/supabase/client'
@@ -33,7 +34,7 @@ interface Boot {
  */
 export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLocation?: Location }) {
   const [boot, setBoot] = useState<Boot | null>(null)
-  const [failure, setFailure] = useState<string | null>(null)
+  const [failure, setFailure] = useState<Line[] | null>(null)
 
   // A Location is a fresh object on every render, so the path is what the
   // effect depends on — otherwise arriving anywhere would reload forever.
@@ -48,9 +49,13 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
       const useFixtures = process.env.NEXT_PUBLIC_USE_FIXTURES === '1'
 
       if (!useFixtures && !isConfigured()) {
-        setFailure(
-          'thewall needs a supabase project. copy .env.example to .env.local, fill in the url and anon key, then apply supabase/migrations and supabase/seed.sql.',
-        )
+        setFailure([
+          { text: 'thewall needs a supabase project.', tone: 'error' },
+          {
+            text: 'set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY, then redeploy — they are baked in at build time.',
+            tone: 'faint',
+          },
+        ])
         return
       }
 
@@ -109,7 +114,9 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
           ],
         })
       } catch (error) {
-        if (!cancelled) setFailure(error instanceof Error ? error.message : String(error))
+        // Supabase throws plain objects, not Errors. describeError is what
+        // keeps this from rendering as "[object Object]".
+        if (!cancelled) setFailure(describeError(error))
       }
     }
 
@@ -123,7 +130,11 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
     return (
       <div className="app">
         <div className="scrollback">
-          <p className="line line-error">{failure}</p>
+          {failure.map((line, i) => (
+            <p key={i} className={`line line-${line.tone ?? 'error'}`}>
+              {line.text}
+            </p>
+          ))}
         </div>
       </div>
     )
