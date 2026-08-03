@@ -50,12 +50,15 @@ from (values
 ) as seed (id, email)
 on conflict (id) do nothing;
 
-insert into public.profiles (id, name) values
-  ('11111111-1111-4111-8111-111111111111', 'jameson'),
-  ('22222222-2222-4222-8222-222222222222', 'marisol'),
-  ('33333333-3333-4333-8333-333333333333', 'tuck'),
-  ('44444444-4444-4444-8444-444444444444', 'ren'),
-  ('55555555-5555-4555-8555-555555555555', 'dev')
+-- verified_at is set because these are not people with inboxes. Left null they
+-- would each be one contribution away from being asked to check an address
+-- that does not exist (§4.7, as revised).
+insert into public.profiles (id, name, verified_at) values
+  ('11111111-1111-4111-8111-111111111111', 'jameson', now()),
+  ('22222222-2222-4222-8222-222222222222', 'marisol', now()),
+  ('33333333-3333-4333-8333-333333333333', 'tuck',    now()),
+  ('44444444-4444-4444-8444-444444444444', 'ren',     now()),
+  ('55555555-5555-4555-8555-555555555555', 'dev',     now())
 on conflict (id) do nothing;
 
 -- §4.2 — a fixed, curated set at launch. Room creation stays closed and the

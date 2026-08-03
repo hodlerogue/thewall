@@ -51,6 +51,12 @@ export function httpSignupApi(): SignupApi {
       return (await response.json()) as { available: boolean; alternates: string[] }
     },
 
+    async resend() {
+      const response = await fetch('/api/verify/resend', { method: 'POST' })
+      const payload = (await response.json().catch(() => ({}))) as { note?: string; error?: string }
+      return { note: payload.note ?? payload.error ?? 'couldn’t send just now.' }
+    },
+
     async create(name: string, email: string) {
       const response = await fetch('/api/signup', {
         method: 'POST',
@@ -58,17 +64,26 @@ export function httpSignupApi(): SignupApi {
         body: JSON.stringify({ name, email }),
       })
 
-      const payload = (await response.json().catch(() => ({}))) as { name?: string; error?: string }
+      const payload = (await response.json().catch(() => ({}))) as {
+        name?: string
+        note?: string
+        error?: string
+      }
       if (!response.ok || !payload.name) {
         return { ok: false as const, reason: payload.error ?? 'that didn’t work. try again?' }
       }
-      return { ok: true as const, name: payload.name }
+      // The note says what actually happened to the mail, rather than assuming.
+      return { ok: true as const, name: payload.name, note: payload.note }
     },
   }
 }
 
 /** Database errors are for logs. What reaches the prompt is a sentence. */
 function friendly(message: string): string {
+  // §4.7 — the gate. The database says it plainly; this adds the way out.
+  if (message.includes('check your email')) {
+    return 'check your email to keep saying things — click the link and this is yours. no link? type resend.'
+  }
   if (message.includes('commons does not keep threads')) {
     return 'commons doesn’t keep threads — say it as its own thing instead.'
   }

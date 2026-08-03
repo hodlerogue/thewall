@@ -17,6 +17,9 @@ const session = new Session(
     async create(name) {
       return { ok: true as const, name }
     },
+    async resend() {
+      return { note: 'sent' }
+    },
   },
   {
     async post(_room, body) {
@@ -106,13 +109,13 @@ describe('§4.8 — the pipe is not advertised', () => {
     }
   })
 
-  it('is absent from every palette', () => {
-    for (const command of COMMANDS) {
-      if (!command.hidden) continue
-      expect(command.verb).toBe('posts')
-    }
+  it('is absent from every palette — as is anything else marked hidden', () => {
+    const hidden = COMMANDS.filter((c) => c.hidden).map((c) => c.verb)
+    expect(hidden).toContain('posts')
+
     for (const context of ['lobby', 'room', 'commons', 'post'] as const) {
-      expect(chipsForContext(context).map((c: { verb: string }) => c.verb)).not.toContain('posts')
+      const shown = chipsForContext(context).map((c: { verb: string }) => c.verb)
+      for (const verb of hidden) expect(shown, `${verb} in ${context}`).not.toContain(verb)
     }
   })
 

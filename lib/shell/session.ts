@@ -26,6 +26,8 @@ export interface SignupApi {
     name: string,
     email: string,
   ): Promise<{ ok: true; name: string; note?: string } | { ok: false; reason: string }>
+  /** Another key. Links expire, so this is part of the rule, not a nicety. */
+  resend(): Promise<{ note: string }>
 }
 
 export interface Writer {
@@ -169,6 +171,15 @@ export class Session {
     }
 
     return { lines, identity: this.who }
+  }
+
+  /** §4.7 — send another key. Only meaningful once you have an account. */
+  async resendKey(): Promise<Line[]> {
+    if (this.who === null) {
+      return [{ text: 'nothing to send yet — say something first and i’ll ask who you are.', tone: 'error' }]
+    }
+    const { note } = await this.api.resend()
+    return [{ text: note, tone: 'faint' }]
   }
 
   /** The write path itself, used by `say` and by the held-message commit. */

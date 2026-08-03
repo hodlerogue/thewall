@@ -13,7 +13,8 @@ const EPHEMERAL = ['commons']
 // already has a name — the signup flow has its own suite.
 const signedIn = new Session(
   { async checkName() { return { available: true, alternates: [] } },
-    async create(name) { return { ok: true as const, name } } },
+    async create(name) { return { ok: true as const, name } },
+    async resend() { return { note: 'sent' } } },
   { async post() { return 1 }, async reply() {} },
   'tester',
 )

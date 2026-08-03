@@ -262,6 +262,9 @@ function fixtureSignup(): SignupApi {
         alternates: available ? [] : [`${name}_`, `${name}1`, `the${name}`],
       }
     },
+    async resend() {
+      return { note: 'nothing to send — this is a demo.' }
+    },
     async create(name: string) {
       // No account was made and no mail was sent. Say so — this build gets
       // deployed to public URLs, and people type real addresses into it.

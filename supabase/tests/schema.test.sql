@@ -70,8 +70,10 @@ insert into auth.users (id, aud, role, email)
 values ('99999999-9999-4999-8999-999999999999', 'authenticated', 'authenticated', 'tester@seed.invalid')
 on conflict (id) do nothing;
 
-insert into public.profiles (id, name)
-values ('99999999-9999-4999-8999-999999999999', 'tester')
+-- Verified, because these tests are about everything other than verification;
+-- the §4.7 rule has its own section at the end.
+insert into public.profiles (id, name, verified_at)
+values ('99999999-9999-4999-8999-999999999999', 'tester', now())
 on conflict (id) do nothing;
 
 
@@ -246,6 +248,66 @@ select tests.ok(
   'replies carry no parent pointer, so threading cannot appear by accident'
 );
 
+
+\echo ''
+\echo '§4.7 (revised) — one contribution, then check your email'
+
+insert into auth.users (id, aud, role, email)
+values ('88888888-8888-4888-8888-888888888888', 'authenticated', 'authenticated', 'newcomer@seed.invalid')
+on conflict (id) do nothing;
+
+-- Deliberately no verified_at: this is someone who just signed up.
+insert into public.profiles (id, name)
+values ('88888888-8888-4888-8888-888888888888', 'newcomer')
+on conflict (id) do nothing;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '88888888-8888-4888-8888-888888888888';
+
+  -- §3.9 is untouched: the held sentence goes through.
+  select tests.ok(
+    (public.create_post('music', 'the thing i was trying to say')).post_no is not null,
+    'an unverified newcomer''s first post goes through'
+  );
+
+  select tests.raises(
+    $sql$select public.create_post('music', 'and another thing')$sql$,
+    'the second one asks them to check their email'
+  );
+
+  select tests.raises(
+    $sql$insert into public.replies (post_id, author_id, body)
+         values ((select id from public.posts where room_slug = 'music' limit 1),
+                 '88888888-8888-4888-8888-888888888888', 'a reply instead')$sql$,
+    'and so does replying — the free contribution is one, not one of each'
+  );
+commit;
+
+-- They click the link.
+update public.profiles set verified_at = now()
+ where id = '88888888-8888-4888-8888-888888888888';
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '88888888-8888-4888-8888-888888888888';
+
+  select tests.ok(
+    (public.create_post('music', 'now that i am verified')).post_no is not null,
+    'verifying lets them carry on'
+  );
+
+  select tests.ok(
+    (select count(*) from public.replies where author_id = '88888888-8888-4888-8888-888888888888') = 0,
+    'the refused reply was never written'
+  );
+commit;
+
+select tests.ok(
+  (select count(*) from public.posts
+    where author_id = '88888888-8888-4888-8888-888888888888') = 2,
+  'exactly the two posts that were allowed exist'
+);
 
 \echo ''
 \echo 'all schema tests passed'

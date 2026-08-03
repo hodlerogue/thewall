@@ -280,6 +280,24 @@ export const COMMANDS: readonly Command[] = [
   },
 
   {
+    // §4.7 — hidden like the pipe, but for a different reason: nobody needs to
+    // know it exists until the moment they do, and the message that asks them
+    // to verify names it directly.
+    verb: 'resend',
+    aliases: ['verify', 'key'],
+    hidden: true,
+    contexts: ALL,
+    gloss: () => 'send my key again',
+    detail: () =>
+      'sends another sign-in link to your address. the one from signup expires, and you need a followed link to keep your name and keep posting.',
+    insert: () => 'resend',
+    wrongContext: () => '',
+    async run({ session }) {
+      return { lines: await session.resendKey() }
+    },
+  },
+
+  {
     // §4.8 — the one pipe. "If it never ships, this is a themed UI. If it
     // ships, it justifies the premise entirely."
     verb: 'posts',

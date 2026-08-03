@@ -10,6 +10,7 @@ const text = (lines: Line[]) => lines.map((l) => l.text).join('\n')
 function harness(options: { taken?: string[]; failCreate?: string } = {}) {
   const taken = new Set(options.taken ?? ['jameson'])
   const posted: { room: string; body: string }[] = []
+  let resends = 0
   const replied: { room: string; postNo: number; body: string }[] = []
 
   const api: SignupApi = {
@@ -20,6 +21,10 @@ function harness(options: { taken?: string[]; failCreate?: string } = {}) {
     async create(name) {
       if (options.failCreate) return { ok: false as const, reason: options.failCreate }
       return { ok: true as const, name }
+    },
+    async resend() {
+      resends += 1
+      return { note: 'another key is on its way.' }
     },
   }
 
@@ -36,7 +41,7 @@ function harness(options: { taken?: string[]; failCreate?: string } = {}) {
   const session = new Session(api, writer)
   const run = createRunner(fixtureEnv(), ['commons'], session)
 
-  return { session, run, posted, replied }
+  return { session, run, posted, replied, resendCount: () => resends }
 }
 
 describe('§3.9 — signup is deferred to first contribution', () => {
@@ -200,6 +205,41 @@ describe('§3.9 — signup is deferred to first contribution', () => {
     const { run } = harness()
     const out = text((await run('who', { room: 'music' })).lines)
     expect(out).toMatch(/say something and you’ll be on the list/)
+  })
+})
+
+describe('§4.7 (revised) — the key has to be gettable', () => {
+  it('resend asks for another one', async () => {
+    const { run, resendCount } = harness()
+    const at: Location = { room: 'music' }
+
+    await run('say hello', at)
+    await run('newcomer', at)
+    await run('newcomer@example.com', at)
+
+    const out = text((await run('resend', at)).lines)
+    expect(out).toMatch(/another key/)
+    expect(resendCount()).toBe(1)
+  })
+
+  it('does not pretend to resend when there is no account yet', async () => {
+    const { run, resendCount } = harness()
+    const out = text((await run('resend', { room: 'music' })).lines)
+    expect(out).toMatch(/nothing to send yet/)
+    expect(resendCount()).toBe(0)
+  })
+
+  it('is reachable by the words someone would actually reach for', async () => {
+    const { parse } = await import('@/lib/commands/parse')
+    for (const word of ['resend', 'verify', 'key']) {
+      expect(parse(word)?.command?.verb, word).toBe('resend')
+    }
+  })
+
+  it('stays out of help, like the pipe — the error that needs it names it', async () => {
+    const { run } = harness()
+    const out = text((await run('help', { room: 'music' })).lines)
+    expect(out).not.toMatch(/resend/)
   })
 })
 

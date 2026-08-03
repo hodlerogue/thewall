@@ -118,9 +118,23 @@ impossible.
 
 **Signup is an input mode, not a page** (§3.9). The sentence you typed is held
 before the first question and posted the moment the account exists, so it is
-never retyped; `cancel` returns to reading with nothing lost. No email
-verification gates posting — §4.7's lean is unverified posting at launch, so
-the link is a key for next time rather than a gate.
+never retyped; `cancel` returns to reading with nothing lost.
+
+**One contribution, then check your email** — §4.7, revised. The doc weighed
+unverified posting purely as a moderation question and never asked whether
+someone can return *as themselves*. An unverified address may be a typo, so the
+link it was sent to is not a recovery path; on a second device the only
+reliable move is signing up again, and since names are reserved forever (§4.6)
+every abandoned account burns a handle. So the held sentence still posts
+instantly, and everything after it wants the link followed first — the friction
+lands after the payoff, which is also what makes the link necessary rather than
+decorative. `resend` sends another, because links expire.
+
+`profiles.verified_at` is set only by `/auth/callback`, which is the one place
+that can honestly claim someone read the inbox. It is deliberately not
+GoTrue's `email_confirmed_at`: signup mints a session immediately, and doing
+that confirms the address as a side effect, so that flag says "confirmed" for
+an address nobody has proven they can read.
 
 **Someone else speaking where you stand appears without asking.** §6 put
 realtime in the stack for presence, but presence alone left commons — a
