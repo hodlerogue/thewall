@@ -1,4 +1,4 @@
-import type { FixturePost, FixtureRoom } from '@/lib/shell/fixtures'
+import { formatAgo, type Post, type Room, type RoomSummary } from '@/lib/shell/model'
 import type { Line } from '@/lib/shell/types'
 
 /**
@@ -6,37 +6,44 @@ import type { Line } from '@/lib/shell/types'
  * reply body +2. No `└─`, nothing that falls apart at 380px.
  */
 
-/** §3.11 — the lobby shows proof of life: a busy building, not a list of doors. */
-export function renderRoomList(rooms: readonly FixtureRoom[]): Line[] {
+/** §3.11 — proof of life: the difference between a busy building and a list of doors. */
+export function renderRoomList(rooms: readonly RoomSummary[], now = new Date()): Line[] {
   const lines: Line[] = []
   for (const room of rooms) {
-    const latest = room.posts[0]
     lines.push({ text: room.slug, tone: 'accent' })
     lines.push({
-      text: latest
-        ? `${truncate(latest.body, 58)} — ${latest.author}, ${latest.ago} ago`
+      text: room.latest
+        ? `${truncate(room.latest.body, 56)} — ${room.latest.author}, ${formatAgo(room.latest.createdAt, now)}`
         : 'quiet in here',
-      tone: latest ? 'dim' : 'faint',
+      tone: room.latest ? 'dim' : 'faint',
       depth: 1,
     })
   }
   return lines
 }
 
-export function renderRoom(room: FixtureRoom): Line[] {
-  if (room.posts.length === 0) {
-    return [{ text: 'nothing here yet. say something and it will be the first thing.', tone: 'faint' }]
-  }
-
+export function renderRoom(room: Room, now = new Date()): Line[] {
   const lines: Line[] = []
+
   if (room.ephemeral) {
     lines.push({ text: 'commons keeps nothing. everything here is gone in 24 hours.', tone: 'faint' })
     lines.push({ text: '' })
   }
-  for (const post of room.posts) {
-    // Post number first: it is the address, and it is permanent (§3.4).
+
+  if (room.posts.length === 0) {
     lines.push({
-      text: room.ephemeral ? `${post.author}, ${post.ago} ago` : `${post.id}  ${post.author}, ${post.ago} ago`,
+      text: 'nothing here yet. say something and it will be the first thing.',
+      tone: 'faint',
+    })
+    return lines
+  }
+
+  for (const post of room.posts) {
+    // The number comes first because it is the address, and it is permanent.
+    lines.push({
+      text: room.ephemeral
+        ? `${post.author}, ${formatAgo(post.createdAt, now)}`
+        : `${post.id}  ${post.author}, ${formatAgo(post.createdAt, now)}`,
       tone: 'dim',
     })
     lines.push({ text: post.body, depth: 1 })
@@ -52,19 +59,21 @@ export function renderRoom(room: FixtureRoom): Line[] {
   return lines
 }
 
-/** §3.2 — a post is a room. You are inside the conversation, not looking at it. */
-export function renderPost(room: FixtureRoom, post: FixturePost): Line[] {
+/** §3.2 — a post is a room: you are inside the conversation, not looking at it. */
+export function renderPost(post: Post, now = new Date()): Line[] {
   const lines: Line[] = [
-    { text: `${post.author}, ${post.ago} ago`, tone: 'dim' },
+    { text: `${post.author}, ${formatAgo(post.createdAt, now)}`, tone: 'dim' },
     { text: post.body },
     { text: '' },
   ]
+
   if (post.replies.length === 0) {
-    lines.push({ text: 'no replies yet.', tone: 'faint' })
+    lines.push({ text: 'no replies yet. say something to be the first.', tone: 'faint' })
     return lines
   }
+
   for (const reply of post.replies) {
-    lines.push({ text: `${reply.author}, ${reply.ago} ago`, tone: 'dim', depth: 1 })
+    lines.push({ text: `${reply.author}, ${formatAgo(reply.createdAt, now)}`, tone: 'dim', depth: 1 })
     lines.push({ text: reply.body, depth: 2 })
   }
   return lines
