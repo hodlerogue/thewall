@@ -1,0 +1,30 @@
+{
+  "name": "thewall",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
+
+  "features": {
+    // Only needed for `supabase start`. The fixtures path (npm run dev:demo)
+    // works without it.
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    // For scripts/db-test.sh against a database.
+    "ghcr.io/robinvandernoord/devcontainer-features/postgresql-client:1": {}
+  },
+
+  "forwardPorts": [3000, 54321, 54323],
+  "portsAttributes": {
+    "3000": {
+      "label": "thewall",
+      "onAutoForward": "notify"
+    },
+    "54321": { "label": "supabase api" },
+    "54323": { "label": "supabase studio" }
+  },
+
+  "postCreateCommand": "npm install",
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode"]
+    }
+  }
+}

@@ -13,15 +13,37 @@ code is short.
 
 ## Running it
 
+### Just look at it (no database)
+
 ```bash
 npm install
-cp .env.example .env.local     # fill in a Supabase url + anon key
+npm run dev:demo
+```
+
+Serves the §5 seed content from memory. Every command works, including the
+whole signup flow — nothing is written anywhere. This is the one to use for the
+§4.5 taste call, because that decision wants a phone, not a database.
+
+**In a Codespace:** open the **Ports** panel, set port 3000 to **Public**, and
+open the forwarded URL on your phone. It has to be Public — Private ports need
+GitHub auth the phone browser won't have, which shows up as a login page rather
+than the site.
+
+### The real thing
+
+```bash
+npm install
+npx supabase start        # applies supabase/migrations and seed.sql for you
+cp .env.example .env.local
 npm run dev
 ```
 
-Apply `supabase/migrations/*.sql` and then `supabase/seed.sql` to the project.
-There is no fallback if the keys are missing — the prompt says what's absent
-rather than quietly serving fixtures.
+Paste the `API URL`, `anon key` and `service_role key` that `supabase start`
+prints into `.env.local`. Needs Docker — the devcontainer has it.
+
+There is no fallback if the keys are missing: the prompt says what's absent
+rather than quietly serving fixtures, so you always know which one you're
+looking at.
 
 ## Testing
 
