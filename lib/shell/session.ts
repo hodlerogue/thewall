@@ -25,7 +25,7 @@ export interface SignupApi {
   create(
     name: string,
     email: string,
-  ): Promise<{ ok: true; name: string } | { ok: false; reason: string }>
+  ): Promise<{ ok: true; name: string; note?: string } | { ok: false; reason: string }>
 }
 
 export interface Writer {
@@ -150,7 +150,10 @@ export class Session {
     this.pendingName = null
 
     const lines: Line[] = [
-      { text: `your key is on its way to ${text}.`, tone: 'faint' },
+      // The source says what actually happened. A demo build has not sent
+      // anything, and claiming otherwise to someone who just typed a real
+      // address is not a white lie.
+      { text: result.note ?? `your key is on its way to ${text}.`, tone: 'faint' },
       { text: '' },
     ]
 

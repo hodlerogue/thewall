@@ -100,6 +100,9 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
           name: existingName,
           lines: [
             { text: 'thewall.social', tone: 'accent' },
+            ...(useFixtures
+              ? [{ text: 'demo — nothing you type here is saved.', tone: 'faint' as const }]
+              : []),
             { text: 'type look to see what’s around you, or tap a command below.', tone: 'faint' },
             { text: '' },
             ...lines,
@@ -215,7 +218,13 @@ function fixtureSignup(): SignupApi {
       }
     },
     async create(name: string) {
-      return { ok: true as const, name }
+      // No account was made and no mail was sent. Say so — this build gets
+      // deployed to public URLs, and people type real addresses into it.
+      return {
+        ok: true as const,
+        name,
+        note: 'nothing was sent — this is a demo, and your address wasn’t kept.',
+      }
     },
   }
 }
