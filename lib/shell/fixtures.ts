@@ -1,0 +1,116 @@
+/**
+ * Seed content, held in memory until Phase 3 moves it to `supabase/seed.sql`.
+ *
+ * §5 governs what is written here: an empty room is worse than no room, so the
+ * rooms arrive warm — and the content reads like ordinary people (a broken AC,
+ * a bad beat, a dad's records, four pounds of tomatoes), never dev in-jokes,
+ * which §5 names as the first draft's failure.
+ */
+
+import type { Room } from '@/lib/shell/model'
+
+const minutes = (n: number) => new Date(Date.now() - n * 60_000)
+
+export const ROOMS: Room[] = [
+  {
+    slug: 'commons',
+    gloss: 'everything, briefly',
+    ephemeral: true,
+    posts: [
+      {
+        id: 1,
+        author: 'marisol',
+        body: 'the AC in my building has been out for three days and the super keeps saying "tomorrow"',
+        createdAt: minutes(20),
+        replies: [],
+      },
+      {
+        id: 2,
+        author: 'dev',
+        body: 'four pounds of tomatoes from one plant. i have no plan for any of them.',
+        createdAt: minutes(64),
+        replies: [],
+      },
+    ],
+  },
+  {
+    slug: 'music',
+    gloss: 'what you are listening to',
+    ephemeral: false,
+    posts: [
+      {
+        id: 12,
+        author: 'jameson',
+        body: 'found my dad’s records in the garage. half of them are warped and i am keeping all of them anyway.',
+        createdAt: minutes(128),
+        replies: [
+          {
+            author: 'marisol',
+            body: 'warped ones still play, they just wobble. it grows on you.',
+            createdAt: minutes(70),
+          },
+          { author: 'tuck', body: 'what was in there', createdAt: minutes(44) },
+        ],
+      },
+      {
+        id: 11,
+        author: 'ren',
+        body: 'the bass player at the bar last night was carrying the entire band and knew it',
+        createdAt: minutes(360),
+        replies: [],
+      },
+    ],
+  },
+  {
+    slug: 'poker',
+    gloss: 'bad beats and good folds',
+    ephemeral: false,
+    posts: [
+      {
+        id: 4,
+        author: 'tuck',
+        body: 'flopped a set, lost to runner-runner clubs, and then tipped the dealer anyway because i am a gentleman',
+        createdAt: minutes(190),
+        replies: [{ author: 'jameson', body: 'the tip is the tell', createdAt: minutes(120) }],
+      },
+    ],
+  },
+  {
+    slug: 'kitchen',
+    gloss: 'what you cooked',
+    ephemeral: false,
+    posts: [
+      {
+        id: 7,
+        author: 'dev',
+        body: 'made stock from a chicken carcass for the first time and now i understand why my grandmother never threw anything out',
+        createdAt: minutes(300),
+        replies: [],
+      },
+    ],
+  },
+  {
+    // §5: one room should be a mood, not a topic. Mood rooms are what make this
+    // feel like a place rather than a forum.
+    slug: 'latenight',
+    gloss: 'quiet hours only',
+    ephemeral: false,
+    posts: [
+      {
+        id: 3,
+        author: 'ren',
+        body: 'anyone else awake or is it just me and the refrigerator',
+        createdAt: minutes(480),
+        replies: [
+          {
+            author: 'marisol',
+            body: 'the refrigerator and i are also here',
+            createdAt: minutes(430),
+          },
+        ],
+      },
+    ],
+  },
+]
+
+export const DEFAULT_ROOM = 'commons'

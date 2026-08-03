@@ -1,0 +1,184 @@
+/*
+ * Palette lives entirely in tokens so the §4.5 taste call stays reversible.
+ * Warm ground is the default (§9 flags green-on-black as the obvious choice
+ * worth departing from). To try phosphor, set data-theme="green" on <html>.
+ */
+:root {
+  --bg: #14100c;
+  --bg-raised: #1c1712;
+  --fg: #e9dcc6;
+  --fg-dim: #9d8e77;
+  --fg-faint: #6d6152;
+  --accent: #e0a33e;
+  --accent-dim: #a87a2e;
+  --error: #d8734a;
+  --rule: #2a2219;
+
+  --step: 16px; /* §3.2 indentation unit: post flush, reply +1, body +2 */
+}
+
+:root[data-theme='green'] {
+  --bg: #000000;
+  --bg-raised: #0a120a;
+  --fg: #33ff66;
+  --fg-dim: #1f9940;
+  --fg-faint: #146629;
+  --accent: #7dffa8;
+  --accent-dim: #33ff66;
+  --error: #ff6b4a;
+  --rule: #0f2a16;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+    'Liberation Mono', monospace;
+  font-size: 15px;
+  line-height: 1.5;
+  /* The terminal owns scrolling. The page itself never scrolls — that is what
+     lets the prompt stay pinned instead of drifting under the keyboard. */
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+/*
+ * Height comes from --app-height, which Terminal keeps in sync with
+ * visualViewport. dvh is the fallback for first paint and for browsers
+ * without visualViewport; neither is reliable enough alone on mobile.
+ */
+.app {
+  height: 100dvh;
+  height: var(--app-height, 100dvh);
+  /* iOS scrolls the layout viewport to reveal the focused input; this puts the
+     shell back where it belongs. */
+  transform: translateY(var(--app-offset, 0px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.scrollback {
+  flex: 1 1 auto;
+  min-height: 0; /* without this the flex child refuses to shrink and scroll */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 12px 4px;
+}
+
+.line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0 0 2px;
+}
+
+.line-echo {
+  color: var(--fg-dim);
+  margin-top: 10px;
+}
+.line-dim {
+  color: var(--fg-dim);
+}
+.line-faint {
+  color: var(--fg-faint);
+}
+.line-error {
+  color: var(--error);
+}
+.line-accent {
+  color: var(--accent);
+}
+.line-rule {
+  color: var(--rule);
+}
+
+/* §3.2: depth is indentation, never box-drawing characters. */
+.depth-1 {
+  padding-left: var(--step);
+}
+.depth-2 {
+  padding-left: calc(var(--step) * 2);
+}
+
+.composer {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--rule);
+  background: var(--bg);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.palette {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  padding: 8px 12px;
+}
+.palette::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * Chips INSERT into the prompt. They never execute (§3.6, §9) — that is the
+ * line between a real interface and a terminal costume.
+ */
+.chip {
+  flex: 0 0 auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.chip:active {
+  border-color: var(--accent-dim);
+}
+.chip-verb {
+  color: var(--accent);
+}
+.chip-gloss {
+  color: var(--fg-faint);
+}
+
+.prompt-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 12px 12px;
+}
+
+.prompt-label {
+  flex: 0 0 auto;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.prompt-label-guest {
+  color: var(--fg-faint); /* §3.9: guest state is ambient, never nagging */
+}
+
+.prompt-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--fg);
+  font: inherit;
+  padding: 0;
+  caret-color: var(--accent);
+}

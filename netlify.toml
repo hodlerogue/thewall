@@ -1,0 +1,33 @@
+# Netlify picks these up automatically, so the build settings page can be left
+# at its defaults. The Next.js runtime is auto-installed on detection — it is
+# deliberately not declared as a plugin here, because declaring it also
+# requires it in package.json and a mismatch fails the build.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Everything below is set in the Netlify UI, not here — this is a map of what
+# the build expects, not a place to put values.
+#
+#   Site configuration -> Environment variables
+#
+# A demo deploy (no database, safe to share, nothing written anywhere):
+#
+#   NEXT_PUBLIC_USE_FIXTURES = 1
+#
+# A real deploy:
+#
+#   NEXT_PUBLIC_SUPABASE_URL       https://<project>.supabase.co
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY  public by design — RLS decides what it reads
+#   SUPABASE_SERVICE_ROLE_KEY      server only, bypasses every policy
+#   NEXT_PUBLIC_SITE_URL           the deployed origin, for the magic link
+#
+# NEXT_PUBLIC_* values are baked into the client bundle when the build runs, so
+# adding one afterwards changes nothing until you redeploy. Set them first.
+#
+# NEXT_PUBLIC_SITE_URL must also be listed under Authentication -> URL
+# Configuration -> Redirect URLs in Supabase, or the magic link is refused.
