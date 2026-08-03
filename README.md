@@ -28,7 +28,7 @@ rather than quietly serving fixtures.
 ```bash
 npm test           # 57 unit tests: parser, alias table, teaching errors, signup flow
 npm run test:e2e   # 20 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 28 assertions against the real migration, on a throwaway database
+npm run test:db    # 27 assertions against the real migration, on a throwaway database
 ```
 
 `test:db` wants a Postgres it can create databases in (`PGHOST`, `PGPORT`,
