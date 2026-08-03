@@ -7,14 +7,26 @@
 
 create schema if not exists auth;
 
+-- Mirrors the columns the seed actually writes, including the token columns
+-- that real Auth reads as non-nullable strings. A narrower table here would
+-- let a seed pass locally and then break against a real project — which is
+-- exactly the kind of "tested" that isn't.
 create table if not exists auth.users (
-  id          uuid primary key,
-  instance_id uuid,
-  aud         text,
-  role        text,
-  email       text unique,
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now()
+  id                     uuid primary key,
+  instance_id            uuid,
+  aud                    text,
+  role                   text,
+  email                  text unique,
+  encrypted_password     text,
+  email_confirmed_at     timestamptz,
+  confirmation_token     text default '',
+  recovery_token         text default '',
+  email_change           text default '',
+  email_change_token_new text default '',
+  raw_app_meta_data      jsonb default '{}'::jsonb,
+  raw_user_meta_data     jsonb default '{}'::jsonb,
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now()
 );
 
 -- Supabase reads the subject out of the request JWT claims. Tests set the same

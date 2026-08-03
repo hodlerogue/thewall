@@ -7,15 +7,34 @@
 -- in-jokes, which §5 names as the first draft's failure and the thing that
 -- narrows the audience to people who already like terminals.
 
--- Seed accounts. These exist so the seeded posts have real authors; they have
--- no password and no email identity, so nobody can sign in as them.
-insert into auth.users (id, instance_id, aud, role, email, created_at, updated_at)
-values
-  ('11111111-1111-4111-8111-111111111111', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'jameson@seed.invalid', now(), now()),
-  ('22222222-2222-4222-8222-222222222222', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'marisol@seed.invalid', now(), now()),
-  ('33333333-3333-4333-8333-333333333333', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'tuck@seed.invalid',    now(), now()),
-  ('44444444-4444-4444-8444-444444444444', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'ren@seed.invalid',     now(), now()),
-  ('55555555-5555-4555-8555-555555555555', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'dev@seed.invalid',     now(), now())
+-- Seed accounts, so the seeded posts have real authors. There is no password
+-- and the addresses are .invalid, so nobody can sign in as them.
+--
+-- The empty strings are not decoration. Auth reads these token columns into
+-- plain strings, and a NULL makes it fail with "converting NULL to string is
+-- unsupported" on any query that touches the row — which means hand-seeded
+-- users can break sign-in for everybody, not just themselves. Writing '' is
+-- what the admin API would have done.
+insert into auth.users (
+  id, instance_id, aud, role, email,
+  encrypted_password, email_confirmed_at,
+  confirmation_token, recovery_token, email_change, email_change_token_new,
+  raw_app_meta_data, raw_user_meta_data,
+  created_at, updated_at
+)
+select
+  id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', email,
+  '', now(),
+  '', '', '', '',
+  '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+  now(), now()
+from (values
+  ('11111111-1111-4111-8111-111111111111'::uuid, 'jameson@seed.invalid'),
+  ('22222222-2222-4222-8222-222222222222'::uuid, 'marisol@seed.invalid'),
+  ('33333333-3333-4333-8333-333333333333'::uuid, 'tuck@seed.invalid'),
+  ('44444444-4444-4444-8444-444444444444'::uuid, 'ren@seed.invalid'),
+  ('55555555-5555-4555-8555-555555555555'::uuid, 'dev@seed.invalid')
+) as seed (id, email)
 on conflict (id) do nothing;
 
 insert into public.profiles (id, name) values
