@@ -13,6 +13,9 @@ const prompt = (page: Page) => page.getByRole('textbox', { name: 'command' })
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
+  // The shell loads its first room before the prompt exists; without waiting,
+  // a test can measure the scrollback mid-boot.
+  await expect(page.getByTestId('prompt-label')).toBeVisible()
 })
 
 test('the shell fits a 380px viewport without horizontal scroll', async ({ page }) => {

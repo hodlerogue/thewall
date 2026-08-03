@@ -30,5 +30,8 @@ export default defineConfig({
     url: 'http://127.0.0.1:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    // These tests are about layout on a 380px viewport, so they run against
+    // fixtures rather than requiring a database to be reachable.
+    env: { NEXT_PUBLIC_USE_FIXTURES: '1' },
   },
 })
