@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Palette } from '@/components/Palette'
+import { describeError } from '@/lib/shell/errors'
 import type { Chip, Line, Location, Runner } from '@/lib/shell/types'
 import { locationToPath, pathToLocation, promptLabel } from '@/lib/shell/types'
 
@@ -80,7 +81,16 @@ export function Terminal({
       setInput('')
       setLines((prev) => [...prev, echo])
 
-      const result = await run(text, location)
+      let result
+      try {
+        result = await run(text, location)
+      } catch (error) {
+        // A command that throws used to render nothing at all, which reads as
+        // a dead prompt. Whatever went wrong, say it and stay usable.
+        setLines((prev) => [...prev, ...describeError(error)])
+        return
+      }
+
       setLines((prev) => [...prev, ...result.lines])
 
       if (result.location) {
@@ -106,8 +116,12 @@ export function Terminal({
     const onPop = async () => {
       const target = pathToLocation(window.location.pathname)
       setLocation(target)
-      const result = await run('look', target)
-      setLines((prev) => [...prev, { text: '', tone: 'faint' }, ...result.lines])
+      try {
+        const result = await run('look', target)
+        setLines((prev) => [...prev, { text: '', tone: 'faint' }, ...result.lines])
+      } catch (error) {
+        setLines((prev) => [...prev, ...describeError(error)])
+      }
     }
 
     window.addEventListener('popstate', onPop)
