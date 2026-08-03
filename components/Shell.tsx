@@ -171,6 +171,20 @@ async function arriveAt(
   target: Location,
   rooms: Awaited<ReturnType<Env['listRooms']>>,
 ): Promise<{ lines: Line[]; location: Location }> {
+  // A project with no rooms at all is not a wrong turn, it is an unfinished
+  // setup — and saying "there's no room called commons" makes it sound like a
+  // typo. §5 is the reason this is worth its own message: rooms that arrive
+  // empty are the failure mode, so an empty project should say so outright.
+  if (rooms.length === 0) {
+    return {
+      lines: [
+        { text: 'this project has no rooms yet.', tone: 'error' },
+        { text: 'the schema is there but nothing has been seeded — run scripts/db-deploy.sh', tone: 'faint' },
+      ],
+      location: {},
+    }
+  }
+
   if (target.room === undefined) {
     return { lines: renderRoomList(rooms), location: {} }
   }

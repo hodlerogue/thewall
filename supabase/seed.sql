@@ -10,6 +10,19 @@
 -- Seed accounts, so the seeded posts have real authors. There is no password
 -- and the addresses are .invalid, so nobody can sign in as them.
 --
+-- If this statement is REFUSED on a hosted project ("permission denied for
+-- table users"), that is the auth schema being owned by supabase_auth_admin
+-- rather than by the role in your connection string. It is the one step here
+-- that a hosted project can reject, and it stops the whole seed, which leaves
+-- you with a schema and no rooms.
+--
+-- The fix is to create the five accounts through the Auth admin API instead
+-- and then re-run the seed. The API assigns its own ids, so the literal UUIDs
+-- below would need to become lookups by email — ask for that change rather
+-- than hand-editing, since the ids are referenced from four places.
+--
+-- The local path (`supabase start`) is not affected: the CLI seeds as an owner.
+--
 -- The empty strings are not decoration. Auth reads these token columns into
 -- plain strings, and a NULL makes it fail with "converting NULL to string is
 -- unsupported" on any query that touches the row — which means hand-seeded

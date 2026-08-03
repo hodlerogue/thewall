@@ -65,9 +65,17 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 83 unit tests: parser, alias table, teaching errors, signup, the pipe
+npm test           # 99 unit tests: parser, aliases, teaching errors, signup, the pipe
 npm run test:e2e   # 25 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
 npm run test:db    # 27 assertions against the real migration, on a throwaway database
+```
+
+To see what is actually in a deployed project — read-only, and it tells apart
+"no schema", "schema but no content", and "seed stopped partway":
+
+```bash
+DATABASE_URL='postgresql://postgres:...@db.<ref>.supabase.co:5432/postgres' \
+  ./scripts/db-check.sh
 ```
 
 `test:db` wants a Postgres it can create databases in (`PGHOST`, `PGPORT`,
