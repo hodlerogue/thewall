@@ -19,6 +19,7 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@netlify/plugin-nextjs": "^5.15.13",
     "@playwright/test": "^1.62.1",
     "@types/node": "22.10.5",
     "@types/react": "19.0.7",
