@@ -211,3 +211,59 @@ body {
 .prompt-input:focus {
   outline: none;
 }
+
+/*
+ * The documents — /terms and /privacy.
+ *
+ * `body` has `overflow: hidden`, because the terminal owns scrolling and that
+ * is what keeps the prompt pinned above the keyboard. A document has to scroll,
+ * so rather than fight that globally it takes the whole viewport as its own
+ * scroll container. Nothing else on the page changes.
+ */
+.document {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 32px 20px 64px;
+  max-width: 40rem;
+  margin: 0 auto;
+  /* Long-form prose wants a slightly taller line than a scrollback does. */
+  line-height: 1.65;
+}
+
+.document h1 {
+  font-size: 15px;
+  font-weight: normal;
+  color: var(--accent);
+  margin: 0;
+}
+
+.document h2 {
+  font-size: 15px;
+  font-weight: normal;
+  color: var(--fg);
+  margin: 32px 0 8px;
+}
+
+/* The one rule in this file that draws anything: a heading needs to be findable
+   when you are scanning for the section about deleting your account. */
+.document h2::before {
+  content: '── ';
+  color: var(--fg-faint);
+}
+
+.document p {
+  margin: 0 0 12px;
+  color: var(--fg-dim);
+  /* Policies contain long unbroken things — addresses, clause references. */
+  overflow-wrap: break-word;
+}
+
+.document-meta {
+  color: var(--fg-faint);
+}
+
+.document a {
+  color: var(--accent);
+}

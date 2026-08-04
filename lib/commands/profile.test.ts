@@ -38,6 +38,9 @@ function harness() {
       return 99
     },
     async reply() {},
+    async rename(name: string) {
+      return { ok: true as const, name }
+    },
   }
 
   // Already named, so a refusal to post cannot be mistaken for the signup ask.

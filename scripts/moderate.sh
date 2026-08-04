@@ -45,6 +45,10 @@ usage: ./scripts/moderate.sh <command> [args]
   close <room>                 the room and everything in it stop existing
   open <room>                  put it back
 
+  forget <name>                erasure request: address and handle erased
+                               permanently, what they posted left standing so
+                               other people's replies survive. irreversible.
+
   archive [interval]           §4.2 decay, run by hand: quiet rooms leave the
                                lobby but stay reachable. default 7 days.
                                posting in one brings it straight back.
@@ -133,6 +137,20 @@ case "${command}" in
     n=$(q "select public.hide_room($(lit "${room}"), ${hide})")
     [ "${n}" = "1" ] && echo "${room} is now $([ "${hide}" = true ] && echo closed || echo open)." \
       || echo "nothing changed — ${room} was already that way, or is not there."
+    ;;
+
+  forget)
+    name="${1:?usage: forget <name>}"
+    # The one command here that cannot be undone, so it asks. Everything else
+    # is a soft delete with an inverse; this deliberately is not, because a
+    # deletion you can reverse is not a deletion.
+    printf 'erase %s permanently? their address and handle go for good. [type the name to confirm] ' "${name}"
+    read -r confirm
+    [ "${confirm}" = "${name}" ] || { echo "nothing done."; exit 1; }
+
+    tomb=$(q "select public.forget($(lit "${name}"))")
+    echo "erased. what they posted now belongs to ${tomb}, which is nobody."
+    echo "if they also asked for their posts taken down, that is: ban ${tomb}"
     ;;
 
   archive)

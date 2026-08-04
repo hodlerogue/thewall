@@ -18,12 +18,20 @@ const days = (n: number) => new Date(Date.now() - n * 24 * 60 * 60_000)
  * Two of them have never followed a key, because "verified" is only worth
  * showing if the unverified state is reachable in the gate suite too.
  */
-export const PEOPLE: readonly { name: string; joinedAt: Date; verified: boolean }[] = [
+export const PEOPLE: readonly {
+  name: string
+  joinedAt: Date
+  verified: boolean
+  /** §4.6 — when this handle was last somebody else's, if it recently was. */
+  nameChangedHands?: Date
+}[] = [
   { name: 'jameson', joinedAt: days(96), verified: true },
   { name: 'marisol', joinedAt: days(74), verified: true },
   { name: 'tuck', joinedAt: days(41), verified: true },
   { name: 'ren', joinedAt: days(12), verified: false },
-  { name: 'dev', joinedAt: days(3), verified: false },
+  // Took a handle somebody else had let go, which is the case the profile has
+  // to warn about now that released names are free immediately.
+  { name: 'dev', joinedAt: days(3), verified: false, nameChangedHands: days(2) },
 ]
 
 export const ROOMS: Room[] = [

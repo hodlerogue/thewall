@@ -39,6 +39,21 @@ export function supabaseWriter(client: SupabaseClient): Writer {
 
       if (error) throw new Error(friendly(error.message))
     },
+
+    async rename(name: string) {
+      // Asked *before* the change, because afterwards the name is yours and the
+      // question "was this somebody else's?" answers no.
+      const { data: before } = await client.rpc('name_changed_hands', { p_name: name })
+
+      const { error } = await client.rpc('change_name', { p_name: name })
+      if (error) return { ok: false as const, reason: friendly(error.message) }
+
+      return {
+        ok: true as const,
+        name,
+        recycled: typeof before === 'string' ? new Date(before) : undefined,
+      }
+    },
   }
 }
 
@@ -104,6 +119,17 @@ export function friendly(message: string): string {
     // Passed through rather than replaced: ban() carries the reason, and being
     // told why is the difference between a decision and a wall.
     return message
+  }
+  // §4.6 — the rename path. `is taken` is the common one and already reads as
+  // a sentence, so it is passed through rather than flattened.
+  if (message.includes('is taken')) {
+    return message
+  }
+  if (message.includes('a lot of names in an hour')) {
+    return 'that’s a lot of names in an hour. give it a while and try again.'
+  }
+  if (message.includes('already your name')) {
+    return 'that’s already your name.'
   }
   if (message.includes('too fast')) {
     return 'that’s a lot of words in a very short time. give it a few minutes and say it again.'

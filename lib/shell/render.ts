@@ -97,8 +97,20 @@ export function renderProfile(profile: Profile, now = new Date()): Line[] {
       tone: 'faint',
       depth: 1,
     },
-    { text: '' },
   ]
+
+  // Accent, not faint. Everything else on this page is description; this is the
+  // one line that changes how you should read the rest of it, and quiet is the
+  // wrong volume for "this may not be who you think".
+  if (profile.nameChangedHands) {
+    lines.push({
+      text: `this name was somebody else’s until ${formatAgo(profile.nameChangedHands, now)}.`,
+      tone: 'accent',
+      depth: 1,
+    })
+  }
+
+  lines.push({ text: '' })
 
   if (profile.posts.length === 0) {
     lines.push({ text: 'nothing kept under this name yet.', tone: 'faint' })

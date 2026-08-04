@@ -189,9 +189,14 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
       if (error) throw error
       if (!data) return undefined
 
+      // §4.6 — names are released the moment they are dropped, so one can have
+      // been worn before. Told as a date and never as a person.
+      const { data: changedHands } = await client.rpc('name_changed_hands', { p_name: data.name })
+
       return {
         name: data.name,
         joinedAt: new Date(data.created_at),
+        nameChangedHands: typeof changedHands === 'string' ? new Date(changedHands) : undefined,
         // Public already: "anyone may read profiles" is what lets a name be
         // resolved at all. Showing it is what makes §4.7 legible rather than
         // a silent condition people hit without knowing why.

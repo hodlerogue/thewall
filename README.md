@@ -10,8 +10,10 @@ argued, including the parts that were later decided differently.
 It started as the §6 weekend build. What is here now is that plus the things the
 doc itself named as unfinished: §4.1's notifications, which it calls its highest
 priority ("no notification means no reason to return"), §4.7 revised so an
-account survives to a second device, the manual kill switch §6 leaves in scope,
-§4.5's taste call handed to whoever is looking, and profiles as a read-only view.
+account survives to a second device, §4.6's rename, the manual kill switch §6
+leaves in scope, §4.5's taste call handed to whoever is looking, and profiles as
+a read-only view. Terms and a privacy policy are here too — the doc never
+mentions them, and a site that asks for an email address needs both.
 Everything still out is listed at the bottom, with the section that argues for
 leaving it out.
 
@@ -83,9 +85,9 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 178 unit tests: parser, aliases, errors, signup, search, themes, profiles
-npm run test:e2e   # 53 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 84 assertions against the real migrations, on a throwaway database
+npm test           # 201 unit tests: parser, aliases, errors, signup, search, themes, names, policy
+npm run test:e2e   # 65 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm run test:db    # 106 assertions against the real migrations, on a throwaway database
 ```
 
 To see what is actually in a deployed project — read-only, and it tells apart
@@ -139,8 +141,8 @@ never retyped; `cancel` returns to reading with nothing lost.
 unverified posting purely as a moderation question and never asked whether
 someone can return *as themselves*. An unverified address may be a typo, so the
 link it was sent to is not a recovery path; on a second device the only
-reliable move is signing up again, and since names are reserved forever (§4.6)
-every abandoned account burns a handle. So the held sentence still posts
+reliable move is signing up again, and every abandoned account is a handle
+nobody is coming back for. So the held sentence still posts
 instantly, and everything after it wants the link followed first — the friction
 lands after the payoff, which is also what makes the link necessary rather than
 decorative. `resend` sends another, because links expire.
@@ -234,6 +236,63 @@ hard to read). Every token in every theme has its contrast ratio asserted in
 `lib/shell/themes.test.ts`, so a new palette cannot ship illegible and none can
 regress quietly.
 
+## Your name
+
+`rename betterchoice`, as often as you like. §4.6 leaned one rename ever with
+the old name reserved forever; both halves are decided differently here, and
+the second is the one that costs something.
+
+Unlimited, because "someone who picks badly at 2am is stuck with it" — §4.6's
+own words — is not a once-in-a-lifetime event, and a cap only moves the trap
+along by one. Released immediately, because a name nobody is using is a name
+nobody is using.
+
+That trade has a real edge. Posts join `profiles.name` live, so renaming
+rewrites attribution on everything you ever said, and the handle you drop can
+be taken the same minute. So the mitigation is disclosure rather than a lock:
+
+- The prompt says both consequences out loud at the moment you rename, rather
+  than leaving you to find out.
+- A name that recently changed hands says so on the profile of whoever holds it
+  now — which is where impersonation actually lands, on the reader.
+- That notice is a date and never a person. Publishing *whose* name it was
+  would make renaming useless to the one person §4.6 exists for: somebody
+  walking away from a handle they regret.
+
+`name_history` has RLS on and no policies, so nothing can read it — the only
+way in is one function that returns a timestamp. And there is no UPDATE grant
+on `profiles` anywhere, so `change_name()` is the only door, which is what makes
+"record the old one" and "not while banned" impossible to route around.
+
+## Terms and privacy
+
+`terms` and `privacy` in the prompt print the short version; `/terms` and
+`/privacy` are the whole thing, for anyone who has not typed anything yet. The
+signup question that asks for an address names them in the same breath, because
+that is the moment somebody is owed a way to read what happens to it — a link
+in a footer nobody scrolls to is not consent.
+
+They were written against what the code does rather than from a template, which
+is the part a template cannot do: the retention periods are the ones the
+database enforces, the processor list is the three services the code actually
+talks to, and the data inventory came out of the schema. `lib/legal/documents.test.ts`
+asserts the parts that could quietly stop being true — a reachable contact, a
+named processor for each third party, a stated lawful basis and retention, and a
+working deletion route.
+
+**Nobody here is a lawyer, and these are not legal advice.** They are an honest
+description by someone who read the code. If this ever carries money or a
+company, have somebody qualified read them. Two things to do before they go
+live: point `hello@thewall.social` at an inbox you actually read, and check the
+governing-law clause says the right country.
+
+Erasure is `./scripts/moderate.sh forget <name>` — the address and the handle
+go permanently, and what they posted stays up attached to a handle that is
+nobody. That is anonymisation rather than deletion on purpose: deleting the row
+cascades away every reply *other people* wrote underneath them, which is
+somebody else's speech being destroyed to satisfy a request that was never
+about it. If they want their posts down too, that is `ban`, and they have to ask.
+
 ## The kill switch
 
 §6 puts moderation tooling out of scope "beyond a manual kill switch", so the
@@ -266,6 +325,4 @@ the moment somebody posts in them.
 
 Private messages, user-created rooms (§4.2 leans fixed-set at launch),
 reply-to-reply (§4.3 makes flatness a stated constraint, and the schema has no
-`parent_id` so it cannot reappear by accident), personal walls (see above), and
-§4.6's one free rename — names currently cannot be changed at all, which is the
-safe half of that decision.
+`parent_id` so it cannot reappear by accident), and personal walls (see above).

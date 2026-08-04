@@ -122,6 +122,7 @@ export function fixtureEnv(rooms: Room[] = ROOMS): Env {
         name: person.name,
         joinedAt: person.joinedAt,
         verified: person.verified,
+        nameChangedHands: person.nameChangedHands,
         // The same query `find --by=marisol` runs, which is what keeps a
         // profile from being able to show anything a search could not.
         posts: await env.searchPosts({ by: person.name, limit: 10 }),

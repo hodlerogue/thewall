@@ -64,6 +64,16 @@ export interface Profile {
   /** §4.7 — whether they ever followed a key. Shown, never used to hide them. */
   verified: boolean
   posts: PostHit[]
+  /**
+   * §4.6 — when this name was last somebody else's, if it recently was.
+   *
+   * Names are released the moment they are dropped, so a handle can change
+   * hands. This is the whole mitigation for that: the reader, who is the person
+   * impersonation is actually aimed at, is told. It is a date and never a
+   * person — publishing *whose* it was would make renaming useless to the one
+   * person §4.6 exists for, someone walking away from a name they regret.
+   */
+  nameChangedHands?: Date
 }
 
 export interface PostQuery {

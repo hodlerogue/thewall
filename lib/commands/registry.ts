@@ -17,6 +17,7 @@ import type { Env } from '@/lib/shell/env'
 import { formatAgo, type PostHit, type PostQuery } from '@/lib/shell/model'
 import { renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
 import type { Session } from '@/lib/shell/session'
+import { PRIVACY, TERMS } from '@/lib/legal/documents'
 import { DEFAULT_THEME, THEMES, findTheme } from '@/lib/shell/themes'
 import type { Context, Line, Location, RunResult } from '@/lib/shell/types'
 
@@ -442,6 +443,70 @@ export const COMMANDS: readonly Command[] = [
         tone: 'faint',
       })
       return { lines, mail: 0 }
+    },
+  },
+
+  {
+    // §4.6, revised — as many renames as you like.
+    //
+    // The document leaned one ever, with the old name reserved forever so
+    // nobody could impersonate. Unlimited is the right half to change: "someone
+    // who picks badly at 2am is stuck with it" is not a once-in-a-lifetime
+    // event, and a cap only moves the trap along by one.
+    //
+    // Releasing the old name immediately is the half that costs something, so
+    // the handler says so out loud rather than letting people find out later.
+    verb: 'rename',
+    aliases: ['name', 'callme'],
+    contexts: ALL,
+    gloss: () => 'change my name',
+    detail: () =>
+      'changes what you are called, as often as you like. everything you have said follows the new name, and the old one goes free for anyone to take the moment you drop it — so do not release a name you want back.',
+    insert: () => 'rename ',
+    wrongContext: () => '',
+    async run({ arg, session }) {
+      if (arg === '') {
+        const current = session.name()
+        return error(
+          current === null
+            ? 'you don’t have a name yet. say something and i’ll ask you for one.'
+            : `you’re ${current}. rename to what? try: rename ${current}_`,
+        )
+      }
+      const { lines, identity } = await session.rename(arg)
+      return { lines, identity }
+    },
+  },
+
+  {
+    // Not hidden, and not a footer. A policy nobody can find is not published,
+    // and the moment somebody is asked for an email address is exactly the
+    // moment they are owed a way to read what happens to it — so the signup
+    // question names this command directly.
+    verb: 'privacy',
+    aliases: ['data'],
+    contexts: ALL,
+    gloss: () => 'what’s kept about you',
+    detail: () =>
+      'what thewall holds about you, why, who else can see it, and how to have it deleted. the whole policy is at thewall.social/privacy.',
+    insert: () => 'privacy',
+    wrongContext: () => '',
+    async run() {
+      return { lines: PRIVACY.summary.map((text) => ({ text, tone: 'faint' as const })) }
+    },
+  },
+
+  {
+    verb: 'terms',
+    aliases: ['tos', 'rules'],
+    contexts: ALL,
+    gloss: () => 'the deal, briefly',
+    detail: () =>
+      'what you agree to by using this, what not to post, and what happens if you do. the whole thing is at thewall.social/terms.',
+    insert: () => 'terms',
+    wrongContext: () => '',
+    async run() {
+      return { lines: TERMS.summary.map((text) => ({ text, tone: 'faint' as const })) }
     },
   },
 

@@ -22,6 +22,9 @@ const session = new Session(
     },
   },
   {
+    async rename(name: string) {
+      return { ok: true as const, name }
+    },
     async post(_room, body) {
       posted.push(body)
       return 1

@@ -7,9 +7,10 @@ import type { Line, Location } from '@/lib/shell/types'
 
 const text = (lines: Line[]) => lines.map((l) => l.text).join('\n')
 
-function harness(options: { taken?: string[]; failCreate?: string } = {}) {
+function harness(options: { taken?: string[]; failCreate?: string; recycled?: Date } = {}) {
   const taken = new Set(options.taken ?? ['jameson'])
   const posted: { room: string; body: string }[] = []
+  const renamed: string[] = []
   let resends = 0
   const replied: { room: string; postNo: number; body: string }[] = []
 
@@ -36,12 +37,17 @@ function harness(options: { taken?: string[]; failCreate?: string } = {}) {
     async reply(room, postNo, body) {
       replied.push({ room, postNo, body })
     },
+    async rename(name) {
+      if (taken.has(name)) return { ok: false as const, reason: `${name} is taken` }
+      renamed.push(name)
+      return { ok: true as const, name, recycled: options.recycled }
+    },
   }
 
   const session = new Session(api, writer)
   const run = createRunner(fixtureEnv(), ['commons'], session)
 
-  return { session, run, posted, replied, resendCount: () => resends }
+  return { session, run, posted, replied, renamed, resendCount: () => resends }
 }
 
 describe('§3.9 — signup is deferred to first contribution', () => {
@@ -308,5 +314,97 @@ describe('name rules match the schema', () => {
     for (const suggestion of suggestAlternates(long, new Set())) {
       expect(suggestion.length).toBeLessThanOrEqual(20)
     }
+  })
+})
+
+describe('§4.6 revised — rename, as often as you like', () => {
+  const at: Location = { room: 'music' }
+
+  async function named(options: Parameters<typeof harness>[0] = {}) {
+    const h = harness(options)
+    await h.run('say hello', at)
+    await h.run('newcomer', at)
+    await h.run('newcomer@example.com', at)
+    return h
+  }
+
+  it('changes what the prompt calls you', async () => {
+    const { run, session, renamed } = await named()
+    const out = await run('rename betterchoice', at)
+
+    expect(renamed).toEqual(['betterchoice'])
+    expect(session.name()).toBe('betterchoice')
+    expect(out.identity).toBe('betterchoice')
+    expect(text(out.lines)).toMatch(/you’re betterchoice now/)
+  })
+
+  it('says out loud what renaming costs', async () => {
+    // Both consequences of the two decisions taken here, stated at the moment
+    // they become true rather than discovered afterwards: attribution follows
+    // the new name, and the old one is immediately anybody's.
+    const { run } = await named()
+    const out = text((await run('rename betterchoice', at)).lines)
+    expect(out).toMatch(/everything you’ve said says betterchoice/)
+    expect(out).toMatch(/newcomer is free for anyone to take/)
+  })
+
+  it('says when the name has been worn before', async () => {
+    const { run } = await named({ recycled: new Date(Date.now() - 3 * 60 * 60_000) })
+    const out = text((await run('rename secondhand', at)).lines)
+    expect(out).toMatch(/was somebody else’s until 3h ago/)
+  })
+
+  it('refuses a taken name without changing anything', async () => {
+    const { run, session, renamed } = await named({ taken: ['jameson'] })
+    const out = text((await run('rename jameson', at)).lines)
+
+    expect(out).toMatch(/jameson is taken/)
+    expect(renamed).toEqual([])
+    expect(session.name()).toBe('newcomer')
+  })
+
+  it('explains a malformed name the way signup does', async () => {
+    const { run, renamed } = await named()
+    const out = text((await run('rename Mari Sol!', at)).lines)
+    expect(out).toMatch(/letters, numbers and underscores only/)
+    expect(renamed).toEqual([])
+  })
+
+  it('does not let you take a reserved name by renaming into it', async () => {
+    // The signup path checks this; renaming is a second door onto the same
+    // room, and `admin` walking in through it would be just as bad.
+    const { run, renamed } = await named()
+    expect(text((await run('rename admin', at)).lines)).toMatch(/spoken for/)
+    expect(renamed).toEqual([])
+  })
+
+  it('shrugs at renaming to what you already are', async () => {
+    const { run, renamed } = await named()
+    expect(text((await run('rename newcomer', at)).lines)).toMatch(/already newcomer/)
+    expect(renamed).toEqual([])
+  })
+
+  it('tells a guest how to get a name rather than how to change one', async () => {
+    const { run, session } = harness()
+    const out = text((await run('rename anything', at)).lines)
+    expect(out).toMatch(/don’t have a name yet/)
+    expect(session.name()).toBeNull()
+  })
+
+  it('asks what to rename to, and suggests something, when given nothing', async () => {
+    const { run } = await named()
+    const out = text((await run('rename', at)).lines)
+    expect(out).toMatch(/rename to what/)
+    expect(out).toMatch(/newcomer_/)
+  })
+
+  it('is a command, not an answer, mid-signup', async () => {
+    // Everything typed while a question is open is an answer (§3.9), so this
+    // must become a name rather than silently renaming a guest.
+    const { run, session } = harness()
+    await run('say hello', at)
+    await run('rename', at)
+    expect(session.isAsking()).toBe(true)
+    expect(session.name()).toBeNull()
   })
 })

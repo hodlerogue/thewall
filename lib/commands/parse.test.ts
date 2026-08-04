@@ -15,7 +15,8 @@ const signedIn = new Session(
   { async checkName() { return { available: true, alternates: [] } },
     async create(name) { return { ok: true as const, name } },
     async resend() { return { note: 'sent' } } },
-  { async post() { return 1 }, async reply() {} },
+  { async post() { return 1 }, async reply() {},
+    async rename(name) { return { ok: true as const, name } } },
   'tester',
 )
 const run = createRunner(fixtureEnv(), EPHEMERAL, signedIn)

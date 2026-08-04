@@ -744,4 +744,185 @@ select tests.ok(
 );
 
 \echo ''
+\echo '§4.6 revised — rename as often as you like, and the old name goes free'
+
+insert into auth.users (id, aud, role, email)
+values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'authenticated', 'authenticated', 'renamer@seed.invalid')
+on conflict (id) do nothing;
+insert into public.profiles (id, name, verified_at)
+values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'firstname', now())
+on conflict (id) do nothing;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+
+  select tests.ok(public.change_name('secondname') = 'secondname', 'change_name changes it');
+
+  -- Unlimited is the whole revision: the second one has to work as easily.
+  select tests.ok(public.change_name('thirdname') = 'thirdname', 'and again, with no cap');
+
+  select tests.raises(
+    $sql$select public.change_name('tester')$sql$,
+    'a name somebody is using is refused'
+  );
+
+  select tests.raises(
+    $sql$select public.change_name('thirdname')$sql$,
+    'and so is the one you already have'
+  );
+commit;
+
+-- Attribution follows the person, not the post. This is the consequence the
+-- prompt states out loud when you rename, and it is why it is worth asserting.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  select public.create_post('kitchen', 'said under the third name');
+commit;
+
+select tests.ok(
+  (select a.name from public.posts p join public.profiles a on a.id = p.author_id
+    where p.body = 'said under the third name') = 'thirdname',
+  'everything they said carries the name they have now'
+);
+
+-- Nobody may change a name any other way: there is no UPDATE grant on profiles,
+-- which is what makes the history record impossible to route around.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  select tests.raises(
+    $sql$update public.profiles set name = 'sneaky' where id = auth.uid()$sql$,
+    'and the only door to a rename is the one that records it'
+  );
+commit;
+
+\echo ''
+\echo 'a released name is free, and whoever takes it is disclosed'
+
+select tests.ok(
+  public.name_changed_hands('firstname') is null,
+  'a released name nobody has taken yet warns about nothing'
+);
+
+-- Somebody else picks it up. This is the case the doc's "old name stays
+-- reserved and dead" was written to prevent, now allowed on purpose.
+insert into auth.users (id, aud, role, email)
+values ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'authenticated', 'authenticated', 'taker@seed.invalid')
+on conflict (id) do nothing;
+insert into public.profiles (id, name, verified_at)
+values ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'firstname', now())
+on conflict (id) do nothing;
+
+select tests.ok(
+  public.name_changed_hands('firstname') is not null,
+  'once somebody else takes it, the profile says the name changed hands'
+);
+
+-- The disclosure is a date and never a person. Publishing whose it was would
+-- make renaming useless to the one person §4.6 exists for.
+begin;
+  set local role anon;
+  select tests.raises(
+    $sql$select count(*) from public.name_history$sql$,
+    'and nobody can read who held it before'
+  );
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  select tests.raises(
+    $sql$select count(*) from public.name_history$sql$,
+    'not even signed in'
+  );
+commit;
+
+select tests.ok(
+  public.name_changed_hands('thirdname') is null,
+  'and renaming away from a name you still hold is not a change of hands'
+);
+
+\echo ''
+\echo 'renaming is gated by the same things saying anything is'
+
+begin;
+  set local role anon;
+  select tests.raises($sql$select public.change_name('anonymous')$sql$, 'a guest cannot rename');
+commit;
+
+select public.ban('thirdname', 'testing');
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  select tests.raises(
+    $sql$select public.change_name('escaping')$sql$,
+    'and a banned account cannot rename its way out of it'
+  );
+commit;
+select public.unban('thirdname');
+
+\echo ''
+\echo 'erasure — the address goes, the conversation around it does not'
+
+insert into public.replies (post_id, author_id, body)
+select id, '99999999-9999-4999-8999-999999999999', 'somebody else answering the leaver'
+  from public.posts where body = 'said under the third name';
+
+select tests.ok(
+  public.forget('thirdname') like 'deleted_%',
+  'forget returns the handle that is now nobody'
+);
+
+select tests.ok(
+  (select count(*) from public.profiles where name = 'thirdname') = 0,
+  'the name they used is gone'
+);
+
+select tests.ok(
+  (select count(*) from public.name_history
+    where profile_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd') = 0,
+  'and so is every name they ever held'
+);
+
+select tests.ok(
+  public.name_changed_hands('firstname') is null,
+  'so nothing can point back at them through a name they released'
+);
+
+select tests.ok(
+  (select email from auth.users where id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd')
+    like '%@deleted.invalid',
+  'the address is overwritten, not left behind'
+);
+
+-- The reason this is anonymisation rather than a delete: the cascade would
+-- have taken this with it, and it was written by somebody who did not leave.
+select tests.ok(
+  (select count(*) from public.replies where body = 'somebody else answering the leaver') = 1,
+  'the reply somebody else wrote is still there'
+);
+
+select tests.ok(
+  (select count(*) from public.posts where body = 'said under the third name') = 1,
+  'and so is the post it hangs off — taking it down is a separate request'
+);
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  select tests.raises(
+    $sql$select public.create_post('kitchen', 'back from the dead')$sql$,
+    'a closed account cannot post'
+  );
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+  select tests.raises($sql$select public.forget('tester')$sql$, 'erasure is not a lever users hold');
+commit;
+
+\echo ''
 \echo 'all schema tests passed'

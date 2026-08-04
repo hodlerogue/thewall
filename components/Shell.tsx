@@ -266,11 +266,16 @@ async function arriveAt(
  */
 function fixtureWriter(): Writer {
   let next = 100
+  const taken = new Set(['jameson', 'marisol', 'tuck', 'ren', 'dev'])
   return {
     async post() {
       return next++
     },
     async reply() {},
+    async rename(name: string) {
+      if (taken.has(name)) return { ok: false as const, reason: `${name} is taken` }
+      return { ok: true as const, name }
+    },
   }
 }
 
