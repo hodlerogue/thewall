@@ -51,6 +51,8 @@ export interface PostHit {
 }
 
 export interface PostQuery {
+  /** Words to look for in the body. The commonest thing anyone wants. */
+  text?: string
   room?: string
   by?: string
   since?: Date

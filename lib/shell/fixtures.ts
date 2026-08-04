@@ -73,6 +73,13 @@ export const ROOMS: Room[] = [
         createdAt: minutes(190),
         replies: [{ author: 'jameson', body: 'the tip is the tell', createdAt: minutes(120) }],
       },
+      {
+        id: 2,
+        author: 'jameson',
+        body: 'folded pocket kings face up and i would do it again',
+        createdAt: minutes(540),
+        replies: [],
+      },
     ],
   },
   {
@@ -81,11 +88,24 @@ export const ROOMS: Room[] = [
     ephemeral: false,
     posts: [
       {
+        id: 8,
+        author: 'marisol',
+        body: 'the trick with the tomatoes is you roast them all at once and freeze whatever you do not eat',
+        createdAt: minutes(40),
+        replies: [],
+      },
+      {
         id: 7,
         author: 'dev',
         body: 'made stock from a chicken carcass for the first time and now i understand why my grandmother never threw anything out',
         createdAt: minutes(300),
-        replies: [],
+        replies: [
+          {
+            author: 'ren',
+            body: 'freeze it flat in bags, it stacks and it thaws in about a minute',
+            createdAt: minutes(240),
+          },
+        ],
       },
     ],
   },
@@ -108,6 +128,13 @@ export const ROOMS: Room[] = [
             createdAt: minutes(430),
           },
         ],
+      },
+      {
+        id: 2,
+        author: 'tuck',
+        body: 'the 3am version of a problem is never the real size of the problem',
+        createdAt: minutes(1800),
+        replies: [],
       },
     ],
   },

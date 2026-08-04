@@ -77,6 +77,10 @@ export function fixtureEnv(rooms: Room[] = ROOMS): Env {
           })),
         )
         .filter((hit) => query.by === undefined || hit.author === query.by)
+        .filter(
+          (hit) =>
+            query.text === undefined || hit.body.toLowerCase().includes(query.text.toLowerCase()),
+        )
         .filter((hit) => query.since === undefined || hit.createdAt >= query.since)
 
       hits.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())

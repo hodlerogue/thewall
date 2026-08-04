@@ -60,17 +60,22 @@ describe('§4.8 — one working pipe', () => {
   })
 
   it('narrows by author', async () => {
-    const out = text((await run('posts --by=marisol | count', LOBBY)).lines)
-    expect(out).toBe('0 posts')
+    const nobody = text((await run('find --by=nobody | count', LOBBY)).lines)
+    expect(nobody).toBe('0 posts')
 
-    const mine = text((await run('posts --by=jameson | count', LOBBY)).lines)
-    expect(mine).toBe('1 post')
+    // jameson has the music post and the poker one.
+    const some = text((await run('find --by=jameson | count', LOBBY)).lines)
+    expect(some).toBe('2 posts')
   })
 
   it('narrows by age', async () => {
-    // The kitchen post is 5h old, latenight's oldest is 8h.
-    expect(text((await run('posts --since=1h | count', LOBBY)).lines)).toBe('0 posts')
-    expect(text((await run('posts --since=7d | count', LOBBY)).lines)).not.toBe('0 posts')
+    const recent = text((await run('find --since=1h | count', LOBBY)).lines)
+    const ever = text((await run('find --since=7d | count', LOBBY)).lines)
+
+    const n = (s: string) => Number(s.split(' ')[0])
+    expect(n(recent)).toBeGreaterThan(0)
+    // A tighter window can only ever return fewer.
+    expect(n(recent)).toBeLessThan(n(ever))
   })
 
   it('narrows by limit', async () => {
@@ -90,9 +95,13 @@ describe('§4.8 — one working pipe', () => {
   })
 
   it('never returns commons posts, which have no address to go to', async () => {
-    const out = text((await run('posts --limit=100', LOBBY)).lines)
+    const out = text((await run('find --limit=100', LOBBY)).lines)
     expect(out).not.toMatch(/commons\//)
-    expect(out).not.toMatch(/tomatoes/)
+    // A phrase that exists only in commons, so this cannot pass by accident.
+    expect(out).not.toMatch(/super keeps saying/)
+
+    // Even searching for its exact words finds nothing there.
+    expect(text((await run('find super keeps saying', LOBBY)).lines)).toMatch(/nothing said about/)
   })
 
   it('says nothing matched rather than showing an empty list', async () => {
@@ -101,17 +110,23 @@ describe('§4.8 — one working pipe', () => {
   })
 })
 
-describe('§4.8 — the pipe is not advertised', () => {
-  it('is absent from help', async () => {
+describe('§4.8 — the pipe is not advertised, but the search is', () => {
+  it('lists the search in help, because a search nobody can find is not one', async () => {
+    const out = text((await run('help', LOBBY)).lines)
+    expect(out).toMatch(/find — /)
+  })
+
+  it('still keeps the pipe out of help — that is what §4.8 asked to hide', async () => {
     for (const location of [LOBBY, { room: 'music' }, { room: 'music', postId: 12 }]) {
       const out = text((await run('help', location)).lines)
-      expect(out).not.toMatch(/\bposts\b/)
+      expect(out).not.toMatch(/\|/)
+      expect(out).not.toMatch(/count|--room|--since/)
     }
   })
 
-  it('is absent from every palette — as is anything else marked hidden', () => {
+  it('nothing marked hidden appears in any palette', () => {
     const hidden = COMMANDS.filter((c) => c.hidden).map((c) => c.verb)
-    expect(hidden).toContain('posts')
+    expect(hidden.length).toBeGreaterThan(0)
 
     for (const context of ['lobby', 'room', 'commons', 'post'] as const) {
       const shown = chipsForContext(context).map((c: { verb: string }) => c.verb)
@@ -119,26 +134,66 @@ describe('§4.8 — the pipe is not advertised', () => {
     }
   })
 
-  it('is never offered as a "did you mean"', async () => {
-    // `post` is an alias of `say`, and near-misses must not leak the pipe.
-    for (const typo of ['post', 'poss', 'pots', 'postts']) {
-      const out = text((await run(typo, { room: 'music' })).lines)
-      expect(out, typo).not.toMatch(/did you mean posts/)
-    }
-  })
-
-  it('but explains itself in full to anyone who asks (§3.8)', async () => {
-    const out = text((await run('what posts', LOBBY)).lines)
-    expect(out).toMatch(/^posts — /)
+  it('explains itself in full to anyone who asks (§3.8)', async () => {
+    const out = text((await run('what find', LOBBY)).lines)
+    expect(out).toMatch(/^find — /)
     expect(out).toMatch(/--room/)
     expect(out).toMatch(/\| count/)
+  })
+
+  it('answers to posts too, which is the name §4.8 used', async () => {
+    const out = text((await run('what posts', LOBBY)).lines)
+    expect(out).toMatch(/^find — /)
+  })
+})
+
+describe('searching for words — the thing anyone actually reaches for', () => {
+  it('takes a bare word', async () => {
+    const out = text((await run('find tomatoes', LOBBY)).lines)
+    expect(out).toMatch(/tomatoes/)
+    expect(out).toMatch(/kitchen\/|commons\//)
+  })
+
+  it('does not care about case', async () => {
+    const upper = text((await run('find TOMATOES', LOBBY)).lines)
+    const lower = text((await run('find tomatoes', LOBBY)).lines)
+    expect(upper).toBe(lower)
+  })
+
+  it('takes more than one word', async () => {
+    const out = text((await run('find pocket kings', LOBBY)).lines)
+    expect(out).toMatch(/poker\//)
+    expect(out).toMatch(/folded pocket kings/)
+  })
+
+  it('says what it looked for when it finds nothing', async () => {
+    const out = text((await run('find xylophone', LOBBY)).lines)
+    expect(out).toBe('nothing said about xylophone.')
+  })
+
+  it('combines words with flags', async () => {
+    const both = text((await run('find tomatoes --room=kitchen', LOBBY)).lines)
+    expect(both).toMatch(/kitchen\//)
+    expect(both).not.toMatch(/commons\//)
+  })
+
+  it('pipes a word search like any other', async () => {
+    const out = text((await run('find tomatoes | count', LOBBY)).lines)
+    expect(out).toMatch(/^\d+ posts?$/)
+  })
+
+  it('answers to search and grep as well', async () => {
+    const { parse } = await import('@/lib/commands/parse')
+    for (const word of ['find', 'posts', 'search', 'grep']) {
+      expect(parse(word)?.command?.verb, word).toBe('find')
+    }
   })
 })
 
 describe('§4.8 — flags that teach when they are wrong (§3.7)', () => {
   it('answers the doc’s own --tag example with what to use instead', async () => {
     const out = text((await run('posts --tag=poker --since=7d', LOBBY)).lines)
-    expect(out).toBe('there are no tags — rooms do that job. try: posts --room=poker')
+    expect(out).toBe('there are no tags — rooms do that job. try: find --room=poker')
   })
 
   it('names the flags that exist', async () => {
@@ -153,9 +208,11 @@ describe('§4.8 — flags that teach when they are wrong (§3.7)', () => {
     expect(out).toMatch(/7d/)
   })
 
-  it('redirects bare words to the flag that was meant', async () => {
-    const out = text((await run('posts jameson', LOBBY)).lines)
-    expect(out).toBe('posts takes flags, not words. try: posts --by=jameson')
+  it('reads a bare word as the search rather than refusing it', async () => {
+    // This used to answer "posts takes flags, not words", which turned away
+    // the most obvious way anyone would reach for a search.
+    const out = text((await run('find garage', LOBBY)).lines)
+    expect(out).toMatch(/records in the garage/)
   })
 
   it('refuses a sink it cannot pipe into, and names the ones it can', async () => {
@@ -171,7 +228,7 @@ describe('§4.8 — flags that teach when they are wrong (§3.7)', () => {
   })
 
   it('never says invalid syntax', async () => {
-    const inputs = ['posts --tag=x', 'posts --nope', 'posts | star', 'posts --since=soon']
+    const inputs = ['find --tag=x', 'find --nope', 'find | star', 'find --since=soon']
     for (const input of inputs) {
       expect(text((await run(input, LOBBY)).lines).toLowerCase(), input).not.toMatch(
         /invalid|syntax|error/,
@@ -189,7 +246,7 @@ describe('a pipe character is only special where it was invited', () => {
 
   it('only the pipe source opts in', () => {
     for (const command of COMMANDS) {
-      if (command.pipeable) expect(command.verb).toBe('posts')
+      if (command.pipeable) expect(command.verb).toBe('find')
     }
     expect(findCommand('say')?.pipeable).toBeUndefined()
   })

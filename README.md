@@ -75,9 +75,9 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 99 unit tests: parser, aliases, teaching errors, signup, the pipe
-npm run test:e2e   # 25 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 27 assertions against the real migration, on a throwaway database
+npm test           # 111 unit tests: parser, aliases, errors, signup, search, the pipe
+npm run test:e2e   # 26 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm run test:db    # 33 assertions against the real migrations, on a throwaway database
 ```
 
 To see what is actually in a deployed project — read-only, and it tells apart
@@ -142,23 +142,36 @@ hallway, per §3.10 — unable to show you a word until you typed `look`. Posts
 and replies now arrive live for wherever you are standing, and the whole thing
 degrades to nothing if the channel cannot connect.
 
-## The pipe
+## Finding things, and the pipe
 
-§4.8 asks for exactly one working pipe, "documented only inside `what posts`,
-discoverable by the curious. Don't advertise it." So:
+`find` searches what people have said:
 
 ```
-posts --room=music --since=7d | count
-posts --by=jameson | go
+find tomatoes
+find pocket kings --room=poker
 ```
 
-`posts` is absent from `help`, absent from every palette, and excluded from the
-"did you mean" pool. `what posts` is its entire documentation. Only `posts`
-opts into `|` splitting, which is why `say the chord was a|b|c` stays a
-sentence rather than becoming a broken pipeline.
+Matching is `ilike`, not full-text. At five curated rooms (§4.2) a scan is
+honest and needs no `tsvector` column; the upgrade is a good problem to have
+later. `posts`, `search` and `grep` are aliases — `posts` because it is the
+name §4.8 uses, and because it reads better as a pipe source.
 
-The doc's own example reaches for `--tag`. There are no tags — rooms do that
-job — and saying exactly that is more use than listing the flags that do exist.
+The pipe is the part §4.8 asks to keep quiet — "documented only inside
+`what posts`, discoverable by the curious. Don't advertise it":
+
+```
+find --room=music --since=7d | count
+find --by=jameson | go
+```
+
+So `find` appears in `help` and the pipe never does; `what find` is its entire
+documentation. Hiding the search itself was over-applying that lean — a search
+nobody can discover is barely a search.
+
+Only `find` opts into `|` splitting, which is why `say the chord was a|b|c`
+stays a sentence rather than becoming a broken pipeline. And the doc's own
+example reaches for `--tag`: there are no tags, rooms do that job, and saying
+exactly that is more use than listing the flags that do exist.
 
 ## Not built, on purpose
 

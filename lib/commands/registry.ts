@@ -298,17 +298,21 @@ export const COMMANDS: readonly Command[] = [
   },
 
   {
-    // §4.8 — the one pipe. "If it never ships, this is a themed UI. If it
-    // ships, it justifies the premise entirely."
-    verb: 'posts',
-    aliases: ['find', 'search'],
-    hidden: true,
+    // §3.5 says the English verb is canonical, and searching is a verb — but
+    // `posts` stays as an alias because it is the name §4.8 uses, and because
+    // `posts --by=x | count` reads better than `find` does as a pipe source.
+    //
+    // Not hidden. §4.8's lean is that the *pipe* is documented only inside
+    // `what find` — hiding the search itself was over-applying it, and a search
+    // nobody can discover is barely a search.
+    verb: 'find',
+    aliases: ['posts', 'search', 'grep'],
     pipeable: true,
     contexts: ALL,
-    gloss: () => 'find posts across rooms',
+    gloss: () => 'find something that was said',
     detail: () =>
-      'finds posts across every room. narrow it with --room, --by, --since or --limit, and pipe the result somewhere: posts --by=jameson --since=7d | count, or | go to open the newest one.',
-    insert: () => 'posts ',
+      'looks for words in what people have said, everywhere or just here: find tomatoes. narrow it with --room, --by, --since or --limit. results can be piped: find --by=jameson --since=7d | count, or | go to open the newest.',
+    insert: () => 'find ',
     wrongContext: () => '',
     async run({ arg, location, env }) {
       // Only this command splits on `|`. That is why `say i love a|b` keeps
@@ -321,9 +325,9 @@ export const COMMANDS: readonly Command[] = [
 
       const hits = await env.searchPosts(query.query)
 
-      if (sinks.length === 0) return { lines: renderHits(hits) }
+      if (sinks.length === 0) return { lines: renderHits(hits, query.query.text) }
       if (sinks.length > 1) {
-        return error('one pipe at a time for now. try: posts --since=7d | count')
+        return error('one pipe at a time for now. try: find --since=7d | count')
       }
 
       const sink = sinks[0].head.toLowerCase()
@@ -365,20 +369,19 @@ function buildQuery(
     // The doc's own example reaches for --tag. Rooms already do that job, and
     // saying so is more use than listing the flags that do exist.
     if (name === 'tag') {
-      return { problem: 'there are no tags — rooms do that job. try: posts --room=poker' }
+      return { problem: 'there are no tags — rooms do that job. try: find --room=poker' }
     }
     return { problem: `i don’t know --${name}. try: ${FLAG_NAMES.map((f) => `--${f}`).join(', ')}` }
   }
 
-  if (loose.length > 0) {
-    return { problem: `posts takes flags, not words. try: posts --by=${loose[0].toLowerCase()}` }
-  }
-
+  // Bare words are the search itself. Refusing them, as this used to, turned
+  // away the most obvious way anyone would reach for this.
   const query: PostQuery = { limit: 20 }
+  if (loose.length > 0) query.text = loose.join(' ')
 
   const room = values.get('room')
   if (room !== undefined) {
-    if (room === '') return { problem: 'which room? try: posts --room=music' }
+    if (room === '') return { problem: 'which room? try: find --room=music' }
     query.room = room.toLowerCase()
   } else if (location.room !== undefined) {
     // Standing somewhere is itself a filter; naming the room again would be
@@ -388,7 +391,7 @@ function buildQuery(
 
   const by = values.get('by')
   if (by !== undefined) {
-    if (by === '') return { problem: 'said by whom? try: posts --by=marisol' }
+    if (by === '') return { problem: 'said by whom? try: find --by=marisol' }
     query.by = by.toLowerCase()
   }
 
@@ -411,9 +414,9 @@ function buildQuery(
   return { query }
 }
 
-function renderHits(hits: readonly PostHit[]): Line[] {
+function renderHits(hits: readonly PostHit[], term?: string): Line[] {
   if (hits.length === 0) {
-    return [{ text: 'nothing matched.', tone: 'faint' }]
+    return [{ text: term ? `nothing said about ${term}.` : 'nothing matched.', tone: 'faint' }]
   }
 
   const lines: Line[] = []
