@@ -3,8 +3,27 @@ import { DEFAULT_THEME, themeCss } from '@/lib/shell/themes'
 import './globals.css'
 
 export const metadata: Metadata = {
+  /*
+   * Required for the share cards, not decoration. Next emits og:image as a
+   * relative path without it, and every crawler rejects a relative og:image —
+   * so the card would build, deploy, and never once be shown.
+   *
+   * Falls back to the real domain rather than localhost, because the value that
+   * gets baked into a production build is the one that matters and an unset
+   * variable should not silently publish links to a machine under your desk.
+   */
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://thewall.social'),
   title: 'thewall.social',
   description: 'a place you navigate by typing.',
+  openGraph: {
+    type: 'website',
+    siteName: 'thewall.social',
+    title: 'thewall.social',
+    description: 'a place you navigate by typing.',
+  },
+  // Without this the card is shown small and square, which throws away the
+  // thing it is for — the post is unreadable at 120px.
+  twitter: { card: 'summary_large_image' },
 }
 
 export const viewport: Viewport = {

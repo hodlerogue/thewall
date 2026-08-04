@@ -7,13 +7,18 @@ import type { Line } from '@/lib/shell/types'
  */
 
 /** §3.11 — proof of life: the difference between a busy building and a list of doors. */
-export function renderRoomList(rooms: readonly RoomSummary[], now = new Date()): Line[] {
+export function renderRoomList(
+  rooms: readonly RoomSummary[],
+  now = new Date(),
+  /** How much of the latest post to show. Narrower on a share card (1200px). */
+  bodyWidth = 56,
+): Line[] {
   const lines: Line[] = []
   for (const room of rooms) {
     lines.push({ text: room.slug, tone: 'accent' })
     lines.push({
       text: room.latest
-        ? `${truncate(room.latest.body, 56)} — ${room.latest.author}, ${formatAgo(room.latest.createdAt, now)}`
+        ? `${truncate(room.latest.body, bodyWidth)} — ${room.latest.author}, ${formatAgo(room.latest.createdAt, now)}`
         : 'quiet in here',
       tone: room.latest ? 'dim' : 'faint',
       depth: 1,

@@ -82,8 +82,8 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 217 unit tests: parser, aliases, errors, signup, search, themes, names, policy
-npm run test:e2e   # 69 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm test           # 222 unit tests: parser, aliases, errors, signup, search, themes, names, policy
+npm run test:e2e   # 73 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
 npm run test:db    # 106 assertions against the real migrations, on a throwaway database
 ```
 
@@ -317,6 +317,31 @@ and far below anything worth scripting.
 enabled", exactly as the doc leans. `./scripts/moderate.sh archive` runs it by
 hand: quiet rooms drop out of the lobby, stay reachable by name, and come back
 the moment somebody posts in them.
+
+## Sharing a link
+
+§3.4 calls shareable URLs something that "falls out of the design at zero
+cost", which is true of the address and not of the preview — a link to a
+conversation that previews as a bare domain is a link nobody opens.
+
+So the card is a picture of the thing itself. It takes the same `Line[]` the
+shell renders, from the same `renderRoom`, `renderPost` and `renderRoomList`,
+and paints them in the warm palette — so a preview cannot describe a site that
+does not look like this. A room shows what is being said in it; a post shows
+the post and its replies; the front door shows three rooms with proof of life
+(§3.11), because five rooms reading "quiet in here" is the §5 failure mode at
+1200×630.
+
+Every route that a crawler can reach answers with an image, including a deleted
+post, a room that never existed and `~somebody`. A card that 500s is a link
+with no preview, which is the state this exists to fix.
+
+The typeface is vendored and subset to 17K rather than fetched from a CDN at
+build time: the card is meaningless in a proportional face, and a build that
+reaches out to somebody else's font server is a build that fails on their
+outage. `metadataBase` is not optional — Next emits a relative `og:image`
+without it and every crawler rejects those, so the card would build, deploy and
+never once be shown.
 
 ## Not built, on purpose
 
