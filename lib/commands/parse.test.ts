@@ -206,7 +206,7 @@ describe('§3.6 — the palette is a glossary derived from the registry', () => 
   it('leaves a trailing space exactly when an argument follows', () => {
     for (const context of contexts) {
       for (const chip of chipsForContext(context)) {
-        const takesArg = ['go', 'say', 'what'].includes(chip.verb)
+        const takesArg = ['go', 'say', 'what', 'theme', 'find'].includes(chip.verb)
         expect(chip.insert.endsWith(' '), `${chip.verb} in ${context}`).toBe(takesArg)
       }
     }

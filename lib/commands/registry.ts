@@ -17,6 +17,7 @@ import type { Env } from '@/lib/shell/env'
 import { formatAgo, type PostHit, type PostQuery } from '@/lib/shell/model'
 import { renderPost, renderRoom, renderRoomList } from '@/lib/shell/render'
 import type { Session } from '@/lib/shell/session'
+import { DEFAULT_THEME, THEMES, findTheme } from '@/lib/shell/themes'
 import type { Context, Line, Location, RunResult } from '@/lib/shell/types'
 
 export interface HandlerArgs {
@@ -64,6 +65,24 @@ export interface Command {
 }
 
 const ALL: readonly Context[] = ['lobby', 'room', 'commons', 'post']
+
+const THEME_KEY = 'thewall.theme'
+
+function readTheme(): string {
+  if (typeof document === 'undefined') return DEFAULT_THEME
+  return document.documentElement.dataset.theme ?? DEFAULT_THEME
+}
+
+function applyTheme(name: string): void {
+  if (typeof document === 'undefined') return
+  document.documentElement.dataset.theme = name
+  try {
+    localStorage.setItem(THEME_KEY, name)
+  } catch {
+    // Private browsing, or storage full. The theme still applies for this
+    // session; it simply will not be remembered, which is not worth a message.
+  }
+}
 
 const error = (text: string): RunResult => ({ lines: [{ text, tone: 'error' }] })
 
@@ -289,6 +308,47 @@ export const COMMANDS: readonly Command[] = [
   },
 
   {
+    // §4.5 — the taste call, handed to whoever is looking. §9 flagged
+    // green-on-black as the obvious choice worth departing from; this departs
+    // from it by default and keeps it one word away.
+    verb: 'theme',
+    aliases: ['themes', 'colour', 'colours', 'color', 'colors'],
+    contexts: ALL,
+    gloss: () => 'change the colours',
+    detail: () =>
+      `changes how this looks, and remembers it on this device. ${THEMES.map((t) => t.name).join(', ')}. type theme on its own to see them.`,
+    insert: () => 'theme ',
+    wrongContext: () => '',
+    async run({ arg }) {
+      const current = readTheme()
+
+      if (arg === '') {
+        const lines: Line[] = THEMES.map((theme) => ({
+          text: `${theme.name} — ${theme.gloss}${theme.name === current ? '   (yours)' : ''}`,
+          tone: theme.name === current ? 'accent' : 'dim',
+        }))
+        lines.push({ text: `type theme ${THEMES[1].name} to change.`, tone: 'faint' })
+        return { lines }
+      }
+
+      const chosen = findTheme(arg)
+      if (!chosen) {
+        const near = nearestSlug(arg, THEMES.map((t) => t.name))
+        return error(
+          near
+            ? `there’s no ${arg} theme. did you mean ${near}?`
+            : `there’s no ${arg} theme. try: theme`,
+        )
+      }
+
+      applyTheme(chosen.name)
+      return {
+        lines: [{ text: `${chosen.name} — ${chosen.gloss}.`, tone: 'faint' }],
+      }
+    },
+  },
+
+  {
     // §4.1 — the reason anyone comes back. Its lean: "status bar shows the
     // count persistently; `mail` lists them with `go <id>` to jump. Pull-only,
     // no push, no email."
@@ -490,7 +550,7 @@ function renderHits(hits: readonly PostHit[], term?: string): Line[] {
  * where a newcomer is standing; the doing verbs take the slots elsewhere.
  */
 export const CHIP_SETS: Record<Context, readonly string[]> = {
-  lobby: ['look', 'go', 'who', 'what', 'help'],
+  lobby: ['look', 'go', 'who', 'theme', 'help'],
   // `say` leads wherever it is valid. The palette is a horizontal scroller on
   // a 380px viewport, and at five chips it overflows — so third place put the
   // primary action, the one §3.9's whole design hangs on, off the right edge

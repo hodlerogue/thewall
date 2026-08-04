@@ -8,8 +8,12 @@ import { expect, test, type Page } from '@playwright/test'
  * fails on the only device that matters for a social product.
  */
 
-/** The palette is labelled "commands", so match the textbox role exactly. */
-const prompt = (page: Page) => page.getByRole('textbox', { name: 'command' })
+/**
+ * By test id, not by accessible name. The name now carries the location — the
+ * §3.1 claim that a terminal answers "where am I" has to hold for screen
+ * readers too — and tests should not be the reason that name is wrong.
+ */
+const prompt = (page: Page) => page.getByTestId('prompt-input')
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/')

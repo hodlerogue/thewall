@@ -1,32 +1,12 @@
 /*
- * Palette lives entirely in tokens so the §4.5 taste call stays reversible.
- * Warm ground is the default (§9 flags green-on-black as the obvious choice
- * worth departing from). To try phosphor, set data-theme="green" on <html>.
+ * The colour tokens are NOT here. They live in lib/shell/themes.ts and are
+ * rendered into the document by app/layout.tsx, so the palettes the contrast
+ * tests measure are literally the ones the browser paints. A second copy in
+ * this file would be free to drift, and drift is how the chip gloss ended up
+ * at 2.95:1 while nobody noticed.
  */
 :root {
-  --bg: #14100c;
-  --bg-raised: #1c1712;
-  --fg: #e9dcc6;
-  --fg-dim: #9d8e77;
-  --fg-faint: #6d6152;
-  --accent: #e0a33e;
-  --accent-dim: #a87a2e;
-  --error: #d8734a;
-  --rule: #2a2219;
-
   --step: 16px; /* §3.2 indentation unit: post flush, reply +1, body +2 */
-}
-
-:root[data-theme='green'] {
-  --bg: #000000;
-  --bg-raised: #0a120a;
-  --fg: #33ff66;
-  --fg-dim: #1f9940;
-  --fg-faint: #146629;
-  --accent: #7dffa8;
-  --accent-dim: #33ff66;
-  --error: #ff6b4a;
-  --rule: #0f2a16;
 }
 
 * {
@@ -64,6 +44,27 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.scrollback:focus-visible,
+.chip:focus-visible,
+.prompt-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Announced, never shown. A live region has to be in the accessibility tree,
+   so it cannot be display:none. */
+.announcer {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .scrollback {
@@ -194,9 +195,19 @@ body {
   min-width: 0;
   background: transparent;
   border: 0;
-  outline: 0;
   color: var(--fg);
   font: inherit;
+  /* After `font: inherit`, which is a shorthand and resets size. 16px exactly:
+     below it, iOS Safari zooms the page on focus, and the zoomed viewport then
+     fights the --app-height maths that keeps the prompt above the keyboard
+     (§4.4). */
+  font-size: 16px;
   padding: 0;
   caret-color: var(--accent);
+}
+
+/* The caret is the focus indicator while typing; the ring above is for
+   keyboard users arriving on it. Not `outline: 0`, which used to remove both. */
+.prompt-input:focus {
+  outline: none;
 }

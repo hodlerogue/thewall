@@ -6,6 +6,22 @@ import { describeError } from '@/lib/shell/errors'
 import type { Chip, Line, Location, Runner } from '@/lib/shell/types'
 import { locationToPath, pathToLocation, promptLabel } from '@/lib/shell/types'
 
+/**
+ * What to say out loud about a result.
+ *
+ * Reading every line is worse than reading none — a room listing is forty
+ * lines and a screen reader will queue all of them. The useful summary is the
+ * first thing that came back, how much followed it, and where you ended up.
+ */
+function summarize(lines: readonly Line[], location: Location, name: string | null): string {
+  const said = lines.map((line) => line.text.trim()).filter(Boolean)
+  const where = promptLabel(name, location).replace(/\$$/, '')
+
+  if (said.length === 0) return where
+  if (said.length === 1) return `${said[0]}. ${where}`
+  return `${said[0]}, and ${said.length - 1} more lines. ${where}`
+}
+
 export function Terminal({
   initialLines,
   initialLocation,
@@ -42,6 +58,7 @@ export function Terminal({
 
   const [pending, setPending] = useState(false)
   const [mail, setMail] = useState(initialMail)
+  const [announcement, setAnnouncement] = useState('')
 
   const scrollbackRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -120,7 +137,9 @@ export function Terminal({
         // A command that throws used to render nothing at all, which reads as
         // a dead prompt. Whatever went wrong, say it and stay usable — and
         // hand back what they typed, since it plainly did not happen.
-        setLines((prev) => [...prev, ...describeError(error)])
+        const failure = describeError(error)
+        setLines((prev) => [...prev, ...failure])
+        setAnnouncement(failure.map((line) => line.text).join('. '))
         setInput(text)
         return
       } finally {
@@ -129,6 +148,7 @@ export function Terminal({
       }
 
       setLines((prev) => [...prev, ...result.lines])
+      setAnnouncement(summarize(result.lines, result.location ?? location, name))
 
       if (result.location) {
         setLocation(result.location)
@@ -214,7 +234,27 @@ export function Terminal({
 
   return (
     <div className="app">
-      <div className="scrollback" ref={scrollbackRef} data-testid="scrollback">
+      {/*
+        * The scrollback itself is not a live region. Appending twenty lines to
+        * one makes a screen reader queue twenty announcements, and the echo
+        * line would be read back to you as well. This carries a summary
+        * instead: what came back, and where you now are.
+        */}
+      <p className="announcer" aria-live="polite" aria-atomic="true" data-testid="announcer">
+        {announcement}
+      </p>
+
+      <div
+        className="scrollback"
+        ref={scrollbackRef}
+        data-testid="scrollback"
+        /* The whole session lives in here and it is the only way to reach
+           anything that scrolled off, so it has to be focusable — otherwise
+           keyboard-only users cannot read their own history (WCAG 2.1.1). */
+        tabIndex={0}
+        role="log"
+        aria-label="what has happened so far"
+      >
         {lines.map((line, i) => (
           <p
             key={i}
@@ -273,7 +313,13 @@ export function Terminal({
             autoCorrect="off"
             autoCapitalize="none"
             spellCheck={false}
-            aria-label="command"
+            data-testid="prompt-input"
+            /* The visible label is the location, and §3.1's whole claim is
+               that a terminal answers "where am I" for free. A bare
+               aria-label="command" overrode it, so that was true for sighted
+               users and false for everyone else — and it fails WCAG 2.5.3,
+               which wants the visible text inside the accessible name. */
+            aria-label={`${label} command`}
             /* The database caps a body at 2000. Without this the words are
                typed, sent, refused, and gone — which is the failure §3.9
                exists to prevent. `say ` is the longest prefix. */

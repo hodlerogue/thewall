@@ -8,7 +8,7 @@ import { expect, test, type Page } from '@playwright/test'
  * documented by `what posts`.
  */
 
-const prompt = (page: Page) => page.getByRole('textbox', { name: 'command' })
+const prompt = (page: Page) => page.getByTestId('prompt-input')
 const scrollback = (page: Page) => page.getByTestId('scrollback')
 
 async function type(page: Page, text: string) {
