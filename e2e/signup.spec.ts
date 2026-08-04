@@ -59,6 +59,32 @@ test('the first say collects a name and an email, then sends what you typed', as
   await expect(page.getByTestId('prompt-label')).toHaveText('newcomer:music$')
 })
 
+test('a mistyped name can be taken back, and the sentence survives it', async ({ page }) => {
+  await type(page, 'leave')
+  await type(page, 'go music')
+
+  const sentence = 'found my dads records in the garage'
+  await type(page, `say ${sentence}`)
+
+  // The typo everybody makes, in the one word that becomes their identity.
+  await type(page, 'newcomr')
+  await expect(scrollback(page)).toContainText('newcomr, then')
+  await expect(scrollback(page)).toContainText('type back')
+
+  await type(page, 'back')
+  await expect(scrollback(page)).toContainText('newcomr is still free')
+  await expect(scrollback(page)).toContainText('what do you want to be called?')
+
+  await type(page, 'newcomer')
+  await type(page, 'newcomer@example.com')
+
+  // Right name, and the sentence they typed once still went without being
+  // asked for again — which is the whole of §3.9 and what cancel would have
+  // cost them before this existed.
+  await expect(page.getByTestId('prompt-label')).toHaveText('newcomer:music$')
+  await expect(scrollback(page)).toContainText('said — it’s post')
+})
+
 test('cancel returns to reading with nothing sent', async ({ page }) => {
   await type(page, 'leave')
   await type(page, 'go poker')

@@ -82,8 +82,8 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 211 unit tests: parser, aliases, errors, signup, search, themes, names, policy
-npm run test:e2e   # 68 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm test           # 217 unit tests: parser, aliases, errors, signup, search, themes, names, policy
+npm run test:e2e   # 69 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
 npm run test:db    # 106 assertions against the real migrations, on a throwaway database
 ```
 

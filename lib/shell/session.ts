@@ -148,15 +148,20 @@ export class Session {
     this.mode = 'ask-email'
     return {
       lines: [
+        // The name is said back, which it never used to be. The only signal
+        // that it had been accepted was the question changing — so a typo in
+        // the one word that becomes your identity went by unremarked, and the
+        // next thing you were asked for was an address.
+        //
         // No password. A prompt cannot mask input, so there is nothing here to
         // echo to the screen (§3.9, §9).
-        { text: 'where should i send your key?', tone: 'accent' },
+        { text: `${validated.name}, then. where should i send your key?`, tone: 'accent' },
         { text: 'no password — a link, so you can get back in later.', tone: 'faint' },
         // The moment somebody is asked for an address is the moment they are
         // owed a way to read what happens to it. A link in a footer nobody
         // scrolls to is not that; a command they can type right now is.
         {
-          text: 'it’s never shown to anyone. type privacy to see what’s kept, or terms for the rest.',
+          text: 'type back to change the name. your address is never shown to anyone — type privacy for what’s kept.',
           tone: 'faint',
         },
       ],
@@ -164,8 +169,42 @@ export class Session {
   }
 
   private async answerEmail(text: string): Promise<AnswerResult> {
+    /*
+     * One step back, to fix a name you have just watched go past.
+     *
+     * Until this existed the only exits from here were an email address and
+     * `cancel` — and cancel throws the held sentence away, so mistyping your
+     * own name cost you the thing §3.9 is built to protect. It is the single
+     * most likely typo in the whole product: it is the first thing anybody
+     * types, it is a word rather than a sentence, and it is permanent.
+     *
+     * Deliberately only at this question. `back`, `oops` and `wait` are all
+     * perfectly good names, and intercepting a valid name at the name question
+     * is exactly the bug that once made people's accounts `look`. An answer
+     * here has to be an email address, so nothing spent as a control word here
+     * costs anybody a handle.
+     */
+    if (/^(back|oops|wait|rename|no)$/i.test(text)) {
+      const wrong = this.pendingName
+      this.pendingName = null
+      this.mode = 'ask-name'
+      return {
+        lines: [
+          { text: `no harm done — nothing was made, and ${wrong} is still free.`, tone: 'faint' },
+          { text: 'what do you want to be called?', tone: 'accent' },
+        ],
+      }
+    }
+
     if (!EMAIL.test(text)) {
-      return { lines: [{ text: 'that doesn’t look like an email address.', tone: 'error' }] }
+      return {
+        lines: [
+          { text: 'that doesn’t look like an email address.', tone: 'error' },
+          // §3.7 — the error names the way out. Somebody staring at a question
+          // they do not want to answer needs to know there is one.
+          { text: 'type back to change the name, or cancel to stop.', tone: 'faint' },
+        ],
+      }
     }
 
     const result = await this.api.create(this.pendingName!, text)

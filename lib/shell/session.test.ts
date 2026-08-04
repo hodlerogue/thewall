@@ -408,3 +408,78 @@ describe('§4.6 revised — rename, as often as you like', () => {
     expect(session.name()).toBeNull()
   })
 })
+
+describe('§3.9 — one step back, when the name was wrong', () => {
+  const at: Location = { room: 'music' }
+
+  it('says the name back, so a typo is visible before the next question', async () => {
+    const { run } = harness()
+    await run('say something worth keeping', at)
+    const out = text((await run('newcomr', at)).lines)
+
+    // The only confirmation used to be the question changing.
+    expect(out).toMatch(/newcomr, then/)
+    expect(out).toMatch(/type back/)
+  })
+
+  it('goes back to the name question with the sentence still held', async () => {
+    const { run, posted, session } = harness()
+    const sentence = 'the thing i would hate to retype'
+
+    await run(`say ${sentence}`, at)
+    await run('newcomr', at)
+    const back = text((await run('back', at)).lines)
+
+    expect(back).toMatch(/nothing was made/)
+    expect(back).toMatch(/newcomr is still free/)
+    expect(back).toMatch(/what do you want to be called\?/)
+    expect(session.isAsking()).toBe(true)
+
+    // And the whole flow still completes, with the sentence nobody retyped.
+    await run('newcomer', at)
+    await run('newcomer@example.com', at)
+    expect(session.name()).toBe('newcomer')
+    expect(posted).toEqual([{ room: 'music', body: sentence }])
+  })
+
+  it('does not create anything under the name it went back from', async () => {
+    const { run, session } = harness()
+    await run('say hello', at)
+    await run('wrongname', at)
+    await run('back', at)
+    await run('rightname', at)
+    await run('rightname@example.com', at)
+
+    expect(session.name()).toBe('rightname')
+  })
+
+  it('accepts the words somebody actually types when they realise', async () => {
+    for (const word of ['back', 'oops', 'wait', 'rename', 'no']) {
+      const { run, session } = harness()
+      await run('say hello', at)
+      await run('newcomr', at)
+      const out = text((await run(word, at)).lines)
+      expect(out, word).toMatch(/what do you want to be called\?/)
+      expect(session.name(), word).toBeNull()
+    }
+  })
+
+  it('leaves those words usable as names, where they are names', async () => {
+    // The name question must not intercept them. Doing so is the bug that made
+    // accounts called `look`, and `back` is a name somebody may well want.
+    const { run, session } = harness()
+    await run('say hello', at)
+    await run('back', at)
+    await run('back@example.com', at)
+    expect(session.name()).toBe('back')
+  })
+
+  it('names the way out when the email does not parse', async () => {
+    const { run } = harness()
+    await run('say hello', at)
+    await run('newcomr', at)
+    const out = text((await run('not-an-email', at)).lines)
+    expect(out).toMatch(/doesn’t look like an email/)
+    expect(out).toMatch(/type back/)
+  })
+})
