@@ -65,6 +65,14 @@ function suggestFix(detail: Detail): string | undefined {
     return 'the schema hasn’t been applied to this project yet — run scripts/db-deploy.sh'
   }
 
+  // PGRST202 is a *function* that is not there, which means a migration landed
+  // and a later one did not. It reads nothing like the table case and used to
+  // fall through to the raw message — which is how a missing mark_verified()
+  // presented as a verification link that simply would not work.
+  if (code === 'PGRST202' || message.includes('could not find the function')) {
+    return 'this project is missing a database update — run scripts/db-deploy.sh, then try again.'
+  }
+
   if (code === '42501' || message.includes('permission denied')) {
     return 'the anon role can’t read that. the grants live at the end of the initial migration.'
   }
