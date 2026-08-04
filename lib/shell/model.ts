@@ -50,6 +50,22 @@ export interface PostHit {
   createdAt: Date
 }
 
+/**
+ * Somebody, as a view rather than a place (§3.10).
+ *
+ * There is no `posts` field that belongs *to* the profile — `posts` here are
+ * PostHits, which means every one of them carries the room and id it actually
+ * lives at. That is the whole design: a profile is a set of doors back into
+ * rooms, never a room of its own.
+ */
+export interface Profile {
+  name: string
+  joinedAt: Date
+  /** §4.7 — whether they ever followed a key. Shown, never used to hide them. */
+  verified: boolean
+  posts: PostHit[]
+}
+
 export interface PostQuery {
   /** Words to look for in the body. The commonest thing anyone wants. */
   text?: string

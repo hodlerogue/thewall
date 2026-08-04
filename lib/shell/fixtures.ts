@@ -10,6 +10,21 @@
 import type { Room } from '@/lib/shell/model'
 
 const minutes = (n: number) => new Date(Date.now() - n * 60_000)
+const days = (n: number) => new Date(Date.now() - n * 24 * 60 * 60_000)
+
+/**
+ * The people behind the names in the rooms (§3.10 — a view, not a place).
+ *
+ * Two of them have never followed a key, because "verified" is only worth
+ * showing if the unverified state is reachable in the gate suite too.
+ */
+export const PEOPLE: readonly { name: string; joinedAt: Date; verified: boolean }[] = [
+  { name: 'jameson', joinedAt: days(96), verified: true },
+  { name: 'marisol', joinedAt: days(74), verified: true },
+  { name: 'tuck', joinedAt: days(41), verified: true },
+  { name: 'ren', joinedAt: days(12), verified: false },
+  { name: 'dev', joinedAt: days(3), verified: false },
+]
 
 export const ROOMS: Room[] = [
   {

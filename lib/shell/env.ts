@@ -9,8 +9,8 @@
  * because who you are is a property of the conversation, not of the data.
  */
 
-import { DEFAULT_ROOM, ROOMS } from '@/lib/shell/fixtures'
-import type { Post, PostHit, PostQuery, Room, RoomSummary } from '@/lib/shell/model'
+import { DEFAULT_ROOM, PEOPLE, ROOMS } from '@/lib/shell/fixtures'
+import type { Post, PostHit, PostQuery, Profile, Room, RoomSummary } from '@/lib/shell/model'
 
 export interface Presence {
   names: string[]
@@ -37,6 +37,11 @@ export interface Env {
   mailCount(): Promise<number>
   /** §4.1 — the replies themselves. Reading them marks them read. */
   readMail(): Promise<MailItem[]>
+  /**
+   * §3.10 — somebody, as a view. The posts come back as hits, carrying their
+   * real addresses, because a profile is a way back into rooms and not a room.
+   */
+  getProfile(name: string): Promise<Profile | undefined>
 }
 
 /** In-memory Env over the §5 seed content, for tests and the mobile gate. */
@@ -48,7 +53,9 @@ export function fixtureEnv(rooms: Room[] = ROOMS): Env {
       ? room.posts.filter((p) => Date.now() - p.createdAt.getTime() < 24 * 60 * 60 * 1000)
       : room.posts
 
-  return {
+  // Named rather than returned inline, so getProfile can reuse searchPosts
+  // instead of restating the query that decides what a person's posts are.
+  const env: Env = {
     async listRooms() {
       return rooms.map((room) => {
         const latest = visiblePosts(room)[0]
@@ -107,7 +114,22 @@ export function fixtureEnv(rooms: Room[] = ROOMS): Env {
       hits.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       return hits.slice(0, query.limit)
     },
+
+    async getProfile(name) {
+      const person = PEOPLE.find((p) => p.name === name.toLowerCase())
+      if (!person) return undefined
+      return {
+        name: person.name,
+        joinedAt: person.joinedAt,
+        verified: person.verified,
+        // The same query `find --by=marisol` runs, which is what keeps a
+        // profile from being able to show anything a search could not.
+        posts: await env.searchPosts({ by: person.name, limit: 10 }),
+      }
+    },
   }
+
+  return env
 }
 
 export { DEFAULT_ROOM }

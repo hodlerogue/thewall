@@ -294,7 +294,7 @@ export function Terminal({
     return subscribe(location, name, (incoming) => {
       setLines((prev) => append(prev, [{ text: '' }, ...incoming]))
     })
-  }, [subscribe, location.room, location.postId, name])
+  }, [subscribe, location.room, location.postId, location.person, name])
 
   /*
    * The reflexes anyone who has used a terminal arrives with.

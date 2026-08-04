@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Live } from '@/lib/data/live'
 import type { Env, MailItem } from '@/lib/shell/env'
-import type { Post, PostHit, Room, RoomSummary } from '@/lib/shell/model'
+import type { Post, PostHit, Profile, Room, RoomSummary } from '@/lib/shell/model'
 
 /**
  * The Env the commands actually run against.
@@ -13,7 +13,9 @@ import type { Post, PostHit, Room, RoomSummary } from '@/lib/shell/model'
  * remember to do it too.
  */
 export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
-  return {
+  // Named rather than returned inline, so getProfile can call searchPosts
+  // instead of restating the query that decides what a person's posts are.
+  const env: Env = {
     async listRooms(): Promise<RoomSummary[]> {
       // §3.11 — one round trip for the whole lobby, including proof of life.
       const { data, error } = await client
@@ -176,7 +178,30 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         createdAt: new Date(row.created_at),
       }))
     },
+
+    async getProfile(name: string): Promise<Profile | undefined> {
+      const { data, error } = await client
+        .from('profiles')
+        .select('name, created_at, verified_at')
+        .eq('name', name.toLowerCase())
+        .maybeSingle()
+
+      if (error) throw error
+      if (!data) return undefined
+
+      return {
+        name: data.name,
+        joinedAt: new Date(data.created_at),
+        // Public already: "anyone may read profiles" is what lets a name be
+        // resolved at all. Showing it is what makes §4.7 legible rather than
+        // a silent condition people hit without knowing why.
+        verified: data.verified_at !== null,
+        posts: await env.searchPosts({ by: data.name, limit: 10 }),
+      }
+    },
   }
+
+  return env
 }
 
 interface RawReply {

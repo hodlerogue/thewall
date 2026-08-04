@@ -8,7 +8,7 @@ import { supabaseEnv } from '@/lib/data/supabaseEnv'
 import { httpSignupApi, supabaseWriter } from '@/lib/data/writer'
 import { fixtureEnv, type Env } from '@/lib/shell/env'
 import { describeError } from '@/lib/shell/errors'
-import { renderPost, renderRoom, renderRoomList } from '@/lib/shell/render'
+import { renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
 import { createClient, isConfigured } from '@/lib/supabase/client'
 import { locationToPath, pathToLocation } from '@/lib/shell/types'
@@ -209,6 +209,22 @@ async function arriveAt(
       ],
       location: {},
     }
+  }
+
+  // §3.4 — `thewall.social/~marisol` is the same value as the prompt path, so
+  // the URL resolves to a person exactly as `go ~marisol` does.
+  if (target.person !== undefined) {
+    const profile = await env.getProfile(target.person)
+    if (!profile) {
+      return {
+        lines: [
+          { text: `there’s no one called ${target.person}.`, tone: 'error' },
+          ...renderRoomList(rooms),
+        ],
+        location: {},
+      }
+    }
+    return { lines: renderProfile(profile), location: { person: profile.name } }
   }
 
   if (target.room === undefined) {

@@ -15,7 +15,7 @@
 import { parseFlags, parseSince, splitStages } from '@/lib/commands/pipeline'
 import type { Env } from '@/lib/shell/env'
 import { formatAgo, type PostHit, type PostQuery } from '@/lib/shell/model'
-import { renderPost, renderRoom, renderRoomList } from '@/lib/shell/render'
+import { renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
 import type { Session } from '@/lib/shell/session'
 import { DEFAULT_THEME, THEMES, findTheme } from '@/lib/shell/themes'
 import type { Context, Line, Location, RunResult } from '@/lib/shell/types'
@@ -64,7 +64,12 @@ export interface Command {
   run: Handler
 }
 
-const ALL: readonly Context[] = ['lobby', 'room', 'commons', 'post']
+/**
+ * `person` is in here and not in `say`'s list, which is the whole of §3.10's
+ * enforcement: a profile is somewhere you can read, search and leave from, and
+ * the one thing you cannot do is contribute to it.
+ */
+const ALL: readonly Context[] = ['lobby', 'room', 'commons', 'post', 'person']
 
 const THEME_KEY = 'thewall.theme'
 
@@ -92,13 +97,25 @@ export const COMMANDS: readonly Command[] = [
     aliases: ['ls', 'see', 'list', 'show', 'rooms'],
     contexts: ALL,
     gloss: (c) =>
-      c === 'lobby' ? 'see what’s around you' : c === 'post' ? 'read it again' : 'see what’s here',
+      c === 'lobby'
+        ? 'see what’s around you'
+        : c === 'post'
+          ? 'read it again'
+          : c === 'person'
+            ? 'what they’ve said'
+            : 'see what’s here',
     detail: () =>
       'shows you what’s around you. at the lobby that’s the rooms, inside a room it’s the posts, inside a post it’s the replies.',
     insert: () => 'look',
     wrongContext: () => '',
     async run({ context, location, env }) {
       if (context === 'lobby') return { lines: renderRoomList(await env.listRooms()) }
+
+      if (context === 'person') {
+        const profile = await env.getProfile(location.person!)
+        if (!profile) return error(`there’s no one called ${location.person}. try: leave`)
+        return { lines: renderProfile(profile) }
+      }
 
       const room = await env.getRoom(location.room!)
       if (!room) return error(`${location.room} isn’t there anymore. try: leave`)
@@ -116,9 +133,9 @@ export const COMMANDS: readonly Command[] = [
     verb: 'go',
     aliases: ['cd', 'enter', 'open', 'join', 'read'],
     contexts: ALL,
-    gloss: (c) => (c === 'lobby' ? 'enter a room' : 'open a post'),
+    gloss: (c) => (c === 'lobby' || c === 'person' ? 'enter a room' : 'open a post'),
     detail: () =>
-      'moves you. at the lobby, go music. inside a room, go 12 opens that post. a room name works from anywhere.',
+      'moves you. at the lobby, go music. inside a room, go 12 opens that post. a room name works from anywhere, and go ~marisol shows you somebody.',
     insert: () => 'go ',
     wrongContext: () => '',
     async run({ arg, context, location, env, hint }) {
@@ -126,15 +143,40 @@ export const COMMANDS: readonly Command[] = [
         return error(
           context === 'lobby' || context === 'commons'
             ? `go where? try: go ${await hint()}`
-            : 'go where? try: go 12, or the name of a room.',
+            : context === 'person'
+              ? `go where? try: go ${await hint()}`
+              : 'go where? try: go 12, or the name of a room.',
         )
+      }
+
+      // `~marisol` is somebody, not somewhere. §3.10 warns that a space which
+      // absorbs activity "deletes the geography that makes this feel like a
+      // place", so this resolves to a view: their posts, each still carrying
+      // the room and id it lives at, and nothing on it postable.
+      if (arg.startsWith('~')) {
+        const who = arg.slice(1).toLowerCase()
+        if (who === '') return error('go who? try: go ~marisol')
+
+        const profile = await env.getProfile(who)
+        if (!profile) {
+          const { names } = await env.who(location.room)
+          const near = nearestSlug(who, names)
+          return error(
+            near
+              ? `there’s no one called ${who}. did you mean ~${near}?`
+              : `there’s no one called ${who}. try: who`,
+          )
+        }
+        return { lines: renderProfile(profile), location: { person: profile.name } }
       }
 
       // A bare number is a post address, and post addresses only exist inside
       // rooms that keep things (§3.4, §3.10).
       if (/^\d+$/.test(arg)) {
         const id = Number(arg)
-        if (context === 'lobby') {
+        // A profile has no post numbers of its own for the same reason it has
+        // no `say`: the posts on it belong to rooms, and their addresses say so.
+        if (context === 'lobby' || context === 'person') {
           return error(`post numbers only work inside a room. try: go ${await hint()} first.`)
         }
         if (context === 'commons') {
@@ -149,6 +191,14 @@ export const COMMANDS: readonly Command[] = [
       // the same way an absolute path does.
       const room = await env.getRoom(arg)
       if (!room) {
+        // Somebody's name typed as though it were a room is the commonest way
+        // anyone will discover profiles exist, so the error teaches the tilde
+        // rather than just reporting a miss (§3.7).
+        const person = await env.getProfile(arg)
+        if (person) {
+          return error(`there’s no room called ${arg}. ${arg} is a person — try: go ~${arg}`)
+        }
+
         const rooms = await env.listRooms()
         const near = nearestSlug(
           arg,
@@ -168,7 +218,8 @@ export const COMMANDS: readonly Command[] = [
     // §3.3 — one verb for all contribution. There is no `reply` verb to learn;
     // it exists only as an alias.
     contexts: ['room', 'commons', 'post'],
-    gloss: (c) => (c === 'post' ? 'reply here' : c === 'commons' ? 'say something' : 'post something here'),
+    gloss: (c) =>
+      c === 'post' ? 'reply here' : c === 'commons' ? 'say something' : 'post something here',
     detail: () =>
       'contributes wherever you’re standing. in a room it starts a new post; inside a post it adds a reply.',
     insert: () => 'say ',
@@ -234,7 +285,7 @@ export const COMMANDS: readonly Command[] = [
     // §3.1 — backs out one level, always, from anywhere.
     contexts: ALL,
     gloss: (c) => (c === 'post' ? 'back to the room' : 'back to the lobby'),
-    detail: () => 'backs you out one level, from anywhere.',
+    detail: () => 'backs you out one level, from anywhere. from somebody’s page, back to the lobby.',
     insert: () => 'leave',
     wrongContext: () => '',
     async run({ context, location, env }) {
@@ -508,6 +559,10 @@ function buildQuery(
   if (by !== undefined) {
     if (by === '') return { problem: 'said by whom? try: find --by=marisol' }
     query.by = by.toLowerCase()
+  } else if (location.person !== undefined) {
+    // Standing on somebody is a filter for the same reason standing in a room
+    // is: `find tomatoes` on ~marisol means the ones she said. --by overrides.
+    query.by = location.person
   }
 
   const since = values.get('since')
@@ -559,6 +614,10 @@ export const CHIP_SETS: Record<Context, readonly string[]> = {
   room: ['say', 'look', 'go', 'who', 'leave'],
   commons: ['say', 'look', 'who', 'leave'],
   post: ['say', 'look', 'who', 'leave'],
+  // No `say`. The palette is the fastest way anyone learns what a place is for,
+  // and a profile is for reading and walking away from (§3.10). `go` leads
+  // because every line on the page is an address in a room.
+  person: ['go', 'look', 'find', 'leave'],
 }
 
 const BY_NAME = new Map<string, Command>()
