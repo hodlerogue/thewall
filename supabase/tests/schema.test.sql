@@ -198,16 +198,10 @@ begin;
     'nobody may choose their own post number'
   );
 
-  select tests.changes_nothing(
+  select tests.raises(
     $sql$update public.posts set body = 'edited by a stranger'
           where author_id = '11111111-1111-4111-8111-111111111111'$sql$,
     'you cannot edit someone else''s post'
-  );
-
-  select tests.raises(
-    $sql$update public.posts set author_id = '11111111-1111-4111-8111-111111111111'
-          where author_id = auth.uid()$sql$,
-    'you cannot hand your own post to someone else'
   );
 commit;
 
@@ -215,6 +209,80 @@ select tests.ok(
   (select count(*) from public.posts where body = 'edited by a stranger') = 0,
   'the stranger''s post survived the attempt untouched'
 );
+
+
+\echo ''
+\echo 'columns, not just rows — what the grants used to allow'
+
+-- These are the assertions whose absence let two invariants be bypassed from
+-- the browser console. Every one targets the user's OWN row: ownership was
+-- never the hole, column scope was.
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+
+  select tests.raises(
+    $sql$update public.profiles set verified_at = now() where id = auth.uid()$sql$,
+    'you cannot verify yourself — the §4.7 gate is not yours to open'
+  );
+
+  select tests.raises(
+    $sql$update public.profiles set name = 'someone_else' where id = auth.uid()$sql$,
+    'you cannot rename yourself at will (§4.6 will add exactly one)'
+  );
+
+  select tests.raises(
+    $sql$update public.posts set created_at = now() + interval '1 year'
+          where author_id = auth.uid()$sql$,
+    'you cannot future-date your own post to outlive commons (§3.10)'
+  );
+
+  select tests.raises(
+    $sql$update public.posts set body = 'quietly rewritten' where author_id = auth.uid()$sql$,
+    'you cannot silently rewrite your own post after it was replied to'
+  );
+
+  select tests.raises(
+    $sql$update public.posts set room_slug = 'poker' where author_id = auth.uid()$sql$,
+    'you cannot move your own post to another room'
+  );
+
+  select tests.raises(
+    $sql$update public.posts set post_no = 999 where author_id = auth.uid()$sql$,
+    'you cannot squat an address the allocator has not reached (§3.4)'
+  );
+commit;
+
+select tests.ok(
+  (select count(*) from public.posts
+    where created_at > now() + interval '1 hour') = 0,
+  'no post anywhere is dated into the future'
+);
+
+
+\echo ''
+\echo 'bodies have to be something'
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+
+  select tests.raises(
+    $sql$select public.create_post('music', '    ')$sql$,
+    'a whitespace-only post is refused rather than eating an address'
+  );
+
+  select tests.raises(
+    $sql$select public.create_post('music', repeat(E'\n', 200))$sql$,
+    'a newline flood is refused — the one griefing primitive this design has'
+  );
+
+  select tests.ok(
+    (public.create_post('music', E'two\nlines is fine')).post_no is not null,
+    'ordinary line breaks still work'
+  );
+commit;
 
 
 \echo ''

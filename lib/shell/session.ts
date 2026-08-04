@@ -42,6 +42,14 @@ export interface AnswerResult {
   lines: Line[]
   /** Set when the prompt's identity changed, so the label can follow. */
   identity?: string | null
+  /** Set when the held sentence could not be sent, so it is not lost. */
+  retry?: string
+}
+
+export interface WriteResult {
+  lines: Line[]
+  /** True when nothing was written, so the caller can hand the words back. */
+  failed: boolean
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -163,14 +171,17 @@ export class Session {
     const held = this.held
     this.held = null
 
-    if (held) {
-      lines.push({ text: 'now — the thing you were trying to say.', tone: 'accent' })
-      lines.push(...(await this.write(held.location, held.body)))
-    } else {
+    if (!held) {
       lines.push({ text: `you’re ${result.name} now.`, tone: 'dim' })
+      return { lines, identity: this.who }
     }
 
-    return { lines, identity: this.who }
+    lines.push({ text: 'now — the thing you were trying to say.', tone: 'accent' })
+    const written = await this.write(held.location, held.body)
+    lines.push(...written.lines)
+
+    // Losing the sentence here would be the worst possible moment for it.
+    return { lines, identity: this.who, retry: written.failed ? held.body : undefined }
   }
 
   /** §4.7 — send another key. Only meaningful once you have an account. */
@@ -183,25 +194,31 @@ export class Session {
   }
 
   /** The write path itself, used by `say` and by the held-message commit. */
-  async write(location: Location, body: string): Promise<Line[]> {
+  async write(location: Location, body: string): Promise<WriteResult> {
     if (!location.room) {
-      return [{ text: 'you have to be in a room to say something.', tone: 'error' }]
+      return {
+        lines: [{ text: 'you have to be in a room to say something.', tone: 'error' }],
+        failed: true,
+      }
     }
 
     try {
       if (location.postId !== undefined) {
         await this.writer.reply(location.room, location.postId, body)
-        return [{ text: 'said.', tone: 'faint' }]
+        return { lines: [{ text: 'said.', tone: 'faint' }], failed: false }
       }
       const postNo = await this.writer.post(location.room, body)
-      return [{ text: `said — it’s post ${postNo}.`, tone: 'faint' }]
+      return { lines: [{ text: `said — it’s post ${postNo}.`, tone: 'faint' }], failed: false }
     } catch (error) {
-      return [
-        {
-          text: error instanceof Error ? error.message : 'that didn’t send. try again?',
-          tone: 'error',
-        },
-      ]
+      return {
+        lines: [
+          {
+            text: error instanceof Error ? error.message : 'that didn’t send. try again?',
+            tone: 'error',
+          },
+        ],
+        failed: true,
+      }
     }
   }
 }

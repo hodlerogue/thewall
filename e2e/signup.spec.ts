@@ -74,6 +74,44 @@ test('cancel returns to reading with nothing sent', async ({ page }) => {
   await expect(scrollback(page)).toContainText('flopped a set')
 })
 
+test('navigating during signup does not answer the question for you', async ({ page }) => {
+  await type(page, 'leave')
+  await type(page, 'go music')
+  await type(page, 'say something worth keeping')
+  await expect(scrollback(page)).toContainText('what do you want to be called?')
+
+  // Back used to run `look` through the same path that treats input as an
+  // answer. `look` is a valid name, so the next thing typed — the email —
+  // created an account called `look`, permanently.
+  await page.goBack()
+
+  // The question is still the question, and the name was not taken for us.
+  await type(page, 'newcomer')
+  await expect(scrollback(page)).toContainText('where should i send your key?')
+
+  await type(page, 'newcomer@example.com')
+  await expect(page.getByTestId('prompt-label')).toContainText('newcomer:')
+  await expect(page.getByTestId('prompt-label')).not.toContainText('look:')
+})
+
+test('a sentence that fails to send is handed back, not lost (§3.9)', async ({ page }) => {
+  await type(page, 'leave')
+  await type(page, 'go music')
+
+  // Fixtures always succeed, so force the failure the network would cause.
+  await page.route('**/api/**', (route) => route.abort())
+
+  const sentence = 'the thing i would hate to retype'
+  await type(page, `say ${sentence}`)
+  await type(page, 'newcomer')
+  await type(page, 'newcomer@example.com')
+
+  // Whatever happened, the words are somewhere they can be sent again.
+  const promptValue = await prompt(page).inputValue()
+  const scrollbackText = await scrollback(page).innerText()
+  expect(promptValue + scrollbackText).toContain(sentence)
+})
+
 test('the signup questions are usable with the keyboard open', async ({ page }) => {
   await type(page, 'say hello from the hallway')
   await expect(scrollback(page)).toContainText('what do you want to be called?')

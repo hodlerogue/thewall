@@ -161,7 +161,9 @@ export const COMMANDS: readonly Command[] = [
         return { lines: session.begin({ location, body: arg }) }
       }
 
-      return { lines: await session.write(location, arg) }
+      const written = await session.write(location, arg)
+      // §3.9 — nothing typed is ever lost, including to a network blip.
+      return { lines: written.lines, retry: written.failed ? arg : undefined }
     },
   },
 
@@ -436,9 +438,14 @@ function renderHits(hits: readonly PostHit[], term?: string): Line[] {
  */
 export const CHIP_SETS: Record<Context, readonly string[]> = {
   lobby: ['look', 'go', 'who', 'what', 'help'],
-  room: ['look', 'go', 'say', 'who', 'leave'],
-  commons: ['look', 'say', 'who', 'leave'],
-  post: ['look', 'say', 'who', 'leave'],
+  // `say` leads wherever it is valid. The palette is a horizontal scroller on
+  // a 380px viewport, and at five chips it overflows — so third place put the
+  // primary action, the one §3.9's whole design hangs on, off the right edge
+  // where nothing indicated it existed. In a room you have already seen the
+  // content; what you need is the verb.
+  room: ['say', 'look', 'go', 'who', 'leave'],
+  commons: ['say', 'look', 'who', 'leave'],
+  post: ['say', 'look', 'who', 'leave'],
 }
 
 const BY_NAME = new Map<string, Command>()

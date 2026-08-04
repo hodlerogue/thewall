@@ -37,11 +37,33 @@ export interface RunResult {
   location?: Location
   /** Present when signup finished, so the prompt can stop saying `guest`. */
   identity?: string | null
+  /**
+   * Text to put back in the prompt because sending it failed.
+   *
+   * §3.9's proudest mechanic is that you never re-type your sentence. That was
+   * honoured for the signup interruption and broken for every network blip:
+   * the input cleared before the write was attempted, so a failure left the
+   * words only in the echo line, behind a long-press.
+   */
+  retry?: string
+}
+
+export interface RunOptions {
+  /**
+   * False when the shell issued this itself rather than the user typing it.
+   *
+   * It matters because mid-signup the prompt treats input as an *answer*, and
+   * a synthetic command routed down that path becomes your name. Browser Back
+   * during signup used to run `look`, which is a perfectly valid name, so the
+   * next thing typed — the email — created an account called `look`, forever.
+   */
+  typed?: boolean
 }
 
 export type Runner = (
   input: string,
   location: Location,
+  options?: RunOptions,
 ) => RunResult | Promise<RunResult>
 
 export function contextOf(location: Location, ephemeralRooms: readonly string[]): Context {

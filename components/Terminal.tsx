@@ -89,8 +89,10 @@ export function Terminal({
         result = await run(text, location)
       } catch (error) {
         // A command that throws used to render nothing at all, which reads as
-        // a dead prompt. Whatever went wrong, say it and stay usable.
+        // a dead prompt. Whatever went wrong, say it and stay usable — and
+        // hand back what they typed, since it plainly did not happen.
         setLines((prev) => [...prev, ...describeError(error)])
+        setInput(text)
         return
       }
 
@@ -109,6 +111,9 @@ export function Terminal({
 
       // §3.9 — the prompt stops saying `guest` the moment there is a name.
       if (result.identity !== undefined) setName(result.identity)
+
+      // Words that did not send go back where they can be sent again.
+      if (result.retry) setInput(result.retry)
     },
     [location, name, run],
   )
@@ -120,7 +125,7 @@ export function Terminal({
       const target = pathToLocation(window.location.pathname)
       setLocation(target)
       try {
-        const result = await run('look', target)
+        const result = await run('look', target, { typed: false })
         setLines((prev) => [...prev, { text: '', tone: 'faint' }, ...result.lines])
       } catch (error) {
         setLines((prev) => [...prev, ...describeError(error)])
@@ -188,6 +193,10 @@ export function Terminal({
             autoCapitalize="none"
             spellCheck={false}
             aria-label="command"
+            /* The database caps a body at 2000. Without this the words are
+               typed, sent, refused, and gone — which is the failure §3.9
+               exists to prevent. `say ` is the longest prefix. */
+            maxLength={2010}
           />
         </form>
       </div>

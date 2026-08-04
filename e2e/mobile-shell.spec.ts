@@ -102,6 +102,33 @@ test('chips are reachable with a thumb and stay under ~6 per context', async ({ 
   }
 })
 
+test('the primary action is on screen without scrolling for it', async ({ page }) => {
+  // This is the assertion whose absence certified a broken palette. The old
+  // test tapped `say` — and `.tap()` scrolls the element into view first, so a
+  // chip sitting off the right edge passed happily. §8 makes mobile the kill
+  // condition; the gate has to check what a thumb can actually reach.
+  const viewport = page.viewportSize()!
+
+  for (const [path, expected] of [
+    ['/commons', 'say'],
+    ['/music', 'say'],
+    ['/lobby', 'look'],
+  ] as const) {
+    await page.goto(path)
+    await expect(page.getByTestId('prompt-label')).toBeVisible()
+
+    const chip = page.locator(`.chip[data-verb="${expected}"]`)
+    await expect(chip, `${expected} chip on ${path}`).toBeVisible()
+
+    const box = (await chip.boundingBox())!
+    expect(box.x, `${expected} starts on screen at ${path}`).toBeGreaterThanOrEqual(0)
+    expect(
+      box.x + box.width,
+      `${expected} ends on screen at ${path}`,
+    ).toBeLessThanOrEqual(viewport.width)
+  }
+})
+
 test('the palette changes with context and depth renders as indentation', async ({ page }) => {
   await prompt(page).fill('leave')
   await prompt(page).press('Enter')

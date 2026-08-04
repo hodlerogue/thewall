@@ -29,11 +29,18 @@ export async function GET(request: Request) {
   }
 
   // They can read the inbox. That is the claim §4.7 needs, and now it is true.
-  await supabase
-    .from('profiles')
-    .update({ verified_at: new Date().toISOString() })
-    .eq('id', data.user.id)
-    .is('verified_at', null)
+  //
+  // Through an RPC rather than a direct update: writing this column from the
+  // user's own session required a table-wide UPDATE grant, and that grant let
+  // anyone set verified_at from the browser console — bypassing the entire
+  // gate. security definer + auth.uid() means a caller can only mark
+  // themselves, and the grant is gone.
+  const { error: markError } = await supabase.rpc('mark_verified')
+  if (markError) {
+    // Not fatal: they are signed in, they simply are not marked yet, and the
+    // next link will mark them. Worth a log line rather than a broken landing.
+    console.error('could not mark verified', markError)
+  }
 
   return NextResponse.redirect(new URL(next, url.origin))
 }

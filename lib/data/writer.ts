@@ -84,6 +84,15 @@ function friendly(message: string): string {
   if (message.includes('check your email')) {
     return 'check your email to keep saying things — click the link and this is yours. no link? type resend.'
   }
+  if (message.includes('posts_body_line_limit') || message.includes('replies_body_line_limit')) {
+    return 'that’s a lot of blank lines. say it in fewer.'
+  }
+  if (message.includes('body_not_blank')) {
+    return 'that’s empty — say something.'
+  }
+  if (message.includes('body_length')) {
+    return 'that’s longer than 2000 characters. say it shorter, or say it in two.'
+  }
   if (message.includes('commons does not keep threads')) {
     return 'commons doesn’t keep threads — say it as its own thing instead.'
   }

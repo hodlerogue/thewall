@@ -44,8 +44,12 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
 
   useEffect(() => {
     const target = pathToLocation(targetPath)
+    // Fetched once. Two identical listRooms() calls could also disagree if a
+    // room's ephemeral flag changed between them.
+    let rooms: Awaited<ReturnType<Env['listRooms']>> | undefined
 
     let cancelled = false
+    let cleanup: (() => void) | undefined
 
     async function load() {
       const useFixtures = process.env.NEXT_PUBLIC_USE_FIXTURES === '1'
@@ -80,22 +84,27 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
         signup = httpSignupApi()
 
         // Someone returning through a magic link is already signed in.
-        const {
-          data: { user },
-        } = await client.auth.getUser()
-        if (user) {
-          userId = user.id
-          const { data } = await client.from('profiles').select('name').eq('id', user.id).maybeSingle()
+        const { data: userData, error: userError } = await client.auth.getUser()
+        // A missing session is the normal state here, not a failure — but a
+        // failed profile read is, and silently demoting a returning user to
+        // `guest` would ask them to sign up for a name they already own.
+        if (!userError && userData.user) {
+          userId = userData.user.id
+          const { data, error } = await client
+            .from('profiles')
+            .select('name')
+            .eq('id', userData.user.id)
+            .maybeSingle()
+          if (error) throw error
           existingName = data?.name ?? null
         }
 
-        const ephemeralSlugs = (await env.listRooms())
-          .filter((room) => room.ephemeral)
-          .map((room) => room.slug)
+        rooms = await env.listRooms()
+        const ephemeralSlugs = rooms.filter((room) => room.ephemeral).map((room) => room.slug)
 
         // Signing up gives you an id partway through the session, and without
         // this the live feed would start echoing your own posts back at you.
-        client.auth.onAuthStateChange((_event, session) => {
+        const { data: authListener } = client.auth.onAuthStateChange((_event, session) => {
           userId = session?.user?.id ?? null
         })
 
@@ -103,45 +112,53 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
         live = createLive(client, ephemeralSlugs, () => userId)
 
         await presence.enter(target.room, existingName)
+
+        cleanup = () => {
+          authListener.subscription.unsubscribe()
+          void presence.leave()
+        }
       }
 
       const session = new Session(signup, writer, existingName)
 
-      try {
-        const rooms = await env.listRooms()
-        const ephemeral = rooms.filter((room) => room.ephemeral).map((room) => room.slug)
+      rooms ??= await env.listRooms()
+      const ephemeral = rooms.filter((room) => room.ephemeral).map((room) => room.slug)
 
-        // §3.4 — the URL is a location, so arriving at /music/12 puts you
-        // inside post 12 exactly as `go 12` would have.
-        const { lines, location } = await arriveAt(env, target, rooms)
+      // §3.4 — the URL is a location, so arriving at /music/12 puts you
+      // inside post 12 exactly as `go 12` would have.
+      const { lines, location } = await arriveAt(env, target, rooms)
 
-        if (cancelled) return
-        setBoot({
-          run: createRunner(env, ephemeral, session),
-          chipsFor: createChipsFor(ephemeral),
-          location,
-          name: existingName,
-          subscribe: live?.subscribe,
-          lines: [
-            { text: 'thewall.social', tone: 'accent' },
-            ...(useFixtures
-              ? [{ text: 'demo — nothing you type here is saved.', tone: 'faint' as const }]
-              : []),
-            { text: 'type look to see what’s around you, or tap a command below.', tone: 'faint' },
-            { text: '' },
-            ...lines,
-          ],
-        })
-      } catch (error) {
-        // Supabase throws plain objects, not Errors. describeError is what
-        // keeps this from rendering as "[object Object]".
-        if (!cancelled) setFailure(describeError(error))
-      }
+      if (cancelled) return
+      setBoot({
+        run: createRunner(env, ephemeral, session),
+        chipsFor: createChipsFor(ephemeral),
+        location,
+        name: existingName,
+        subscribe: live?.subscribe,
+        lines: [
+          { text: 'thewall.social', tone: 'accent' },
+          ...(useFixtures
+            ? [{ text: 'demo — nothing you type here is saved.', tone: 'faint' as const }]
+            : []),
+          { text: 'type look to see what’s around you, or tap a command below.', tone: 'faint' },
+          { text: '' },
+          ...lines,
+        ],
+      })
     }
 
-    void load()
+    // Every await above is inside load(), and this catch is what makes that
+    // matter. Previously four of them ran before a try block and the promise
+    // was floated with `void`, so the likeliest failure of all — an unapplied
+    // schema, the one describeError has a purpose-built message for — left the
+    // boot spinner on screen forever with no prompt and no way to retry.
+    load().catch((error) => {
+      if (!cancelled) setFailure(describeError(error))
+    })
+
     return () => {
       cancelled = true
+      cleanup?.()
     }
   }, [targetPath])
 

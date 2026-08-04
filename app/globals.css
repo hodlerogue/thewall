@@ -122,7 +122,13 @@ body {
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
-  padding: 8px 12px;
+  /* The extra right padding lets the final chip scroll clear of the fade, so
+     nothing is permanently dimmed once you reach the end. */
+  padding: 8px 32px 8px 12px;
+  /* Without this there is no signal at all that the row scrolls: the bar is
+     hidden, and a chip cut off at the edge reads as the end of the list. */
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
 }
 .palette::-webkit-scrollbar {
   display: none;

@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { suggestAlternates, validateName } from '@/lib/auth/names'
+import { clientHash } from '@/lib/auth/clientHash'
 import { sendMagicLink } from '@/lib/auth/mail'
 import { createAdminClient, createRouteClient } from '@/lib/supabase/server'
 
@@ -138,16 +138,6 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ name: validated.name, note: delivery.note })
-}
-
-/**
- * Hashed, not stored: the rate limit needs to tell callers apart, not identify
- * them, and a plain address on disk is a liability with no upside.
- */
-function clientHash(request: Request): string {
-  const forwarded = request.headers.get('x-forwarded-for') ?? ''
-  const address = forwarded.split(',')[0]?.trim() || 'unknown'
-  return createHash('sha256').update(address).digest('hex')
 }
 
 function siteUrl(): string {
