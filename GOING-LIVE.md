@@ -177,6 +177,37 @@ exactly why the walk exists.
 
 ---
 
+## When something is wrong
+
+Type **`doctor`** at the prompt. It is hidden — it is not in `help` and nobody
+arriving needs it — and it reports the things that otherwise cannot be told
+apart from each other:
+
+```
+  build            7bf4c9a on main          ← is the fix even deployed?
+  here             https://thewall.social
+  site url         https://thewall.social   ← a mismatch breaks the magic link
+  session          signed in
+  name             jameson
+! verified         no — the key was never recorded
+  ...verify_to_continue     applied
+! ...mail                   NOT APPLIED
+```
+
+The build line is the one that matters most. A code bug, an unapplied
+migration, and "that is not deployed yet" all present as the same sentence on
+screen, and without this there is nothing on the page that separates them.
+
+`site url` deserves its own look: `NEXT_PUBLIC_SITE_URL` is where the magic
+link comes back to, and the session cookie belongs to whichever host the
+callback ran on. If it says `thewallsocial.netlify.app` while you are reading
+`thewall.social`, following a key signs you in on the other origin and leaves
+you a guest on this one.
+
+For the database side, `./scripts/db-check.sh` is the authoritative list.
+
+---
+
 ## 8. Know how to turn it off
 
 Before anyone else is on it, run these once so they are not new to you at 2am:

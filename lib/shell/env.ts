@@ -26,6 +26,13 @@ export interface MailItem {
   createdAt: Date
 }
 
+/** One thing `doctor` checked, and what it found (§7 — the operator's day one). */
+export interface Check {
+  label: string
+  ok: boolean
+  note?: string
+}
+
 export interface Env {
   listRooms(): Promise<RoomSummary[]>
   getRoom(slug: string): Promise<Room | undefined>
@@ -42,6 +49,15 @@ export interface Env {
    * real addresses, because a profile is a way back into rooms and not a room.
    */
   getProfile(name: string): Promise<Profile | undefined>
+  /**
+   * What is true about this deployment right now.
+   *
+   * Exists because two separate failures — an unapplied migration and a magic
+   * link that never worked — presented as the same sentence on screen, and
+   * neither could be told apart from "the fix is not deployed yet" without
+   * reading server logs nobody has open.
+   */
+  diagnose(): Promise<Check[]>
 }
 
 /** In-memory Env over the §5 seed content, for tests and the mobile gate. */
@@ -113,6 +129,10 @@ export function fixtureEnv(rooms: Room[] = ROOMS): Env {
 
       hits.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       return hits.slice(0, query.limit)
+    },
+
+    async diagnose() {
+      return [{ label: 'data', ok: true, note: 'fixtures — nothing here is real' }]
     },
 
     async getProfile(name) {

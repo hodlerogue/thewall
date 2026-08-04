@@ -101,26 +101,22 @@ export async function POST(request: Request) {
     )
   }
 
-  // Their key, for getting back in later. Two links are minted because the
-  // second one is consumed immediately below to start this session, and a
-  // consumed link would be useless in their inbox.
-  const { data: keyLink } = await admin.auth.admin.generateLink({
-    type: 'magiclink',
-    email: body.email,
-  })
-
-  // §4.7, as revised: this link is what turns a name into an account someone
-  // can come back to. Until it is followed they get one contribution — the
-  // held sentence below — and then they are asked.
-  //
-  // Built from `hashed_token` rather than sent as `action_link`. See
-  // lib/auth/links.ts: the action link bounces through Supabase and comes back
-  // with the session in a URL fragment, which the server can never read, so
-  // the emailed key did nothing at all for anybody who clicked it.
-  const delivery = keyLink?.properties?.hashed_token
-    ? await sendMagicLink(body.email, verifyUrl(keyLink.properties.hashed_token))
-    : { sent: false, note: 'couldn’t make you a key just now. type resend to try again.' }
-
+  /*
+   * The session first, and the emailed key second. That order is the whole
+   * bug fix, and it is not cosmetic.
+   *
+   * GoTrue keeps ONE token per user per type — a single column on auth.users —
+   * so minting a second magiclink for the same person *overwrites* the first.
+   * This used to mint the key, email it, and then mint a second one to consume
+   * for the session, which invalidated the key in the same breath: the link in
+   * the inbox was dead before the message was sent. Everybody who ever clicked
+   * one got "already been used, or it expired", including on a brand new
+   * account, and the comment sitting here claimed the two were independent.
+   *
+   * Minting after the first is spent is safe: consuming a token does not stop
+   * a later one being issued, and a session is a refresh token rather than
+   * anything in those columns, so issuing the key cannot log them back out.
+   */
   const { data: sessionLink, error: linkError } = await admin.auth.admin.generateLink({
     type: 'magiclink',
     email: body.email,
@@ -132,15 +128,36 @@ export async function POST(request: Request) {
 
   // Consuming a link server-side is what puts the session in the cookie, so the
   // held sentence can post right now rather than after a trip to an inbox.
+  //
+  // `magiclink`, matching how it was minted. It said `email` before, which is a
+  // different token type and fails in a way that reads as an expired link.
   const supabase = await createRouteClient()
   const { error: verifyError } = await supabase.auth.verifyOtp({
-    type: 'email',
+    type: 'magiclink',
     token_hash: sessionLink.properties.hashed_token,
   })
 
   if (verifyError) {
     return NextResponse.json({ error: 'could not sign you in' }, { status: 500 })
   }
+
+  // Now, and only now, the key that goes in the inbox — the current token for
+  // this account, and the one that will still be current when they click it.
+  //
+  // §4.7, as revised: this is what turns a name into an account somebody can
+  // come back to. Until it is followed they get one contribution — the held
+  // sentence — and then they are asked.
+  const { data: keyLink } = await admin.auth.admin.generateLink({
+    type: 'magiclink',
+    email: body.email,
+  })
+
+  // Built from `hashed_token` rather than sent as `action_link`: see
+  // lib/auth/links.ts. The action link bounces through Supabase and comes back
+  // with the session in a URL fragment, which a server can never read.
+  const delivery = keyLink?.properties?.hashed_token
+    ? await sendMagicLink(body.email, verifyUrl(keyLink.properties.hashed_token))
+    : { sent: false, note: 'couldn’t make you a key just now. type resend to try again.' }
 
   return NextResponse.json({ name: validated.name, note: delivery.note })
 }

@@ -82,8 +82,8 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 233 unit tests: parser, aliases, errors, signup, search, themes, names, policy
-npm run test:e2e   # 77 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm test           # 242 unit tests: parser, aliases, errors, signup, search, themes, names, policy
+npm run test:e2e   # 82 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
 npm run test:db    # 106 assertions against the real migrations, on a throwaway database
 ```
 
@@ -143,6 +143,16 @@ nobody is coming back for. So the held sentence still posts
 instantly, and everything after it wants the link followed first — the friction
 lands after the payoff, which is also what makes the link necessary rather than
 decorative. `resend` sends another, because links expire.
+
+**Signup mints its two links in a specific order, and the order is load-bearing.**
+GoTrue keeps one token per user per type, so minting a second magic link for the
+same person overwrites the first. Signup needs two — one consumed server-side to
+start the session so the held sentence can post now, one emailed — and doing
+them the other way round invalidated the key before the message was sent. Every
+account ever created got a dead link, and the only symptom was "that key had
+already been used, or it expired" on a link a minute old.
+`app/api/signup/order.test.ts` reads the route and checks the order, because no
+suite here talks to GoTrue and nothing else would notice it come back.
 
 The link in that email is built by hand from `hashed_token`, **not** from
 `generateLink()`'s `action_link`. The action link points at Supabase's own

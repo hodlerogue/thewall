@@ -23,11 +23,30 @@ body {
     'Liberation Mono', monospace;
   font-size: 15px;
   line-height: 1.5;
-  /* The terminal owns scrolling. The page itself never scrolls — that is what
-     lets the prompt stay pinned instead of drifting under the keyboard. */
   overflow: hidden;
   overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
+}
+
+/*
+ * The page is nailed down, not merely told not to scroll.
+ *
+ * `overflow: hidden` alone does not stop iOS scrolling the layout viewport to
+ * reveal a focused input, and it does not stop Safari collapsing its toolbars
+ * mid-gesture. Both change visualViewport's height and offset, the shell is
+ * sized and positioned from those, and the result is a composer that slides
+ * over the scrollback and text that disappears behind the ground colour while
+ * you are scrolling.
+ *
+ * Every one of those symptoms is compensation for a scroll that should not be
+ * possible. `position: fixed` removes the scroll instead of correcting for it,
+ * which is why the transform that used to live on `.app` is gone: with nothing
+ * able to scroll the page, offsetTop stays where it belongs and there is
+ * nothing to undo.
+ */
+body {
+  position: fixed;
+  inset: 0;
 }
 
 /*
@@ -36,11 +55,16 @@ body {
  * without visualViewport; neither is reliable enough alone on mobile.
  */
 .app {
+  /* Positioned rather than transformed. A transform makes the element a
+     stacking context and a containing block and hands it to the compositor,
+     which is a lot of side effects for what is only ever an offset — and the
+     offset is now almost always zero, because the body above cannot scroll. */
+  position: absolute;
+  top: var(--app-offset, 0px);
+  left: 0;
+  right: 0;
   height: 100dvh;
   height: var(--app-height, 100dvh);
-  /* iOS scrolls the layout viewport to reveal the focused input; this puts the
-     shell back where it belongs. */
-  transform: translateY(var(--app-offset, 0px));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -73,7 +97,9 @@ body {
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 12px 12px 4px;
+  /* The bottom padding is a gap, not decoration: without it the last line sits
+     flush against the composer's border and reads as text cut in half by it. */
+  padding: 12px 12px 10px;
 }
 
 .line {

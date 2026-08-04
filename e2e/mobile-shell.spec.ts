@@ -215,3 +215,141 @@ test('the palette changes with context and depth renders as indentation', async 
   )
   expect(overflow).toBeLessThanOrEqual(0)
 })
+
+test('the composer never sits on top of the conversation', async ({ page }) => {
+  /*
+   * The shape of the bug this exists for: tap to type, and the prompt ends up
+   * over the text rather than under it. It happens when the shell is sized
+   * from one viewport and laid out against another, so it only appears at the
+   * heights a keyboard produces — which is every height except the one the
+   * rest of this suite runs at.
+   */
+  const vv = page.viewportSize()!
+
+  for (const height of [vv.height, 620, 540, 460, 380, 300]) {
+    await page.evaluate((h) => {
+      const view = window.visualViewport!
+      Object.defineProperty(view, 'height', { value: h, configurable: true })
+      view.dispatchEvent(new Event('resize'))
+    }, height)
+
+    const scrollback = (await page.getByTestId('scrollback').boundingBox())!
+    const label = (await page.getByTestId('prompt-label').boundingBox())!
+    const input = (await prompt(page).boundingBox())!
+
+    // Nothing in the composer may start before the scrollback has finished.
+    // A single pixel of overlap is text with a prompt drawn through it.
+    expect(label.y, `label overlaps the scrollback at ${height}px`).toBeGreaterThanOrEqual(
+      scrollback.y + scrollback.height - 1,
+    )
+    expect(input.y, `input overlaps the scrollback at ${height}px`).toBeGreaterThanOrEqual(
+      scrollback.y + scrollback.height - 1,
+    )
+
+    // And the whole composer has to be inside what you can actually see.
+    expect(input.y + input.height, `prompt is below the fold at ${height}px`).toBeLessThanOrEqual(
+      height + 1,
+    )
+  }
+})
+
+test('the shell fills the viewport again after the keyboard closes', async ({ page }) => {
+  // A stale height leaves a band of bare background under the composer where
+  // the conversation should be — which reads as the background eating the text.
+  const full = page.viewportSize()!.height
+
+  const appHeight = async () =>
+    page.locator('.app').evaluate((el) => Math.round(el.getBoundingClientRect().height))
+
+  const setViewport = async (h: number) =>
+    page.evaluate((height) => {
+      const view = window.visualViewport!
+      Object.defineProperty(view, 'height', { value: height, configurable: true })
+      view.dispatchEvent(new Event('resize'))
+    }, h)
+
+  await setViewport(380)
+  expect(await appHeight()).toBe(380)
+
+  await setViewport(full)
+  expect(await appHeight(), 'the shell went back to full height').toBe(full)
+
+  // Nothing below it: the ground under the composer is the composer's own.
+  const composerBottom = await page
+    .locator('.composer')
+    .evaluate((el) => Math.round(el.getBoundingClientRect().bottom))
+  expect(composerBottom).toBe(full)
+})
+
+test('the page itself cannot scroll, which is what stops the shell sliding', async ({ page }) => {
+  // Every symptom of a mobile browser scrolling the layout viewport — the
+  // composer drifting over the text, content vanishing behind the ground as
+  // the toolbars collapse — starts here.
+  const locked = await page.evaluate(() => {
+    const style = getComputedStyle(document.body)
+    return { position: style.position, overflow: style.overflow }
+  })
+  expect(locked.position).toBe('fixed')
+  expect(locked.overflow).toBe('hidden')
+
+  await page.mouse.wheel(0, 600)
+  expect(await page.evaluate(() => window.scrollY)).toBe(0)
+
+  // And the shell is positioned rather than transformed: a transform makes it
+  // a stacking context and a compositing layer for the sake of an offset that
+  // is now always zero.
+  const app = await page.locator('.app').evaluate((el) => getComputedStyle(el).transform)
+  expect(app === 'none' || app === 'matrix(1, 0, 0, 1, 0, 0)').toBe(true)
+})
+
+test('the keyboard opening does not push what you were reading under the prompt', async ({
+  page,
+}) => {
+  /*
+   * The exact report this exists for: tap to type, and the prompt appears to
+   * be drawn on top of the text. Nothing is drawn wrongly — the shell shrinks
+   * to make room for the keyboard and the scrollback keeps its old scroll
+   * position, so the line you were reading ends up behind the composer, cut in
+   * half by its top edge.
+   */
+  await prompt(page).fill('look')
+  await prompt(page).press('Enter')
+
+  const atBottom = () =>
+    page
+      .getByTestId('scrollback')
+      .evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop)
+
+  expect(await atBottom(), 'pinned to the bottom before the keyboard').toBeLessThan(2)
+
+  await page.evaluate(() => {
+    const view = window.visualViewport!
+    Object.defineProperty(view, 'height', { value: 400, configurable: true })
+    view.dispatchEvent(new Event('resize'))
+  })
+  // The re-scroll lands on the next frame, after the new height applies.
+  await page.waitForTimeout(120)
+
+  expect(await atBottom(), 'still pinned once the keyboard is up').toBeLessThan(2)
+})
+
+test('having scrolled back, the keyboard does not yank you to the bottom', async ({ page }) => {
+  // The other half of the same rule. Following the bottom is for people who
+  // were already there; someone reading upwards has to keep their place.
+  await prompt(page).fill('look')
+  await prompt(page).press('Enter')
+  await page.getByTestId('scrollback').evaluate((el) => {
+    el.scrollTop = 0
+    el.dispatchEvent(new Event('scroll'))
+  })
+
+  await page.evaluate(() => {
+    const view = window.visualViewport!
+    Object.defineProperty(view, 'height', { value: 400, configurable: true })
+    view.dispatchEvent(new Event('resize'))
+  })
+  await page.waitForTimeout(120)
+
+  const top = await page.getByTestId('scrollback').evaluate((el) => el.scrollTop)
+  expect(top, 'left where they were reading').toBeLessThan(40)
+})
