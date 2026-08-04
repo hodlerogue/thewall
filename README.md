@@ -83,7 +83,7 @@ looking at.
 
 ```bash
 npm test           # 242 unit tests: parser, aliases, errors, signup, search, themes, names, policy
-npm run test:e2e   # 77 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm run test:e2e   # 82 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
 npm run test:db    # 106 assertions against the real migrations, on a throwaway database
 ```
 

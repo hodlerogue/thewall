@@ -133,18 +133,69 @@ export function Terminal({
     const vv = window.visualViewport
     if (!vv) return
 
+    const root = document.documentElement
+    let lastHeight = -1
+    let lastOffset = -1
+
     const sync = () => {
-      const root = document.documentElement
-      root.style.setProperty('--app-height', `${vv.height}px`)
-      root.style.setProperty('--app-offset', `${vv.offsetTop}px`)
+      /*
+       * Rounded, and only written when it actually changed.
+       *
+       * These fire on every frame of a scroll, and both values arrive as
+       * fractions that wobble by a fraction of a pixel as the gesture moves.
+       * Writing a custom property forces a style recalculation of everything
+       * under it, so the old version relaid out the whole shell dozens of
+       * times a second while somebody was reading — which is how the text
+       * ends up appearing to jump around and slide under things.
+       */
+      const height = Math.round(vv.height)
+      const offset = Math.round(vv.offsetTop)
+      if (height === lastHeight && offset === lastOffset) return
+
+      lastHeight = height
+      lastOffset = offset
+      root.style.setProperty('--app-height', `${height}px`)
+      root.style.setProperty('--app-offset', `${offset}px`)
+
+      /*
+       * Follow the bottom through the resize, which is the actual bug behind
+       * "I tapped to type and the prompt is on top of the text".
+       *
+       * Nothing was wrong with the layout: the shell shrank to make room for
+       * the keyboard and the scrollback kept the same scrollTop, so the line
+       * somebody had been reading was now underneath the composer, bisected by
+       * its top edge. It looks exactly like an element drawn in the wrong
+       * place, and it is a scroll position that nobody updated.
+       *
+       * On the next frame, because the height above has to be applied before
+       * scrollHeight means anything.
+       */
+      requestAnimationFrame(() => {
+        const el = scrollbackRef.current
+        if (el && pinnedToBottom.current) el.scrollTop = el.scrollHeight
+      })
     }
 
     sync()
     vv.addEventListener('resize', sync)
     vv.addEventListener('scroll', sync)
+
+    /*
+     * The keyboard closing does not always announce itself. iOS in particular
+     * can dismiss it without a resize on the visual viewport, which leaves the
+     * shell stuck at keyboard height — a band of bare background under the
+     * composer where the conversation should be. Blur is the other signal that
+     * it went away, and re-measuring on the next frame costs nothing.
+     */
+    const remeasure = () => requestAnimationFrame(sync)
+    window.addEventListener('focusout', remeasure)
+    window.addEventListener('orientationchange', remeasure)
+
     return () => {
       vv.removeEventListener('resize', sync)
       vv.removeEventListener('scroll', sync)
+      window.removeEventListener('focusout', remeasure)
+      window.removeEventListener('orientationchange', remeasure)
     }
   }, [])
 

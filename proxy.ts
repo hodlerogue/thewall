@@ -4,6 +4,9 @@ import { NextResponse, type NextRequest } from 'next/server'
 /**
  * Keeps the session alive across requests.
  *
+ * `proxy.ts`, not `middleware.ts`: Next 16 renamed the convention and warns on
+ * every build about the old name.
+ *
  * `@supabase/ssr` stores the session in cookies and refreshes the access token
  * by writing new ones. Without something doing that on every request, the token
  * expires after an hour and the *server* stops recognising anybody: the shell
@@ -19,7 +22,7 @@ import { NextResponse, type NextRequest } from 'next/server'
  * and, when it has been refreshed, the cookie writes below carry the new one
  * back on the response.
  */
-export async function middleware(request: NextRequest) {
+export default async function proxy(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
