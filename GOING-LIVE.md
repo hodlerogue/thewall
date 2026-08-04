@@ -61,7 +61,7 @@ Adding one changes nothing until you redeploy. Set them first, then deploy.
 If `NEXT_PUBLIC_USE_FIXTURES` is set anywhere, remove it — it serves the demo
 content and writes nothing.
 
-**Worked when:** the site loads and shows the five rooms rather than
+**Worked when:** the site loads and shows the six rooms rather than
 "thewall needs a supabase project."
 
 ---

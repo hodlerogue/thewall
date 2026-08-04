@@ -66,7 +66,8 @@ describe('§4.8 — one working pipe', () => {
     const nobody = text((await run('find --by=nobody | count', LOBBY)).lines)
     expect(nobody).toBe('0 posts')
 
-    // jameson has the music post and the poker one.
+    // jameson has the music post and the poker one. His builders line is a
+    // reply, and replies are not posts — which is the distinction this counts.
     const some = text((await run('find --by=jameson | count', LOBBY)).lines)
     expect(some).toBe('2 posts')
   })

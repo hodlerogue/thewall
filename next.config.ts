@@ -13,6 +13,18 @@ const nextConfig: NextConfig = {
   ],
   // The dev badge sits exactly where the prompt does on a 380px viewport.
   devIndicators: false,
+
+  // The share cards read a font off disk at render time, and the per-room and
+  // per-post ones are dynamic — so the file has to be inside the serverless
+  // bundle. Next traces `readFile` calls it can follow statically; a path built
+  // from `process.cwd()` is not one of them, and the failure only shows up in
+  // production, as a card that 500s.
+  outputFileTracingIncludes: {
+    '/opengraph-image': ['./assets/**'],
+    '/[room]/opengraph-image': ['./assets/**'],
+    '/[room]/[postId]/opengraph-image': ['./assets/**'],
+    '/apple-icon': ['./assets/**'],
+  },
 }
 
 export default nextConfig
