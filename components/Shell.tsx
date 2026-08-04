@@ -234,7 +234,7 @@ function takeKeyOutcome(): Line[] {
 
   const params = new URLSearchParams(window.location.search)
   const outcome = params.get('key')
-  if (outcome !== 'ok' && outcome !== 'failed') return []
+  if (outcome !== 'ok' && outcome !== 'failed' && outcome !== 'expired') return []
 
   params.delete('key')
   const query = params.toString()
@@ -244,6 +244,14 @@ function takeKeyOutcome(): Line[] {
     return [
       { text: 'your key worked — you’re verified.', tone: 'accent' },
       { text: 'say what you like, as often as you like.', tone: 'faint' },
+      { text: '' },
+    ]
+  }
+
+  if (outcome === 'expired') {
+    return [
+      { text: 'that key had already been used, or it expired.', tone: 'error' },
+      { text: 'type resend and i’ll send you another one.', tone: 'faint' },
       { text: '' },
     ]
   }

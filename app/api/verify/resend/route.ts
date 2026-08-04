@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { sendMagicLink } from '@/lib/auth/mail'
+import { verifyUrl } from '@/lib/auth/links'
 import { clientHash } from '@/lib/auth/clientHash'
 import { createAdminClient, createRouteClient } from '@/lib/supabase/server'
 
@@ -55,13 +56,13 @@ export async function POST(request: Request) {
   const { data: link, error } = await admin.auth.admin.generateLink({
     type: 'magiclink',
     email: user.email,
-    options: { redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}/auth/callback` },
   })
 
-  if (error || !link?.properties?.action_link) {
+  if (error || !link?.properties?.hashed_token) {
     return NextResponse.json({ error: 'couldn’t make a new key just now.' }, { status: 500 })
   }
 
-  const delivery = await sendMagicLink(user.email, link.properties.action_link)
+  // Our own URL, not `action_link` — see lib/auth/links.ts.
+  const delivery = await sendMagicLink(user.email, verifyUrl(link.properties.hashed_token))
   return NextResponse.json({ note: delivery.note })
 }

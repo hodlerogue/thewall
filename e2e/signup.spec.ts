@@ -190,3 +190,15 @@ test('an ordinary arrival says nothing about keys', async ({ page }) => {
   await expect(scrollback(page)).not.toContainText('your key')
   await expect(scrollback(page)).not.toContainText('verified')
 })
+
+test('a spent or missing key says so rather than doing nothing', async ({ page }) => {
+  // /auth/callback with no token is what *every* key used to be: Supabase's
+  // action_link bounces back with the session in a fragment, which a server
+  // route cannot read, so the route saw nothing and redirected in silence.
+  await page.goto('/auth/callback')
+  await expect(page.getByTestId('prompt-label')).toBeVisible()
+
+  await expect(scrollback(page)).toContainText('already been used, or it expired')
+  await expect(scrollback(page)).toContainText('type resend')
+  expect(page.url()).not.toContain('key=')
+})
