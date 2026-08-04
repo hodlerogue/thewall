@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { truncateForCard } from '@/lib/brand/og'
+import { ON_THE_CARD } from '@/lib/brand/ogRooms'
+import { ROOMS } from '@/lib/shell/fixtures'
 
 /**
  * The share card is a fixed rectangle, so a line that does not fit is not
@@ -45,5 +47,38 @@ describe('a line on the card', () => {
 
   it('never leaves a trailing space before the ellipsis', () => {
     expect(truncateForCard(`${'a'.repeat(58)} tail`, 0)).not.toContain(' …')
+  })
+})
+
+describe('the rooms on the front-door card', () => {
+  it('all exist', () => {
+    // The failure this prevents: a card advertising a door that opens onto
+    // nothing. Somebody clicks a room name they read on a preview, and the
+    // shell tells them there is no such room — which is worse than whichever
+    // room you would rather it had not shown.
+    for (const slug of ON_THE_CARD) {
+      expect(
+        ROOMS.some((room) => room.slug === slug),
+        `${slug} is on the share card`,
+      ).toBe(true)
+    }
+  })
+
+  it('are three, which is what fits above the footer', () => {
+    expect(ON_THE_CARD).toHaveLength(3)
+  })
+
+  it('lead with commons, since that is where the front door puts you (§3.10)', () => {
+    expect(ON_THE_CARD[0]).toBe('commons')
+  })
+
+  it('each have something recent to show (§3.11, §5)', () => {
+    // "An empty room is worse than no room" is a launch rule; on the card it
+    // is the whole argument for clicking.
+    for (const slug of ON_THE_CARD) {
+      const room = ROOMS.find((r) => r.slug === slug)!
+      expect(room.posts.length, `${slug} has posts`).toBeGreaterThan(0)
+      expect(room.posts[0].body.length, `${slug} has something to quote`).toBeGreaterThan(20)
+    }
   })
 })

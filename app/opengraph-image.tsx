@@ -1,4 +1,5 @@
 import { OG_CONTENT_TYPE, OG_SIZE, ogCard } from '@/lib/brand/og'
+import { ON_THE_CARD } from '@/lib/brand/ogRooms'
 import { ROOMS } from '@/lib/shell/fixtures'
 import { renderRoomList } from '@/lib/shell/render'
 
@@ -22,7 +23,7 @@ export const size = OG_SIZE
 export const contentType = OG_CONTENT_TYPE
 
 export default async function Image() {
-  const shown = ROOMS.slice(0, 3)
+  const shown = ON_THE_CARD.map((slug) => ROOMS.find((room) => room.slug === slug)!)
 
   return ogCard({
     path: '',
