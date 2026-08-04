@@ -14,14 +14,27 @@ account survives to a second device, §4.6's rename, the manual kill switch §6
 leaves in scope, §4.5's taste call handed to whoever is looking, and profiles —
 with walls behind them, which §3.10 argued against and which are built here as
 rooms with owners that never appear in the lobby. Terms and a privacy policy are
-here too — the doc never
-mentions them, and a site that asks for an email address needs both.
-Everything still out is listed at the bottom, with the section that argues for
-leaving it out.
+here too — the doc never mentions them, and a site that asks for an email
+address needs both. Everything still out is listed at the bottom, with the
+section that argues for leaving it out.
 
 Where the code makes a decision the document argued about, the comment cites the
 section. That's deliberate: the reasoning is worth more than the code, and the
 code is short.
+
+Four documents, and each answers a different question:
+
+| | |
+|---|---|
+| [`thewall-sh-decision-doc.md`](./thewall-sh-decision-doc.md) | what was argued |
+| this file | what it is, and why each decision is what it is |
+| [`CHANGING-IT.md`](./CHANGING-IT.md) | where things live, and what to do to change one |
+| [`GOING-LIVE.md`](./GOING-LIVE.md) | getting it in front of people, and turning it off |
+
+There is no user manual, on purpose. `help` lists what you can type from where
+you are standing and `what <command>` explains any of it — §3.6's claim is that
+the interface teaches itself, so anything unclear is a bug in a `gloss`, not a
+page somebody has to find.
 
 ## Running it
 
@@ -61,7 +74,7 @@ working schema and no rooms:
 | File | What it makes |
 |---|---|
 | `supabase/migrations/*.sql` | the tables, policies and functions — **no rows** |
-| `supabase/seed.sql` | the six rooms and everything in them (§5) |
+| `supabase/seed.sql` | the six rooms, one wall, and everything in them (§5) |
 
 ```bash
 DATABASE_URL='postgresql://postgres:...@db.<ref>.supabase.co:5432/postgres' \
@@ -84,9 +97,9 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 243 unit tests: parser, aliases, errors, signup, search, themes, names, policy
-npm run test:e2e   # 86 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 106 assertions against the real migrations, on a throwaway database
+npm test           # 252 unit tests: parser, aliases, errors, signup, search, themes, names, walls
+npm run test:e2e   # 90 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm run test:db    # 124 assertions against the real migrations, on a throwaway database
 ```
 
 To see what is actually in a deployed project — read-only, and it tells apart
@@ -174,7 +187,8 @@ decorative: the only sessions anybody had came from signup consuming a second
 link server-side, which meant following the key on a different device — an
 email client, usually — landed you as a guest.
 
-`middleware.ts` is the other half of that. `@supabase/ssr` refreshes the access
+`proxy.ts` is the other half of that — Next 16's name for what was
+`middleware.ts`. `@supabase/ssr` refreshes the access
 token by writing cookies, and without something doing it on every request the
 token expires after an hour and the server stops recognising anybody. It fails
 silently, an hour later, to somebody who is not looking at the code.

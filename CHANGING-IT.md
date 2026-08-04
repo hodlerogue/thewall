@@ -1,0 +1,257 @@
+# Changing it
+
+Four documents, and this is the third of them:
+
+| | |
+|---|---|
+| [`thewall-sh-decision-doc.md`](./thewall-sh-decision-doc.md) | what was argued. Never edited, including the parts decided differently since |
+| [`README.md`](./README.md) | what it is, and why each decision is what it is |
+| **this file** | where things live, and what to do to change one |
+| [`GOING-LIVE.md`](./GOING-LIVE.md) | getting it in front of people, and turning it off |
+
+The README answers "why is it like this". This answers "I want to add a verb —
+what do I edit, and what will bite me". It is a checklist, not an argument.
+
+There is deliberately **no user manual**. `help` lists what you can type from
+where you are standing, `what <command>` explains any of it in plain English,
+and the palette glosses every verb. §3.6's whole claim is that the interface
+teaches itself, so a page explaining how to use the site would be a concession
+that it does not — and would rot, because it would be the one description of the
+commands not generated from the registry. If something is unclear to a person
+using it, the fix goes in a `gloss` or a `detail`, not into a document.
+
+---
+
+## The shape, in one paragraph
+
+A **command registry** turns typed text into **lines**. Commands read and write
+through one interface, **`Env`**, which has two implementations — memory and
+Supabase — and never learns which one it has. Where you are standing is a single
+value, **`Location`**, which drives the prompt, the palette, the valid command
+set and the URL at once. Identity lives in **`Session`**, not in `Env`, because
+who you are is a property of the conversation. Everything a person could type
+their way into is enforced in the **database**, not in the client.
+
+```
+Terminal.tsx ──typed text──> run.ts ──parse──> registry.ts ──> Env ──> Supabase
+     ^                                              |                    or
+     └──────────────── Line[] ─────────────────────┘                 fixtures
+```
+
+## The map
+
+**The shell** — everything that is true whether or not there is a database.
+
+| File | What it owns |
+|---|---|
+| `lib/shell/types.ts` | `Location`, `Context`, `Line`, and the URL ↔ location functions |
+| `lib/shell/model.ts` | `Room`, `Post`, `Reply`, `Profile` — the domain shapes |
+| `lib/shell/render.ts` | shapes → `Line[]`. All §3.2 indentation lives here |
+| `lib/shell/env.ts` | the `Env` interface, and the in-memory implementation |
+| `lib/shell/fixtures.ts` | the §5 seed content, in memory |
+| `lib/shell/session.ts` | §3.9 — the held sentence, the signup questions, your name |
+| `lib/shell/errors.ts` | anything thrown → something a person can act on |
+| `lib/shell/themes.ts` | §4.5 — the four palettes and their tokens |
+
+**Commands.**
+
+| File | What it owns |
+|---|---|
+| `lib/commands/registry.ts` | **THE table.** Every verb, and every handler |
+| `lib/commands/run.ts` | typed text → the right handler; the palette |
+| `lib/commands/parse.ts` | head + argument, and alias resolution |
+| `lib/commands/pipeline.ts` | §4.8 — `\|`, and the `--flag` parser |
+
+**Data.**
+
+| File | What it owns |
+|---|---|
+| `lib/data/supabaseEnv.ts` | the reading half — the `Env` the site actually runs on |
+| `lib/data/writer.ts` | the writing half — posts, replies, renames |
+| `lib/data/live.ts` | realtime: presence, and posts arriving while you stand there |
+| `lib/supabase/{client,server,reader}.ts` | the three clients: browser, route handler, and unauthenticated read |
+
+**React**, of which there is deliberately very little.
+
+| File | What it owns |
+|---|---|
+| `components/Shell.tsx` | boot: picks fixtures or Supabase, builds the runner, arrives at the URL |
+| `components/Terminal.tsx` | the prompt, the scrollback, history, the mobile viewport maths |
+| `components/Palette.tsx` | the chip strip |
+| `app/globals.css` | every token, every theme, and the whole layout |
+
+**The database.** `supabase/migrations/*.sql` in filename order, then
+`supabase/seed.sql`. `supabase/tests/schema.test.sql` runs against the real
+migrations on a throwaway database.
+
+---
+
+## Add a command
+
+Everything about a verb is one entry in `COMMANDS` in `lib/commands/registry.ts`.
+The palette, `help`, `what`, and the "did you mean" pool are all derived from it,
+so there is nothing else to register.
+
+```ts
+{
+  verb: 'listen',                    // §3.5 — an English verb, not a Unix one
+  aliases: ['hear', 'tune'],         // Unix names go here, and are never announced
+  contexts: ['room', 'post'],        // where it means anything
+  gloss: (c) => 'what is playing',   // `verb — gloss`, per place you stand
+  detail: () => 'plain english, for `what listen`.',
+  insert: () => 'listen ',           // trailing space when an argument follows
+  wrongContext: (_c, hint) => `you have to be in a room first. try: go ${hint}`,
+  async run({ arg, location, context, env, hint, session }) {
+    return { lines: [{ text: '…' }] }
+  },
+}
+```
+
+Then, if it should be in the palette, add the verb to `CHIP_SETS` in the same
+file — and to `OWN_WALL_CHIPS` if it belongs on your own page.
+
+**What will bite you:**
+
+- **No dash inside a `gloss`.** `help` renders `verb — gloss`, and a second dash
+  turns the line into a puzzle.
+- **Six chips maximum per context, and `say` and `help` come first.** Both are
+  asserted. The palette is a horizontal scroller at 380px; roughly one chip fits.
+  Third place is off the right edge of the screen with nothing to say it was
+  there — which is exactly how the primary action shipped invisible once.
+- **`wrongContext` must name the fix, never report a failure** (§3.7). Use the
+  `hint()` argument so the room you name is one that exists.
+- **`hint()` is a database round trip.** Call it only on the path that needs it.
+  It is a function rather than a value because making it eager broke `help` —
+  the command a confused person reaches for — whenever the database blipped.
+- **Every chip must be runnable where it is offered.** `profile.test.ts` walks
+  every context × every chip and asserts the command is valid there and not
+  hidden.
+- **`hidden: true`** keeps it out of `help`, the palette and the suggestion pool,
+  but `what <verb>` still explains it. That is §4.8's deal for the pipe, and how
+  `doctor` stays out of a newcomer's way.
+- **`pipeable: true`** is what opts a verb into `|` splitting. Without it a pipe
+  character is just a character in your sentence, which is what keeps `say i
+  like cats | dogs` from becoming a syntax error nobody asked for.
+
+## Add a room
+
+Two places, because there are two sources of content:
+
+1. `supabase/seed.sql` — the `rooms` insert, **and** the `sort_order` update
+   below it. `on conflict do nothing` skips a room that already exists, so a
+   project seeded earlier would keep the old ordering and end up with two rooms
+   tied. The explicit update is what stops that.
+2. `lib/shell/fixtures.ts` — the same room, so `npm run dev:demo` and the e2e
+   suite show what the site shows.
+
+If it should be on the share card, add the slug to `ON_THE_CARD` in
+`lib/brand/ogRooms.ts`. `lib/brand/og.test.ts` refuses a card that advertises a
+room which does not exist.
+
+§4.2 leans hard on the fixed set: *"40 rooms with three people each kills the
+entire feeling"*. The number was never the point — the emptiness is. A new room
+wants something recent in it on day one.
+
+## Add a migration
+
+1. Write `supabase/migrations/<timestamp>_<name>.sql`.
+2. **Add a probe line to `scripts/migrations.sh`** — one object that only this
+   migration creates. `db-deploy.sh` fails loudly if you forget, rather than
+   skipping your migration forever. A hosted project does not get its migrations
+   from a CLI; they are pasted in by hand, one at a time, so "some of them" is
+   the normal state and the probe is how anything knows.
+3. **Add a probe to `diagnose()` in `lib/data/supabaseEnv.ts`**, so `doctor`
+   names your migration when it is missing. Probe a *column*, never a function —
+   calling `mark_verified` to ask whether it exists would mark you verified.
+4. Write assertions in `supabase/tests/schema.test.sql`, then `npm run test:db`.
+
+Deploy with `./scripts/db-deploy.sh`, never `supabase db push` — the latter
+applies migrations and stops, leaving a schema with no rooms in it.
+
+**The plpgsql trap that already cost a real bug:** a `STABLE` function sees the
+snapshot from the start of the *statement*, so
+`select create_post(...) from generate_series(1,25)` passed a one-per-account
+gate twenty-five times. If a function reads a row it is about to change the
+answer for, it is `VOLATILE`.
+
+## Add something to the Env
+
+`Env` in `lib/shell/env.ts` is the only thing command handlers may talk to.
+Adding a method means implementing it **twice** — `fixtureEnv` in the same file,
+and `supabaseEnv` in `lib/data/supabaseEnv.ts` — and the fixture is not a stub:
+the e2e suite runs entirely against it, so a fixture that lies produces a green
+suite over a broken site.
+
+Identity does not go here. `Session` owns it.
+
+## Add a theme
+
+An entry in `THEMES` in `lib/shell/themes.ts`, and the matching
+`:root[data-theme='...']` block in `app/globals.css`. `themes.test.ts` asserts
+the contrast ratio of every token in every theme, so a new palette cannot ship
+illegible and none can regress quietly. That test exists because the warm
+`faint` was 3.14:1 and the chip gloss 2.95:1 — and the gloss is the exact text
+§3.6 says makes this legible to someone who has never opened a terminal.
+
+---
+
+## The invariants
+
+Break one of these and something is wrong that no type checker will mention.
+
+**One address, one context.** `{room: '~marisol'}` and `{person: 'marisol'}`
+would print the same prompt and the same URL — and `/~marisol` parses back to
+the person, so a reload would flip you between them. Anything that produces a
+`Location` must produce the one the path parses to. `locationToPath` and
+`pathToLocation` are the arbiter; `types.test.ts` round-trips them.
+
+**The address is the database's to allocate, never the client's** (§3.4).
+Posting goes through `create_post()`, which bumps the room counter and inserts
+in one transaction. Numbers are never reused, and eight concurrent writers
+produce zero collisions — there is an assertion that proves it.
+
+**Grants are column-scoped, not table-wide.** A row policy constrains *whose row
+it is*; it says nothing about *what may change in it*. Table-wide `UPDATE` plus
+a row policy is how anyone could set their own `verified_at` from the browser
+console with the anon key that ships in the bundle. Every new column that means
+something needs its own negative assertion, aimed at the user's **own** row.
+
+**Nothing typed is ever lost** (§3.9). If a write can fail, the handler returns
+`retry` with the sentence in it. Clearing the input before the await is how a
+network blip used to eat somebody's paragraph.
+
+**Ask for an account only when the account would help.** `say` on somebody
+else's wall is refused *before* the signup ask, because a page only exists for
+somebody who exists — asking would collect a name in exchange for a sentence the
+wall then refuses. The rule generalises: never ask for identity in front of a
+refusal that identity would not lift.
+
+**Errors teach** (§3.7). Name the fix, name a real one, and never say "invalid
+syntax". If an error names an address, resolve one that exists rather than
+inventing a number.
+
+**Mobile is the kill condition** (§8). Every e2e test runs at 380×740 and there
+is no desktop project. Measure what a thumb can reach — `.tap()` scrolls an
+element into view first, which is how an off-screen chip passed a green suite.
+
+**A wall is a room with an owner, and the lobby never shows one.**
+`room_overview` filters `owner_id is null`. That single filter is the whole of
+§4.2's mitigation; without it a room-per-person is exactly the forty-rooms
+failure the doc warns about.
+
+---
+
+## Before you push
+
+```bash
+npm test && npm run test:e2e && npm run test:db && npm run build
+```
+
+All four, every time. They cover different things and each has caught something
+the others could not: the unit suite catches wording and shape, e2e catches
+layout and anything involving a real browser, `test:db` catches every claim
+about what the database enforces, and `build` catches the type errors that only
+appear under Next's compiler.
+
+`npm run dev:demo` and an actual phone is the fifth suite, and the only one that
+can answer §4.5.
