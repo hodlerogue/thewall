@@ -69,7 +69,7 @@ DATABASE_URL='postgresql://postgres:...@db.<ref>.supabase.co:5432/postgres' \
 Safe to run repeatedly, and safe on a project that already has some migrations:
 it probes for each one, records what is already there, and applies only the
 rest. Use it rather than `supabase db push`, which applies migrations and stops
-— leaving five empty rooms, which §5 calls worse than having no rooms.
+— leaving six empty rooms, which §5 calls worse than having no rooms.
 
 **[`GOING-LIVE.md`](./GOING-LIVE.md) is the full runbook** — the environment
 variables, the Supabase redirect allowlist, the Resend domain, and the
@@ -82,7 +82,7 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 222 unit tests: parser, aliases, errors, signup, search, themes, names, policy
+npm test           # 228 unit tests: parser, aliases, errors, signup, search, themes, names, policy
 npm run test:e2e   # 76 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
 npm run test:db    # 106 assertions against the real migrations, on a throwaway database
 ```
