@@ -669,20 +669,31 @@ function renderHits(hits: readonly PostHit[], term?: string): Line[] {
  * regardless of how many commands exist. `what` and `help` sit at the lobby,
  * where a newcomer is standing; the doing verbs take the slots elsewhere.
  */
+/**
+ * §3.6 — the glossary, per place you can stand.
+ *
+ * Two rules decide the order, and both are about the 380px viewport this is a
+ * horizontal scroller on.
+ *
+ * `say` leads wherever it is valid. Third place put the primary action — the
+ * one §3.9's whole design hangs on — off the right edge with nothing to say it
+ * was there.
+ *
+ * `help` is in every set and never last. It was only ever in the lobby, and
+ * even there it sat fifth, off-screen: the one chip whose entire audience is
+ * somebody who does not know what to do was the one they had to already know
+ * to scroll for. Second place is measured, not guessed — `e2e/mobile-shell`
+ * asserts it is inside the viewport without scrolling, in every context.
+ */
 export const CHIP_SETS: Record<Context, readonly string[]> = {
-  lobby: ['look', 'go', 'who', 'theme', 'help'],
-  // `say` leads wherever it is valid. The palette is a horizontal scroller on
-  // a 380px viewport, and at five chips it overflows — so third place put the
-  // primary action, the one §3.9's whole design hangs on, off the right edge
-  // where nothing indicated it existed. In a room you have already seen the
-  // content; what you need is the verb.
-  room: ['say', 'look', 'go', 'who', 'leave'],
-  commons: ['say', 'look', 'who', 'leave'],
-  post: ['say', 'look', 'who', 'leave'],
+  lobby: ['look', 'help', 'go', 'who', 'theme'],
+  room: ['say', 'help', 'look', 'go', 'who', 'leave'],
+  commons: ['say', 'help', 'look', 'who', 'leave'],
+  post: ['say', 'help', 'look', 'who', 'leave'],
   // No `say`. The palette is the fastest way anyone learns what a place is for,
   // and a profile is for reading and walking away from (§3.10). `go` leads
   // because every line on the page is an address in a room.
-  person: ['go', 'look', 'find', 'leave'],
+  person: ['go', 'help', 'look', 'find', 'leave'],
 }
 
 const BY_NAME = new Map<string, Command>()

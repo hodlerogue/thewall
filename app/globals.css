@@ -129,7 +129,21 @@ body {
   color: var(--accent);
 }
 
+/*
+ * The palette is two things: a scroller for the verbs that belong to where you
+ * are standing, and one pinned chip that belongs to the interface itself.
+ */
+.palette-row {
+  display: flex;
+  align-items: center;
+  /* The scroller must be allowed to shrink, or it pushes the pinned chip off
+     the edge — which is the exact failure this layout exists to prevent. */
+  min-width: 0;
+}
+
 .palette {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   gap: 6px;
   overflow-x: auto;
@@ -166,6 +180,21 @@ body {
 }
 .chip:active {
   border-color: var(--accent-dim);
+}
+
+/*
+ * `help`, always on screen.
+ *
+ * Outside the scroller and never shrinking, because the measurement that
+ * prompted this found exactly one chip fits at 380px — so anything inside the
+ * scroller past the first is unreachable without knowing to scroll, and the
+ * person who needs `help` is by definition the person who does not know that.
+ * No gloss, so it stays narrow enough to always fit; the gloss moves to the
+ * accessible name.
+ */
+.chip-pinned {
+  flex: 0 0 auto;
+  margin-right: 12px;
 }
 .chip-verb {
   color: var(--accent);

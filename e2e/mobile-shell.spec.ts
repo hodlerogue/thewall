@@ -111,12 +111,16 @@ test('the primary action is on screen without scrolling for it', async ({ page }
   // test tapped `say` — and `.tap()` scrolls the element into view first, so a
   // chip sitting off the right edge passed happily. §8 makes mobile the kill
   // condition; the gate has to check what a thumb can actually reach.
-  const viewport = page.viewportSize()!
-
+  //
+  // Measured against the scroller's own box, not the viewport's. The two used
+  // to be the same and are not any more: `help` is pinned beside the scroller,
+  // so a chip can end inside the window while still being clipped by the strip
+  // it lives in — visible to a bounding box and invisible to a person.
   for (const [path, expected] of [
     ['/commons', 'say'],
     ['/music', 'say'],
     ['/lobby', 'look'],
+    ['/~marisol', 'go'],
   ] as const) {
     await page.goto(path)
     await expect(page.getByTestId('prompt-label')).toBeVisible()
@@ -125,12 +129,55 @@ test('the primary action is on screen without scrolling for it', async ({ page }
     await expect(chip, `${expected} chip on ${path}`).toBeVisible()
 
     const box = (await chip.boundingBox())!
-    expect(box.x, `${expected} starts on screen at ${path}`).toBeGreaterThanOrEqual(0)
+    const strip = (await page.locator('.palette').boundingBox())!
+
+    expect(box.x, `${expected} starts inside the strip at ${path}`).toBeGreaterThanOrEqual(strip.x)
     expect(
       box.x + box.width,
-      `${expected} ends on screen at ${path}`,
-    ).toBeLessThanOrEqual(viewport.width)
+      `${expected} ends inside the strip at ${path}`,
+    ).toBeLessThanOrEqual(strip.x + strip.width)
   }
+})
+
+test('help is on screen everywhere, without scrolling for it', async ({ page }) => {
+  // The chip whose entire audience is somebody who does not know what to do
+  // must not be the one they have to already know to scroll for. Exactly one
+  // chip fits at 380px — a gloss makes each 150–290px wide — so this only
+  // holds because `help` is pinned outside the scroller, and this is what says
+  // so if anybody ever moves it back in.
+  const viewport = page.viewportSize()!
+
+  for (const path of ['/commons', '/music', '/lobby', '/music/12', '/~marisol']) {
+    await page.goto(path)
+    await expect(page.getByTestId('prompt-label')).toBeVisible()
+
+    const help = page.locator('.chip[data-verb="help"]')
+    await expect(help, `help on ${path}`).toBeVisible()
+
+    const box = (await help.boundingBox())!
+    expect(box.x, `help starts on screen at ${path}`).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width, `help ends on screen at ${path}`).toBeLessThanOrEqual(viewport.width)
+    // Reachable with a thumb, like every other chip.
+    expect(box.height, `help is tappable at ${path}`).toBeGreaterThanOrEqual(30)
+  }
+})
+
+test('help still inserts rather than executing, and still says what it is', async ({ page }) => {
+  await page.goto('/commons')
+  await expect(page.getByTestId('prompt-label')).toBeVisible()
+
+  const help = page.locator('.chip[data-verb="help"]')
+  // The gloss moves to the accessible name when the chip is pinned, so §3.6's
+  // glossary rule bends visually and not for a screen reader.
+  await expect(help).toHaveAttribute('aria-label', /help — .+/)
+
+  await help.tap()
+  await expect(prompt(page)).toHaveValue('help')
+  // Inserted, not run (§3.6, §9).
+  await expect(page.getByTestId('scrollback')).not.toContainText('from here you can type')
+
+  await prompt(page).press('Enter')
+  await expect(page.getByTestId('scrollback')).toContainText('from here you can type')
 })
 
 test('the palette changes with context and depth renders as indentation', async ({ page }) => {

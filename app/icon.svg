@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!--
+    The mark is the thing itself: a prompt with the cursor sitting in it.
+
+    Drawn for 16px first, which is the only size that matters — a tab favicon is
+    smaller than most punctuation. So it is two shapes, not a picture: a chevron
+    and a block. Anything with a wall, bricks or lettering turns to mud at that
+    size, and a warm ground with an amber cursor is already the site's whole
+    palette (lib/shell/themes.ts, `warm`).
+
+    Deliberately not theme-aware. A favicon is chrome, not content: it sits in a
+    browser tab beside other tabs, and the one thing it has to do is stay the
+    same shape every time so the tab is findable at a glance.
+  -->
+  <rect width="32" height="32" rx="7" fill="#14100c"/>
+  <path
+    d="M8 11 L13 16 L8 21"
+    fill="none"
+    stroke="#e8a05c"
+    stroke-width="2.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <rect x="17" y="12.5" width="7" height="7.5" rx="1" fill="#e8a05c"/>
+</svg>
