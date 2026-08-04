@@ -267,3 +267,17 @@ body {
 .document a {
   color: var(--accent);
 }
+
+/* The unset-governing-law notice. Uses the error colour rather than the faint
+   one because its whole job is to be impossible to deploy past. */
+.document-unfinished {
+  margin: 16px 0 0;
+  padding: 12px;
+  border: 1px solid var(--error);
+  color: var(--error);
+}
+
+.document-unfinished code {
+  font-family: inherit;
+  color: var(--fg);
+}

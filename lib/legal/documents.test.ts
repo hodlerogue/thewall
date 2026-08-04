@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CONTACT, DOCUMENTS, PRIVACY, TERMS } from '@/lib/legal/documents'
+import { CONTACT, DOCUMENTS, PRIVACY, TERMS, jurisdiction } from '@/lib/legal/documents'
 
 /**
  * A policy is a promise about what the code does, so the things worth testing
@@ -112,5 +112,36 @@ describe('the terms', () => {
   it('disclaim what a side project has to disclaim', () => {
     expect(full).toMatch(/no warranty|as it is/)
     expect(full).toMatch(/shut down/)
+  })
+
+  it('never name a governing law that has not been chosen', () => {
+    // The clause is about where the operator is, and guessing puts a false
+    // statement on a published page. So it either names the real place or it
+    // says outright that it does not know — never a plausible-looking default.
+    const law = TERMS.sections.find((s) => s.heading === 'Law')!
+    const text = law.body.join('\n')
+
+    const where = jurisdiction()
+    if (where === null) {
+      expect(text).toContain('NOT SET YET')
+      // And it has to be visible from the outside, not just in the source.
+      expect(TERMS.summary.join('\n')).toContain('governing law')
+    } else {
+      expect(text).toContain(where.law)
+      expect(text).toContain(where.courts)
+      expect(text).not.toContain('NOT SET YET')
+      expect(TERMS.summary.join('\n')).not.toContain('governing law')
+    }
+  })
+
+  it('keep a visitor’s own consumer rights whatever law governs', () => {
+    // Someone in the UK using a site run from elsewhere does not get UK law
+    // over the terms — they get this, which is the thing that actually
+    // protects them, plus the GDPR sections of the privacy policy.
+    const text = TERMS.sections.find((s) => s.heading === 'Law')!.body.join('\n')
+    expect(text).toMatch(/cannot be signed away/)
+    expect(text).toMatch(/UK/)
+    expect(text).toMatch(/EU/)
+    expect(text).toMatch(/local courts/)
   })
 })

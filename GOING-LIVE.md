@@ -110,16 +110,39 @@ and an address in a privacy policy that bounces is worse than no address.
 
 ---
 
-## 6. Check the two documents before anyone reads them
+## 6. Set the governing law
 
-`/terms` and `/privacy` are written and tested, but two things in them are
-placeholders in all but name:
+**This is the one outstanding item in the two documents, and `/terms` says so on
+its own front page until you fix it.** The clause is deliberately unset rather
+than guessed: naming somewhere plausible would be a false statement on a
+published page, which is worse than an obvious to-do.
 
-- **Governing law.** The terms currently say England and Wales. If you are in
-  the US, that clause should name your state.
-- **The contact address.** `hello@thewall.social`, per step 5.
+It is about **where you are** — not where visitors are. Somebody in the UK using
+the site does not make UK law govern the terms. What protects them is already
+written and applies regardless of this setting: the privacy policy is written to
+the GDPR, and the Law section preserves consumer rights that cannot be signed
+away, including the right to bring a claim in their own local courts. So welcome
+UK and EU visitors freely; this clause is still your own jurisdiction.
 
-Both are one edit in `lib/legal/documents.ts`.
+One edit, in `lib/legal/documents.ts`:
+
+```ts
+export const JURISDICTION: { law: string; courts: string } | null = {
+  law: 'the State of California',
+  courts: 'San Francisco County, California',
+}
+```
+
+US contracts name a **state**, not the country. Canada names a province.
+Elsewhere the country is usually enough. Use wherever you actually live — if a
+dispute ever happened, it is the courts you can reach.
+
+The notice on `/terms`, the extra line in the `terms` command, the unit test and
+the e2e test all flip together the moment this is non-null. Nothing else to
+change.
+
+While you are in that file: `CONTACT` is `hello@thewall.social`, which needs to
+receive mail per step 5.
 
 ---
 

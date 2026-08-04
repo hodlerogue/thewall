@@ -136,6 +136,30 @@ test.describe('terms and privacy', () => {
     expect(overflow).toBeLessThanOrEqual(0)
   })
 
+  test('say plainly that the governing law is not set, until it is', async ({ page }) => {
+    // The clause is about where the operator is, not where visitors are, and
+    // naming somewhere plausible would put a false statement on a published
+    // page. So an unset one announces itself where nobody can deploy past it.
+    // When JURISDICTION is filled in, both of these flip together.
+    await page.goto('/terms')
+    const notice = page.locator('.document-unfinished')
+    const body = page.locator('body')
+
+    if ((await notice.count()) > 0) {
+      await expect(notice).toBeVisible()
+      await expect(body).toContainText('NOT SET YET')
+      await page.goto('/')
+      await type(page, 'terms')
+      await expect(scrollback(page)).toContainText('governing law')
+    } else {
+      await expect(body).not.toContainText('NOT SET YET')
+    }
+
+    // Either way, a visitor's own consumer rights survive the choice.
+    await page.goto('/terms')
+    await expect(body).toContainText('cannot be signed away')
+  })
+
   test('lead back to the prompt', async ({ page }) => {
     await page.goto('/terms')
     await page.getByRole('link', { name: /back to the prompt/ }).click()

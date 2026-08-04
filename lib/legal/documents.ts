@@ -17,6 +17,44 @@
 export const CONTACT = 'hello@thewall.social'
 export const LAST_UPDATED = '4 August 2026'
 
+export interface Jurisdiction {
+  /** e.g. "the State of California", "Ontario", "Ireland". */
+  law: string
+  /** The courts that hear a dispute. e.g. "San Francisco County, California". */
+  courts: string
+}
+
+/**
+ * Where the person running this is, which is the only thing that decides the
+ * governing-law clause. **This is the one setting these documents still need.**
+ *
+ * Not where visitors are. That is the confusion worth naming, because it is the
+ * one everybody has: somebody in the UK using the site does not make UK law
+ * govern the terms. Their protection comes from two other places, both already
+ * written and both unaffected by this — the privacy policy is written to the
+ * GDPR, and the Law section preserves consumer rights that cannot be signed
+ * away wherever the reader lives, including their right to sue locally. A site
+ * can be governed by one law and still owe every visitor what their own law
+ * guarantees them.
+ *
+ * Returns null until it is set, and the documents say so loudly rather than
+ * naming somewhere plausible. A clause that names the wrong place is worse than
+ * one admitting it is unfinished: the first is a false statement on a published
+ * page, the second is a to-do.
+ *
+ * A function rather than a constant because TypeScript narrows a `const`
+ * initialised to `null` down to `null`, which makes the branch that renders a
+ * real jurisdiction unreachable — the compiler would reject the very edit this
+ * exists to invite.
+ *
+ * To go live, return the place:
+ *
+ *     return { law: 'the State of California', courts: 'San Francisco County, California' }
+ */
+export function jurisdiction(): Jurisdiction | null {
+  return null
+}
+
 export interface Section {
   heading: string
   body: readonly string[]
@@ -106,7 +144,7 @@ export const PRIVACY: Document = {
         'Deletion — your email address and your name are erased, permanently. What you posted stays up by default, attached to a handle that is nobody, because deleting it would also delete the replies other people wrote underneath it. If you want your posts taken down as well, say so and they will be.',
         'Portability — your posts, as a file you can take elsewhere.',
         'Objection and restriction — say what you object to and we will stop.',
-        'If you are unhappy with the answer, you can complain to your national data protection authority. In the UK that is the Information Commissioner\'s Office.',
+        'If you are unhappy with the answer, you can complain to the data protection authority where you live — the Information Commissioner\'s Office in the UK, or your national supervisory authority anywhere in the EU. That right is yours wherever this site is run from, and nothing in the terms changes it.',
       ],
     },
     {
@@ -140,6 +178,9 @@ export const TERMS: Document = {
     'you can change your name whenever you like. the one you leave behind is free for anyone.',
     'this is one person’s side project. it can break, and it can end.',
     'accounts can be removed for the things above, and you can ask why.',
+    ...(jurisdiction()
+      ? []
+      : ['', 'heads up: the governing law clause isn’t filled in yet.']),
     '',
     'the whole thing is at thewall.social/terms.',
   ],
@@ -219,7 +260,10 @@ export const TERMS: Document = {
     {
       heading: 'Law',
       body: [
-        'These terms are governed by the law of England and Wales, and its courts have jurisdiction. If you are a consumer somewhere else, this does not take away rights you have there that cannot be signed away.',
+        jurisdiction()
+          ? `These terms are governed by the law of ${jurisdiction()!.law}, and the courts of ${jurisdiction()!.courts} have jurisdiction.`
+          : 'GOVERNING LAW IS NOT SET YET. Whoever is running this has not filled it in, so no choice of law is being claimed here. Until they do, any dispute falls where the ordinary rules of private international law put it.',
+        'Wherever you are, this does not take away rights your own law gives you that cannot be signed away. If you are a consumer in the UK, the EU, or anywhere with mandatory consumer protection, you keep all of it — including the right to bring a claim in your own local courts, and everything in the privacy policy above, which is written to the GDPR and applies to you regardless of which law governs these terms.',
       ],
     },
   ],
