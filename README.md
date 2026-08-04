@@ -61,22 +61,19 @@ working schema and no rooms:
 | `supabase/migrations/*.sql` | the tables, policies and functions — **no rows** |
 | `supabase/seed.sql` | the five rooms and everything in them (§5) |
 
-The quickest route is the Supabase SQL Editor: paste each migration, then paste
-`seed.sql`. It is plain SQL with no psql-only syntax, and it is safe to run more
-than once.
-
-Or do both at once against the connection string:
-
 ```bash
 DATABASE_URL='postgresql://postgres:...@db.<ref>.supabase.co:5432/postgres' \
   ./scripts/db-deploy.sh
 ```
 
-Use that rather than `supabase db push`: push applies migrations and stops
-there, leaving five empty rooms, which §5 calls worse than having no rooms.
+Safe to run repeatedly, and safe on a project that already has some migrations:
+it probes for each one, records what is already there, and applies only the
+rest. Use it rather than `supabase db push`, which applies migrations and stops
+— leaving five empty rooms, which §5 calls worse than having no rooms.
 
-Then add your deployed origin to **Authentication → URL Configuration →
-Redirect URLs** in Supabase, or the magic link is refused on arrival.
+**[`GOING-LIVE.md`](./GOING-LIVE.md) is the full runbook** — the environment
+variables, the Supabase redirect allowlist, the Resend domain, and the
+fifteen-minute manual walk that covers what no test suite here can.
 
 There is no fallback if the keys are missing: the prompt says what's absent
 rather than quietly serving fixtures, so you always know which one you're
@@ -85,7 +82,7 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 201 unit tests: parser, aliases, errors, signup, search, themes, names, policy
+npm test           # 205 unit tests: parser, aliases, errors, signup, search, themes, names, policy
 npm run test:e2e   # 65 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
 npm run test:db    # 106 assertions against the real migrations, on a throwaway database
 ```

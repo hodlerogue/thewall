@@ -15,6 +15,9 @@ set -euo pipefail
 
 : "${DATABASE_URL:?set DATABASE_URL to the project connection string}"
 
+# shellcheck source=scripts/migrations.sh
+. "$(dirname "${BASH_SOURCE[0]}")/migrations.sh"
+
 q() { psql "${DATABASE_URL}" -tAc "$1" 2>/dev/null || echo "ERROR"; }
 
 echo "── schema ──────────────────────────────────────"
@@ -31,6 +34,43 @@ if [ "$(q "select to_regclass('public.rooms') is not null")" != "t" ]; then
   echo "the schema is not applied. run: ./scripts/db-deploy.sh"
   exit 1
 fi
+
+# Which migrations are actually on this project.
+#
+# "Some of them" is the state a hosted project drifts into — each one gets
+# pasted into the SQL editor by hand, and the failure is silent until somebody
+# hits the feature. Each row names one object the migration is the only source
+# of, so a MISSING line reads directly as "that file was never applied".
+echo
+echo "── migrations ──────────────────────────────────"
+
+missing=0
+for entry in "${MIGRATION_PROBES[@]}"; do
+  name="${entry%%|*}"
+  present=$(q "${entry#*|}")
+  printf "  %-46s %s\n" "${name%.sql}" \
+    "$([ "${present}" = "t" ] && echo "applied" || echo "NOT APPLIED")"
+  [ "${present}" = "t" ] || missing=$((missing + 1))
+done
+
+if [ "${missing}" -gt 0 ]; then
+  echo
+  echo "${missing} migration(s) missing. the features they add will fail in the browser,"
+  echo "not at build time. apply them in filename order:"
+  echo
+  echo "  DATABASE_URL='...' ./scripts/db-deploy.sh"
+fi
+
+# The grant that decides whether anonymous reading works at all. It is the one
+# thing a correct-looking schema can still get wrong, and it presents as an
+# empty lobby rather than as an error.
+echo
+echo "── the anon role ───────────────────────────────"
+for object in rooms posts replies profiles room_overview; do
+  granted=$(q "select has_table_privilege('anon', 'public.${object}', 'select')")
+  printf "  %-16s %s\n" "${object}" \
+    "$([ "${granted}" = "t" ] && echo "readable" || echo "NOT READABLE")"
+done
 
 echo
 echo "── content ─────────────────────────────────────"

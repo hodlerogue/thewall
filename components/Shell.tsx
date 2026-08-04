@@ -16,14 +16,26 @@ import type { Chip, Line, Location, Runner } from '@/lib/shell/types'
 
 const DEFAULT_ROOM = 'commons'
 
+/**
+ * What the Terminal needs to exist.
+ *
+ * The two fields that are absent in fixtures mode are typed as
+ * `T | undefined` rather than `field?: T`, which is not a stylistic choice: an
+ * optional property may be *omitted*, and omitting one is exactly how §4.1's
+ * mail count shipped dead. `mailCount` was declared here, threaded into
+ * `Terminal`, given a polling effect and a status line — and never once set, so
+ * the effect returned immediately every time. Requiring the key means the
+ * compiler asks about it.
+ */
 interface Boot {
   run: Runner
-  mailCount?: () => Promise<number>
+  mailCount: (() => Promise<number>) | undefined
+  initialMail: number
   chipsFor: (location: Location) => readonly Chip[]
   lines: Line[]
   location: Location
   name: string | null
-  subscribe?: Live['subscribe']
+  subscribe: Live['subscribe'] | undefined
 }
 
 /**
@@ -117,10 +129,23 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
       // inside post 12 exactly as `go 12` would have.
       const { lines, location } = await arriveAt(env, target, rooms)
 
+      // §4.1 — read once here as well as polled, so somebody arriving to three
+      // replies sees that on the first paint rather than up to a minute later.
+      // Only for someone with a name: a guest has no mail by definition, and
+      // asking would be a round trip to learn zero.
+      const initialMail = existingName === null ? 0 : await env.mailCount().catch(() => 0)
+
       if (cancelled) return
       setBoot({
         run: createRunner(env, ephemeral, session),
         chipsFor: createChipsFor(ephemeral),
+        // Always handed over, never gated on who is here yet: §3.9 means most
+        // people get their name *during* the session, and a poller wired only
+        // for those who arrived signed in would stay dead for exactly the
+        // person who just made an account. Terminal already declines to poll
+        // while the name is null, which is the check that belongs there.
+        mailCount: () => env.mailCount(),
+        initialMail,
         location,
         name: existingName,
         subscribe: live?.subscribe,
@@ -183,6 +208,7 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
       name={boot.name}
       subscribe={boot.subscribe}
       mailCount={boot.mailCount}
+      initialMail={boot.initialMail}
     />
   )
 }
