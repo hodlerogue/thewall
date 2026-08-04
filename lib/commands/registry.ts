@@ -92,6 +92,14 @@ function applyTheme(name: string): void {
 
 const error = (text: string): RunResult => ({ lines: [{ text, tone: 'error' }] })
 
+/** One line of `doctor`, aligned so a column of them can be read down. */
+function row(label: string, ok: boolean, note = ''): Line {
+  return {
+    text: `${ok ? '  ' : '! '}${label.padEnd(30)} ${note}`,
+    tone: ok ? 'dim' : 'error',
+  }
+}
+
 export const COMMANDS: readonly Command[] = [
   {
     verb: 'look',
@@ -507,6 +515,68 @@ export const COMMANDS: readonly Command[] = [
     wrongContext: () => '',
     async run() {
       return { lines: TERMS.summary.map((text) => ({ text, tone: 'faint' as const })) }
+    },
+  },
+
+  {
+    /*
+     * §7 — the operator's day one, for the half that lives in a browser.
+     *
+     * Hidden, like the pipe and `resend`: nobody arriving here needs to know it
+     * exists. It is written for the moment something is wrong and the screen is
+     * saying a sentence that could mean three different things.
+     *
+     * The build line is the one that matters most. Twice, a code fix and an
+     * unapplied migration and "that is not deployed yet" all presented as the
+     * same message, and nothing on the page could tell them apart.
+     */
+    verb: 'doctor',
+    aliases: ['diagnose', 'debug'],
+    hidden: true,
+    contexts: ALL,
+    gloss: () => 'what is actually running',
+    detail: () =>
+      'reports the build, the origin, whether you are signed in, and which database updates this project is missing. for when something is wrong and the message could mean more than one thing.',
+    insert: () => 'doctor',
+    wrongContext: () => '',
+    async run({ env }) {
+      const lines: Line[] = [{ text: 'what is actually running:', tone: 'faint' }]
+
+      const build = process.env.NEXT_PUBLIC_BUILD ?? 'unknown'
+      const branch = process.env.NEXT_PUBLIC_BRANCH ?? ''
+      lines.push(row('build', true, branch ? `${build} on ${branch}` : build))
+
+      if (typeof window !== 'undefined') {
+        const site = process.env.NEXT_PUBLIC_SITE_URL ?? ''
+        const here = window.location.origin
+        lines.push(row('here', true, here))
+        // A mismatch is why a magic link can sign you in on one origin and
+        // leave you a guest on the other: the cookie belongs to whichever host
+        // the callback ran on.
+        lines.push(
+          row(
+            'site url',
+            site === here,
+            site === '' ? 'not set' : site === here ? site : `${site} — does not match`,
+          ),
+        )
+      }
+
+      const checks = await env.diagnose()
+      for (const check of checks) {
+        lines.push(row(check.label, check.ok, check.note))
+      }
+
+      const missing = checks.filter((check) => check.note === 'NOT APPLIED').length
+      if (missing > 0) {
+        lines.push({ text: '' })
+        lines.push({
+          text: `${missing} database update${missing === 1 ? '' : 's'} missing — run scripts/db-deploy.sh`,
+          tone: 'error',
+        })
+      }
+
+      return { lines }
     },
   },
 

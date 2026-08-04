@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Live } from '@/lib/data/live'
-import type { Env, MailItem } from '@/lib/shell/env'
+import type { Check, Env, MailItem } from '@/lib/shell/env'
 import type { Post, PostHit, Profile, Room, RoomSummary } from '@/lib/shell/model'
 
 /**
@@ -177,6 +177,59 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         body: row.body,
         createdAt: new Date(row.created_at),
       }))
+    },
+
+    async diagnose(): Promise<Check[]> {
+      const checks: Check[] = []
+
+      const { data: userData } = await client.auth.getUser()
+      const user = userData.user ?? null
+      checks.push({
+        label: 'session',
+        ok: user !== null,
+        note: user ? 'signed in' : 'reading as a guest',
+      })
+
+      if (user) {
+        const { data: profile } = await client
+          .from('profiles')
+          .select('name, verified_at')
+          .eq('id', user.id)
+          .maybeSingle()
+
+        checks.push({
+          label: 'name',
+          ok: Boolean(profile?.name),
+          note: profile?.name ?? 'no profile row for this account',
+        })
+        checks.push({
+          label: 'verified',
+          ok: Boolean(profile?.verified_at),
+          note: profile?.verified_at ? 'yes' : 'no — the key was never recorded',
+        })
+      }
+
+      /*
+       * One column per migration that adds one, probed individually so a
+       * missing one names itself. Cheaper and safer than calling the functions:
+       * `mark_verified` would mark you verified as a side effect of asking
+       * whether it exists.
+       */
+      for (const [column, migration] of [
+        ['verified_at', '20260803020000_verify_to_continue'],
+        ['mail_seen_at', '20260804010000_mail'],
+        ['banned_at', '20260804020000_moderation'],
+        ['name_since', '20260804030000_rename'],
+      ] as const) {
+        const { error } = await client.from('profiles').select(column).limit(1)
+        checks.push({
+          label: migration,
+          ok: !error,
+          note: error ? 'NOT APPLIED' : 'applied',
+        })
+      }
+
+      return checks
     },
 
     async getProfile(name: string): Promise<Profile | undefined> {

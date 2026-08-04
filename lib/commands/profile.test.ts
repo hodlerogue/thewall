@@ -161,3 +161,41 @@ describe('the palette can never name a command you cannot run', () => {
     expect([...say.contexts].sort()).toEqual(['commons', 'post', 'room'])
   })
 })
+
+describe('§7 — doctor, for when the message could mean three things', () => {
+  it('is hidden, like the other things nobody arriving needs', () => {
+    const doctor = COMMANDS.find((c) => c.verb === 'doctor')!
+    expect(doctor.hidden).toBe(true)
+    // And therefore never proposed by a "did you mean".
+    expect(CHIP_SETS.lobby).not.toContain('doctor')
+  })
+
+  it('works from anywhere, because trouble is not context-sensitive', () => {
+    const doctor = COMMANDS.find((c) => c.verb === 'doctor')!
+    for (const context of Object.keys(CHIP_SETS) as Context[]) {
+      expect(doctor.contexts, context).toContain(context)
+    }
+  })
+
+  it('reports the build, which is the line that ends the guessing', async () => {
+    const { run } = harness()
+    const out = text((await run('doctor', AT.room)).lines)
+    expect(out).toContain('build')
+  })
+
+  it('says what the data actually is, rather than implying it is real', async () => {
+    // Against fixtures it has to admit as much. A diagnostic that reports
+    // health while serving invented content is worse than none.
+    const { run } = harness()
+    const out = text((await run('doctor', AT.room)).lines)
+    expect(out).toContain('fixtures')
+  })
+
+  it('answers to the words somebody actually types when stuck', async () => {
+    for (const word of ['doctor', 'diagnose', 'debug']) {
+      const { run } = harness()
+      const out = text((await run(word, AT.room)).lines)
+      expect(out, word).toContain('what is actually running')
+    }
+  })
+})
