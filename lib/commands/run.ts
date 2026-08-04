@@ -2,7 +2,7 @@ import { parse } from '@/lib/commands/parse'
 import { CHIP_SETS, COMMANDS, findCommand, nearestCommand } from '@/lib/commands/registry'
 import type { Env } from '@/lib/shell/env'
 import type { Session } from '@/lib/shell/session'
-import type { Chip, Context, Location, RunResult, Runner } from '@/lib/shell/types'
+import type { Chip, Context, Location, RunOptions, RunResult, Runner } from '@/lib/shell/types'
 import { contextOf } from '@/lib/shell/types'
 
 /**
@@ -17,19 +17,30 @@ export function createRunner(
   ephemeralRooms: readonly string[],
   session: Session,
 ): Runner {
-  return async (input: string, location: Location): Promise<RunResult> => {
+  return async (
+    input: string,
+    location: Location,
+    options?: RunOptions,
+  ): Promise<RunResult> => {
     // §3.9 — mid-signup, what you type is an answer, not a command. Without
     // this, a name like "read" would be parsed as a verb and swallowed.
-    if (session.isAsking()) {
-      const { lines, identity } = await session.answer(input)
-      return { lines, identity }
+    //
+    // Only for input a person actually typed: anything the shell issues itself
+    // must stay a command, or navigating during signup answers the question
+    // for you.
+    if (session.isAsking() && options?.typed !== false) {
+      const { lines, identity, retry } = await session.answer(input)
+      return { lines, identity, retry }
     }
 
     const parsed = parse(input)
     if (!parsed) return { lines: [] }
 
     const context = contextOf(location, ephemeralRooms)
-    const hint = await roomHint(env)
+
+    // Resolved at most once, and only if something asks. See HandlerArgs.hint.
+    let hinted: Promise<string> | undefined
+    const hint = () => (hinted ??= roomHint(env))
 
     if (!parsed.command) {
       const near = nearestCommand(parsed.head)
@@ -47,7 +58,7 @@ export function createRunner(
 
     if (!parsed.command.contexts.includes(context)) {
       return {
-        lines: [{ text: parsed.command.wrongContext(context, hint), tone: 'error' }],
+        lines: [{ text: parsed.command.wrongContext(context, await hint()), tone: 'error' }],
       }
     }
 

@@ -19,9 +19,19 @@ export interface Line {
 export interface Location {
   room?: string
   postId?: number
+  /**
+   * Someone's profile — `~marisol`.
+   *
+   * A view, not a place: nothing is postable here. §3.10 is the doc's most
+   * emphatic architectural warning, that a space which absorbs activity
+   * "deletes the geography that makes this feel like a place", and personal
+   * walls are that trap in a different hat. Every post shown on a profile
+   * carries its real room/id, so the page is a set of doors back into rooms.
+   */
+  person?: string
 }
 
-export type Context = 'lobby' | 'room' | 'commons' | 'post'
+export type Context = 'lobby' | 'room' | 'commons' | 'post' | 'person'
 
 /** A palette entry reads `verb — what it does` (§3.6): a glossary, not a toolbar. */
 export interface Chip {
@@ -37,14 +47,39 @@ export interface RunResult {
   location?: Location
   /** Present when signup finished, so the prompt can stop saying `guest`. */
   identity?: string | null
+  /**
+   * Text to put back in the prompt because sending it failed.
+   *
+   * §3.9's proudest mechanic is that you never re-type your sentence. That was
+   * honoured for the signup interruption and broken for every network blip:
+   * the input cleared before the write was attempted, so a failure left the
+   * words only in the echo line, behind a long-press.
+   */
+  retry?: string
+  /** §4.1 — a fresh unread count, when the command changed it. */
+  mail?: number
+}
+
+export interface RunOptions {
+  /**
+   * False when the shell issued this itself rather than the user typing it.
+   *
+   * It matters because mid-signup the prompt treats input as an *answer*, and
+   * a synthetic command routed down that path becomes your name. Browser Back
+   * during signup used to run `look`, which is a perfectly valid name, so the
+   * next thing typed — the email — created an account called `look`, forever.
+   */
+  typed?: boolean
 }
 
 export type Runner = (
   input: string,
   location: Location,
+  options?: RunOptions,
 ) => RunResult | Promise<RunResult>
 
 export function contextOf(location: Location, ephemeralRooms: readonly string[]): Context {
+  if (location.person !== undefined) return 'person'
   if (location.postId !== undefined) return 'post'
   if (location.room === undefined) return 'lobby'
   return ephemeralRooms.includes(location.room) ? 'commons' : 'room'
@@ -53,11 +88,13 @@ export function contextOf(location: Location, ephemeralRooms: readonly string[])
 /** `jameson:music/12$` — where you are, displayed where you are already looking. */
 export function promptLabel(name: string | null, location: Location): string {
   const path =
-    location.room === undefined
-      ? 'lobby'
-      : location.postId === undefined
-        ? location.room
-        : `${location.room}/${location.postId}`
+    location.person !== undefined
+      ? `~${location.person}`
+      : location.room === undefined
+        ? 'lobby'
+        : location.postId === undefined
+          ? location.room
+          : `${location.room}/${location.postId}`
   return `${name ?? 'guest'}:${path}$`
 }
 
@@ -70,6 +107,7 @@ export function promptLabel(name: string | null, location: Location): string {
  * redirect that starts you in commons would also make `leave` impossible.
  */
 export function locationToPath(location: Location): string {
+  if (location.person !== undefined) return `/~${location.person}`
   if (location.room === undefined) return '/lobby'
   if (location.postId === undefined) return `/${location.room}`
   return `/${location.room}/${location.postId}`
@@ -77,6 +115,12 @@ export function locationToPath(location: Location): string {
 
 export function pathToLocation(pathname: string): Location {
   const [room, postId] = pathname.split('/').filter(Boolean)
+  if (room?.startsWith('~')) {
+    const person = room.slice(1)
+    // A bare `/~` names nobody. Passing an empty string on would ask the
+    // database for a profile called "" and report that they don't exist.
+    return person ? { person } : {}
+  }
   if (room === undefined || room === 'lobby') return {}
   return postId !== undefined && /^\d+$/.test(postId)
     ? { room, postId: Number(postId) }

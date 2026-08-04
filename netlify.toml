@@ -44,6 +44,8 @@
 #   NEXT_PUBLIC_SUPABASE_ANON_KEY  public by design — RLS decides what it reads
 #   SUPABASE_SERVICE_ROLE_KEY      server only, bypasses every policy
 #   NEXT_PUBLIC_SITE_URL           the deployed origin, for the magic link
+#   RESEND_API_KEY                 server only — sends the key (§4.7)
+#   MAIL_FROM                      e.g. thewall <key@thewall.social>
 #
 # NEXT_PUBLIC_* values are baked into the client bundle when the build runs, so
 # adding one afterwards changes nothing until you redeploy. Set them first.

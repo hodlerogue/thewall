@@ -9,12 +9,21 @@
  * because who you are is a property of the conversation, not of the data.
  */
 
-import { DEFAULT_ROOM, ROOMS } from '@/lib/shell/fixtures'
-import type { Post, PostHit, PostQuery, Room, RoomSummary } from '@/lib/shell/model'
+import { DEFAULT_ROOM, PEOPLE, ROOMS } from '@/lib/shell/fixtures'
+import type { Post, PostHit, PostQuery, Profile, Room, RoomSummary } from '@/lib/shell/model'
 
 export interface Presence {
   names: string[]
   guests: number
+}
+
+/** §4.1 — a reply to something you said, with the address to walk to. */
+export interface MailItem {
+  room: string
+  postId: number
+  author: string
+  body: string
+  createdAt: Date
 }
 
 export interface Env {
@@ -24,6 +33,15 @@ export interface Env {
   who(roomSlug: string | undefined): Promise<Presence>
   /** §4.8 — the pipe's source. Crosses rooms, so hits carry their address. */
   searchPosts(query: PostQuery): Promise<PostHit[]>
+  /** §4.1 — how many replies are waiting. Zero for anyone without a name. */
+  mailCount(): Promise<number>
+  /** §4.1 — the replies themselves. Reading them marks them read. */
+  readMail(): Promise<MailItem[]>
+  /**
+   * §3.10 — somebody, as a view. The posts come back as hits, carrying their
+   * real addresses, because a profile is a way back into rooms and not a room.
+   */
+  getProfile(name: string): Promise<Profile | undefined>
 }
 
 /** In-memory Env over the §5 seed content, for tests and the mobile gate. */
@@ -35,7 +53,9 @@ export function fixtureEnv(rooms: Room[] = ROOMS): Env {
       ? room.posts.filter((p) => Date.now() - p.createdAt.getTime() < 24 * 60 * 60 * 1000)
       : room.posts
 
-  return {
+  // Named rather than returned inline, so getProfile can reuse searchPosts
+  // instead of restating the query that decides what a person's posts are.
+  const env: Env = {
     async listRooms() {
       return rooms.map((room) => {
         const latest = visiblePosts(room)[0]
@@ -62,6 +82,14 @@ export function fixtureEnv(rooms: Room[] = ROOMS): Env {
       return { names: ['jameson', 'marisol', 'tuck'], guests: 2 }
     },
 
+    async mailCount() {
+      return 0
+    },
+
+    async readMail() {
+      return []
+    },
+
     async searchPosts(query) {
       const hits = rooms
         // Ephemeral rooms are skipped: their posts have no permanent address,
@@ -77,12 +105,32 @@ export function fixtureEnv(rooms: Room[] = ROOMS): Env {
           })),
         )
         .filter((hit) => query.by === undefined || hit.author === query.by)
+        .filter(
+          (hit) =>
+            query.text === undefined || hit.body.toLowerCase().includes(query.text.toLowerCase()),
+        )
         .filter((hit) => query.since === undefined || hit.createdAt >= query.since)
 
       hits.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       return hits.slice(0, query.limit)
     },
+
+    async getProfile(name) {
+      const person = PEOPLE.find((p) => p.name === name.toLowerCase())
+      if (!person) return undefined
+      return {
+        name: person.name,
+        joinedAt: person.joinedAt,
+        verified: person.verified,
+        nameChangedHands: person.nameChangedHands,
+        // The same query `find --by=marisol` runs, which is what keeps a
+        // profile from being able to show anything a search could not.
+        posts: await env.searchPosts({ by: person.name, limit: 10 }),
+      }
+    },
   }
+
+  return env
 }
 
 export { DEFAULT_ROOM }

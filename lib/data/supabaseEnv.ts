@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Presence } from '@/lib/data/presence'
-import type { Env } from '@/lib/shell/env'
-import type { Post, PostHit, Room, RoomSummary } from '@/lib/shell/model'
+import type { Live } from '@/lib/data/live'
+import type { Env, MailItem } from '@/lib/shell/env'
+import type { Post, PostHit, Profile, Room, RoomSummary } from '@/lib/shell/model'
 
 /**
  * The Env the commands actually run against.
@@ -12,8 +12,10 @@ import type { Post, PostHit, Room, RoomSummary } from '@/lib/shell/model'
  * (§3.10); if that were done here instead, every future query would have to
  * remember to do it too.
  */
-export function supabaseEnv(client: SupabaseClient, presence?: Presence): Env {
-  return {
+export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
+  // Named rather than returned inline, so getProfile can call searchPosts
+  // instead of restating the query that decides what a person's posts are.
+  const env: Env = {
     async listRooms(): Promise<RoomSummary[]> {
       // §3.11 — one round trip for the whole lobby, including proof of life.
       const { data, error } = await client
@@ -108,9 +110,43 @@ export function supabaseEnv(client: SupabaseClient, presence?: Presence): Env {
     },
 
     async who() {
-      // Who is actually here, from the room's realtime channel — not who has
-      // an account. Without a channel (server-side render), nobody is "here".
-      return presence?.present() ?? { names: [], guests: 0 }
+      // Who is actually here, from the channel for the room you are standing
+      // in — not who has an account, and not whichever room you happened to
+      // land in first, which is what this used to answer.
+      return live?.present() ?? { names: [], guests: 0 }
+    },
+
+    async mailCount(): Promise<number> {
+      // Zero rather than an error for a guest: reading is anonymous (§3.9),
+      // and a signed-out visitor having no mail is not a failure.
+      const { data, error } = await client.rpc('mail_count')
+      if (error) return 0
+      return typeof data === 'number' ? data : 0
+    },
+
+    async readMail(): Promise<MailItem[]> {
+      const { data, error } = await client.rpc('mail')
+      if (error) throw error
+
+      const items = (data ?? []) as {
+        room: string
+        post_no: number
+        author: string
+        body: string
+        created_at: string
+      }[]
+
+      // Reading is what marks them read — §4.1 is pull-only, so the act of
+      // looking is the only signal there is.
+      await client.rpc('mark_mail_seen')
+
+      return items.map((row) => ({
+        room: row.room,
+        postId: row.post_no,
+        author: row.author,
+        body: row.body,
+        createdAt: new Date(row.created_at),
+      }))
     },
 
     async searchPosts(query): Promise<PostHit[]> {
@@ -123,6 +159,10 @@ export function supabaseEnv(client: SupabaseClient, presence?: Presence): Env {
         .order('created_at', { ascending: false })
         .limit(query.limit)
 
+      // ilike rather than full-text: at five curated rooms (§4.2) a scan is
+      // honest and needs no tsvector column. Revisit when volume makes it slow,
+      // which is a good problem and not this one.
+      if (query.text) request = request.ilike('body', `%${query.text}%`)
       if (query.room) request = request.eq('room_slug', query.room)
       if (query.by) request = request.eq('profiles.name', query.by)
       if (query.since) request = request.gte('created_at', query.since.toISOString())
@@ -138,7 +178,35 @@ export function supabaseEnv(client: SupabaseClient, presence?: Presence): Env {
         createdAt: new Date(row.created_at),
       }))
     },
+
+    async getProfile(name: string): Promise<Profile | undefined> {
+      const { data, error } = await client
+        .from('profiles')
+        .select('name, created_at, verified_at')
+        .eq('name', name.toLowerCase())
+        .maybeSingle()
+
+      if (error) throw error
+      if (!data) return undefined
+
+      // §4.6 — names are released the moment they are dropped, so one can have
+      // been worn before. Told as a date and never as a person.
+      const { data: changedHands } = await client.rpc('name_changed_hands', { p_name: data.name })
+
+      return {
+        name: data.name,
+        joinedAt: new Date(data.created_at),
+        nameChangedHands: typeof changedHands === 'string' ? new Date(changedHands) : undefined,
+        // Public already: "anyone may read profiles" is what lets a name be
+        // resolved at all. Showing it is what makes §4.7 legible rather than
+        // a silent condition people hit without knowing why.
+        verified: data.verified_at !== null,
+        posts: await env.searchPosts({ by: data.name, limit: 10 }),
+      }
+    },
   }
+
+  return env
 }
 
 interface RawReply {

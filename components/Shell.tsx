@@ -3,12 +3,12 @@
 import { useEffect, useState } from 'react'
 import { Terminal } from '@/components/Terminal'
 import { createChipsFor, createRunner } from '@/lib/commands/run'
-import { createPresence } from '@/lib/data/presence'
+import { createLive, type Live } from '@/lib/data/live'
 import { supabaseEnv } from '@/lib/data/supabaseEnv'
 import { httpSignupApi, supabaseWriter } from '@/lib/data/writer'
 import { fixtureEnv, type Env } from '@/lib/shell/env'
 import { describeError } from '@/lib/shell/errors'
-import { renderPost, renderRoom, renderRoomList } from '@/lib/shell/render'
+import { renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
 import { createClient, isConfigured } from '@/lib/supabase/client'
 import { locationToPath, pathToLocation } from '@/lib/shell/types'
@@ -16,12 +16,26 @@ import type { Chip, Line, Location, Runner } from '@/lib/shell/types'
 
 const DEFAULT_ROOM = 'commons'
 
+/**
+ * What the Terminal needs to exist.
+ *
+ * The two fields that are absent in fixtures mode are typed as
+ * `T | undefined` rather than `field?: T`, which is not a stylistic choice: an
+ * optional property may be *omitted*, and omitting one is exactly how §4.1's
+ * mail count shipped dead. `mailCount` was declared here, threaded into
+ * `Terminal`, given a polling effect and a status line — and never once set, so
+ * the effect returned immediately every time. Requiring the key means the
+ * compiler asks about it.
+ */
 interface Boot {
   run: Runner
+  mailCount: (() => Promise<number>) | undefined
+  initialMail: number
   chipsFor: (location: Location) => readonly Chip[]
   lines: Line[]
   location: Location
   name: string | null
+  subscribe: Live['subscribe'] | undefined
 }
 
 /**
@@ -42,6 +56,9 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
 
   useEffect(() => {
     const target = pathToLocation(targetPath)
+    // Fetched once. Two identical listRooms() calls could also disagree if a
+    // room's ephemeral flag changed between them.
+    let rooms: Awaited<ReturnType<Env['listRooms']>> | undefined
 
     let cancelled = false
 
@@ -63,6 +80,9 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
       let writer: Writer
       let signup: SignupApi
       let existingName: string | null = null
+      let live: Live | undefined
+      // Filled once the rooms are known; createLive reads it at event time.
+      const ephemeralNames: string[] = []
 
       if (useFixtures) {
         env = fixtureEnv()
@@ -70,57 +90,86 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
         signup = fixtureSignup()
       } else {
         const client = createClient()
-        const presence = createPresence(client)
-        env = supabaseEnv(client, presence)
+        // The Env needs the channel to answer `who`, and the channel is opened
+        // by the Terminal as you move — so this is handed over before either
+        // exists, and reads through it at call time.
+        const opened = createLive(client, ephemeralNames)
+        live = opened
+        env = supabaseEnv(client, opened)
         writer = supabaseWriter(client)
         signup = httpSignupApi()
 
         // Someone returning through a magic link is already signed in.
-        const {
-          data: { user },
-        } = await client.auth.getUser()
-        if (user) {
-          const { data } = await client.from('profiles').select('name').eq('id', user.id).maybeSingle()
+        const { data: userData, error: userError } = await client.auth.getUser()
+        // A missing session is the normal state here, not a failure — but a
+        // failed profile read is, and silently demoting a returning user to
+        // `guest` would ask them to sign up for a name they already own.
+        if (!userError && userData.user) {
+          const { data, error } = await client
+            .from('profiles')
+            .select('name')
+            .eq('id', userData.user.id)
+            .maybeSingle()
+          if (error) throw error
           existingName = data?.name ?? null
         }
 
-        await presence.enter(target.room, existingName)
+        rooms = await env.listRooms()
+        ephemeralNames.push(
+          ...rooms.filter((room) => room.ephemeral).map((room) => room.slug),
+        )
       }
 
       const session = new Session(signup, writer, existingName)
 
-      try {
-        const rooms = await env.listRooms()
-        const ephemeral = rooms.filter((room) => room.ephemeral).map((room) => room.slug)
+      rooms ??= await env.listRooms()
+      const ephemeral = rooms.filter((room) => room.ephemeral).map((room) => room.slug)
 
-        // §3.4 — the URL is a location, so arriving at /music/12 puts you
-        // inside post 12 exactly as `go 12` would have.
-        const { lines, location } = await arriveAt(env, target, rooms)
+      // §3.4 — the URL is a location, so arriving at /music/12 puts you
+      // inside post 12 exactly as `go 12` would have.
+      const { lines, location } = await arriveAt(env, target, rooms)
 
-        if (cancelled) return
-        setBoot({
-          run: createRunner(env, ephemeral, session),
-          chipsFor: createChipsFor(ephemeral),
-          location,
-          name: existingName,
-          lines: [
-            { text: 'thewall.social', tone: 'accent' },
-            ...(useFixtures
-              ? [{ text: 'demo — nothing you type here is saved.', tone: 'faint' as const }]
-              : []),
-            { text: 'type look to see what’s around you, or tap a command below.', tone: 'faint' },
-            { text: '' },
-            ...lines,
-          ],
-        })
-      } catch (error) {
-        // Supabase throws plain objects, not Errors. describeError is what
-        // keeps this from rendering as "[object Object]".
-        if (!cancelled) setFailure(describeError(error))
-      }
+      // §4.1 — read once here as well as polled, so somebody arriving to three
+      // replies sees that on the first paint rather than up to a minute later.
+      // Only for someone with a name: a guest has no mail by definition, and
+      // asking would be a round trip to learn zero.
+      const initialMail = existingName === null ? 0 : await env.mailCount().catch(() => 0)
+
+      if (cancelled) return
+      setBoot({
+        run: createRunner(env, ephemeral, session),
+        chipsFor: createChipsFor(ephemeral),
+        // Always handed over, never gated on who is here yet: §3.9 means most
+        // people get their name *during* the session, and a poller wired only
+        // for those who arrived signed in would stay dead for exactly the
+        // person who just made an account. Terminal already declines to poll
+        // while the name is null, which is the check that belongs there.
+        mailCount: () => env.mailCount(),
+        initialMail,
+        location,
+        name: existingName,
+        subscribe: live?.subscribe,
+        lines: [
+          { text: 'thewall.social', tone: 'accent' },
+          ...(useFixtures
+            ? [{ text: 'demo — nothing you type here is saved.', tone: 'faint' as const }]
+            : []),
+          { text: 'type look to see what’s around you, or tap a command below.', tone: 'faint' },
+          { text: '' },
+          ...lines,
+        ],
+      })
     }
 
-    void load()
+    // Every await above is inside load(), and this catch is what makes that
+    // matter. Previously four of them ran before a try block and the promise
+    // was floated with `void`, so the likeliest failure of all — an unapplied
+    // schema, the one describeError has a purpose-built message for — left the
+    // boot spinner on screen forever with no prompt and no way to retry.
+    load().catch((error) => {
+      if (!cancelled) setFailure(describeError(error))
+    })
+
     return () => {
       cancelled = true
     }
@@ -157,6 +206,9 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
       run={boot.run}
       chipsFor={boot.chipsFor}
       name={boot.name}
+      subscribe={boot.subscribe}
+      mailCount={boot.mailCount}
+      initialMail={boot.initialMail}
     />
   )
 }
@@ -171,6 +223,36 @@ async function arriveAt(
   target: Location,
   rooms: Awaited<ReturnType<Env['listRooms']>>,
 ): Promise<{ lines: Line[]; location: Location }> {
+  // A project with no rooms at all is not a wrong turn, it is an unfinished
+  // setup — and saying "there's no room called commons" makes it sound like a
+  // typo. §5 is the reason this is worth its own message: rooms that arrive
+  // empty are the failure mode, so an empty project should say so outright.
+  if (rooms.length === 0) {
+    return {
+      lines: [
+        { text: 'this project has no rooms yet.', tone: 'error' },
+        { text: 'the schema is there but nothing has been seeded — run scripts/db-deploy.sh', tone: 'faint' },
+      ],
+      location: {},
+    }
+  }
+
+  // §3.4 — `thewall.social/~marisol` is the same value as the prompt path, so
+  // the URL resolves to a person exactly as `go ~marisol` does.
+  if (target.person !== undefined) {
+    const profile = await env.getProfile(target.person)
+    if (!profile) {
+      return {
+        lines: [
+          { text: `there’s no one called ${target.person}.`, tone: 'error' },
+          ...renderRoomList(rooms),
+        ],
+        location: {},
+      }
+    }
+    return { lines: renderProfile(profile), location: { person: profile.name } }
+  }
+
   if (target.room === undefined) {
     return { lines: renderRoomList(rooms), location: {} }
   }
@@ -210,11 +292,16 @@ async function arriveAt(
  */
 function fixtureWriter(): Writer {
   let next = 100
+  const taken = new Set(['jameson', 'marisol', 'tuck', 'ren', 'dev'])
   return {
     async post() {
       return next++
     },
     async reply() {},
+    async rename(name: string) {
+      if (taken.has(name)) return { ok: false as const, reason: `${name} is taken` }
+      return { ok: true as const, name }
+    },
   }
 }
 
@@ -227,6 +314,9 @@ function fixtureSignup(): SignupApi {
         available,
         alternates: available ? [] : [`${name}_`, `${name}1`, `the${name}`],
       }
+    },
+    async resend() {
+      return { note: 'nothing to send — this is a demo.' }
     },
     async create(name: string) {
       // No account was made and no mail was sent. Say so — this build gets

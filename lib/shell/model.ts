@@ -50,7 +50,35 @@ export interface PostHit {
   createdAt: Date
 }
 
+/**
+ * Somebody, as a view rather than a place (§3.10).
+ *
+ * There is no `posts` field that belongs *to* the profile — `posts` here are
+ * PostHits, which means every one of them carries the room and id it actually
+ * lives at. That is the whole design: a profile is a set of doors back into
+ * rooms, never a room of its own.
+ */
+export interface Profile {
+  name: string
+  joinedAt: Date
+  /** §4.7 — whether they ever followed a key. Shown, never used to hide them. */
+  verified: boolean
+  posts: PostHit[]
+  /**
+   * §4.6 — when this name was last somebody else's, if it recently was.
+   *
+   * Names are released the moment they are dropped, so a handle can change
+   * hands. This is the whole mitigation for that: the reader, who is the person
+   * impersonation is actually aimed at, is told. It is a date and never a
+   * person — publishing *whose* it was would make renaming useless to the one
+   * person §4.6 exists for, someone walking away from a name they regret.
+   */
+  nameChangedHands?: Date
+}
+
 export interface PostQuery {
+  /** Words to look for in the body. The commonest thing anyone wants. */
+  text?: string
   room?: string
   by?: string
   since?: Date

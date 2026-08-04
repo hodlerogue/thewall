@@ -8,8 +8,12 @@ import { expect, test, type Page } from '@playwright/test'
  * fails on the only device that matters for a social product.
  */
 
-/** The palette is labelled "commands", so match the textbox role exactly. */
-const prompt = (page: Page) => page.getByRole('textbox', { name: 'command' })
+/**
+ * By test id, not by accessible name. The name now carries the location — the
+ * §3.1 claim that a terminal answers "where am I" has to hold for screen
+ * readers too — and tests should not be the reason that name is wrong.
+ */
+const prompt = (page: Page) => page.getByTestId('prompt-input')
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
@@ -99,6 +103,33 @@ test('chips are reachable with a thumb and stay under ~6 per context', async ({ 
   for (let i = 0; i < count; i++) {
     const box = (await chips.nth(i).boundingBox())!
     expect(box.height).toBeGreaterThanOrEqual(30)
+  }
+})
+
+test('the primary action is on screen without scrolling for it', async ({ page }) => {
+  // This is the assertion whose absence certified a broken palette. The old
+  // test tapped `say` — and `.tap()` scrolls the element into view first, so a
+  // chip sitting off the right edge passed happily. §8 makes mobile the kill
+  // condition; the gate has to check what a thumb can actually reach.
+  const viewport = page.viewportSize()!
+
+  for (const [path, expected] of [
+    ['/commons', 'say'],
+    ['/music', 'say'],
+    ['/lobby', 'look'],
+  ] as const) {
+    await page.goto(path)
+    await expect(page.getByTestId('prompt-label')).toBeVisible()
+
+    const chip = page.locator(`.chip[data-verb="${expected}"]`)
+    await expect(chip, `${expected} chip on ${path}`).toBeVisible()
+
+    const box = (await chip.boundingBox())!
+    expect(box.x, `${expected} starts on screen at ${path}`).toBeGreaterThanOrEqual(0)
+    expect(
+      box.x + box.width,
+      `${expected} ends on screen at ${path}`,
+    ).toBeLessThanOrEqual(viewport.width)
   }
 })
 

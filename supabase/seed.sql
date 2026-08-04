@@ -10,6 +10,19 @@
 -- Seed accounts, so the seeded posts have real authors. There is no password
 -- and the addresses are .invalid, so nobody can sign in as them.
 --
+-- If this statement is REFUSED on a hosted project ("permission denied for
+-- table users"), that is the auth schema being owned by supabase_auth_admin
+-- rather than by the role in your connection string. It is the one step here
+-- that a hosted project can reject, and it stops the whole seed, which leaves
+-- you with a schema and no rooms.
+--
+-- The fix is to create the five accounts through the Auth admin API instead
+-- and then re-run the seed. The API assigns its own ids, so the literal UUIDs
+-- below would need to become lookups by email — ask for that change rather
+-- than hand-editing, since the ids are referenced from four places.
+--
+-- The local path (`supabase start`) is not affected: the CLI seeds as an owner.
+--
 -- The empty strings are not decoration. Auth reads these token columns into
 -- plain strings, and a NULL makes it fail with "converting NULL to string is
 -- unsupported" on any query that touches the row — which means hand-seeded
@@ -37,12 +50,15 @@ from (values
 ) as seed (id, email)
 on conflict (id) do nothing;
 
-insert into public.profiles (id, name) values
-  ('11111111-1111-4111-8111-111111111111', 'jameson'),
-  ('22222222-2222-4222-8222-222222222222', 'marisol'),
-  ('33333333-3333-4333-8333-333333333333', 'tuck'),
-  ('44444444-4444-4444-8444-444444444444', 'ren'),
-  ('55555555-5555-4555-8555-555555555555', 'dev')
+-- verified_at is set because these are not people with inboxes. Left null they
+-- would each be one contribution away from being asked to check an address
+-- that does not exist (§4.7, as revised).
+insert into public.profiles (id, name, verified_at) values
+  ('11111111-1111-4111-8111-111111111111', 'jameson', now()),
+  ('22222222-2222-4222-8222-222222222222', 'marisol', now()),
+  ('33333333-3333-4333-8333-333333333333', 'tuck',    now()),
+  ('44444444-4444-4444-8444-444444444444', 'ren',     now()),
+  ('55555555-5555-4555-8555-555555555555', 'dev',     now())
 on conflict (id) do nothing;
 
 -- §4.2 — a fixed, curated set at launch. Room creation stays closed and the
@@ -100,6 +116,10 @@ on conflict do nothing;
 
 -- The column types come from the VALUES list, which is all text, so each one is
 -- cast explicitly on the way in.
+-- Unlike the inserts above, replies have no natural key to conflict on, so
+-- re-running the seed would quietly double them. The guard makes the whole
+-- file safe to run more than once, which matters because running it is the
+-- step people repeat while working out why a project looks empty.
 insert into public.replies (post_id, author_id, body, created_at)
 select p.id, v.author_id::uuid, v.body, v.created_at
   from (values
@@ -116,7 +136,12 @@ select p.id, v.author_id::uuid, v.body, v.created_at
   ) as v (room_slug, post_no, author_id, body, created_at)
   join public.posts p
     on p.room_slug = v.room_slug::citext
-   and p.post_no = v.post_no;
+   and p.post_no = v.post_no
+ where not exists (
+   select 1 from public.replies existing
+    where existing.post_id = p.id
+      and existing.body = v.body
+ );
 
 -- §3.4 — leave the allocator above every number the seed used, so the first
 -- real post continues the sequence instead of colliding with it.

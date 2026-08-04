@@ -15,8 +15,10 @@
 import { parseFlags, parseSince, splitStages } from '@/lib/commands/pipeline'
 import type { Env } from '@/lib/shell/env'
 import { formatAgo, type PostHit, type PostQuery } from '@/lib/shell/model'
-import { renderPost, renderRoom, renderRoomList } from '@/lib/shell/render'
+import { renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
 import type { Session } from '@/lib/shell/session'
+import { PRIVACY, TERMS } from '@/lib/legal/documents'
+import { DEFAULT_THEME, THEMES, findTheme } from '@/lib/shell/themes'
 import type { Context, Line, Location, RunResult } from '@/lib/shell/types'
 
 export interface HandlerArgs {
@@ -24,8 +26,15 @@ export interface HandlerArgs {
   location: Location
   context: Context
   env: Env
-  /** A real room slug, for errors that name the fix. */
-  hint: string
+  /**
+   * A real room slug, for errors that name the fix — resolved only if asked.
+   *
+   * Eagerly computing this made every command a database round trip for a
+   * value most handlers never read, and meant `help` and `what` — the two
+   * commands a confused person reaches for, which need no data at all — broke
+   * whenever the database did.
+   */
+  hint: () => Promise<string>
   /** Who you are, and the machinery that asks if you aren't anyone yet (§3.9). */
   session: Session
 }
@@ -56,7 +65,30 @@ export interface Command {
   run: Handler
 }
 
-const ALL: readonly Context[] = ['lobby', 'room', 'commons', 'post']
+/**
+ * `person` is in here and not in `say`'s list, which is the whole of §3.10's
+ * enforcement: a profile is somewhere you can read, search and leave from, and
+ * the one thing you cannot do is contribute to it.
+ */
+const ALL: readonly Context[] = ['lobby', 'room', 'commons', 'post', 'person']
+
+const THEME_KEY = 'thewall.theme'
+
+function readTheme(): string {
+  if (typeof document === 'undefined') return DEFAULT_THEME
+  return document.documentElement.dataset.theme ?? DEFAULT_THEME
+}
+
+function applyTheme(name: string): void {
+  if (typeof document === 'undefined') return
+  document.documentElement.dataset.theme = name
+  try {
+    localStorage.setItem(THEME_KEY, name)
+  } catch {
+    // Private browsing, or storage full. The theme still applies for this
+    // session; it simply will not be remembered, which is not worth a message.
+  }
+}
 
 const error = (text: string): RunResult => ({ lines: [{ text, tone: 'error' }] })
 
@@ -66,13 +98,25 @@ export const COMMANDS: readonly Command[] = [
     aliases: ['ls', 'see', 'list', 'show', 'rooms'],
     contexts: ALL,
     gloss: (c) =>
-      c === 'lobby' ? 'see what’s around you' : c === 'post' ? 'read it again' : 'see what’s here',
+      c === 'lobby'
+        ? 'see what’s around you'
+        : c === 'post'
+          ? 'read it again'
+          : c === 'person'
+            ? 'what they’ve said'
+            : 'see what’s here',
     detail: () =>
       'shows you what’s around you. at the lobby that’s the rooms, inside a room it’s the posts, inside a post it’s the replies.',
     insert: () => 'look',
     wrongContext: () => '',
-    async run({ context, location, env, hint }) {
+    async run({ context, location, env }) {
       if (context === 'lobby') return { lines: renderRoomList(await env.listRooms()) }
+
+      if (context === 'person') {
+        const profile = await env.getProfile(location.person!)
+        if (!profile) return error(`there’s no one called ${location.person}. try: leave`)
+        return { lines: renderProfile(profile) }
+      }
 
       const room = await env.getRoom(location.room!)
       if (!room) return error(`${location.room} isn’t there anymore. try: leave`)
@@ -90,26 +134,51 @@ export const COMMANDS: readonly Command[] = [
     verb: 'go',
     aliases: ['cd', 'enter', 'open', 'join', 'read'],
     contexts: ALL,
-    gloss: (c) => (c === 'lobby' ? 'enter a room' : 'open a post'),
+    gloss: (c) => (c === 'lobby' || c === 'person' ? 'enter a room' : 'open a post'),
     detail: () =>
-      'moves you. at the lobby, go music. inside a room, go 12 opens that post. a room name works from anywhere.',
+      'moves you. at the lobby, go music. inside a room, go 12 opens that post. a room name works from anywhere, and go ~marisol shows you somebody.',
     insert: () => 'go ',
     wrongContext: () => '',
     async run({ arg, context, location, env, hint }) {
       if (arg === '') {
         return error(
           context === 'lobby' || context === 'commons'
-            ? `go where? try: go ${hint}`
-            : 'go where? try: go 12, or the name of a room.',
+            ? `go where? try: go ${await hint()}`
+            : context === 'person'
+              ? `go where? try: go ${await hint()}`
+              : 'go where? try: go 12, or the name of a room.',
         )
+      }
+
+      // `~marisol` is somebody, not somewhere. §3.10 warns that a space which
+      // absorbs activity "deletes the geography that makes this feel like a
+      // place", so this resolves to a view: their posts, each still carrying
+      // the room and id it lives at, and nothing on it postable.
+      if (arg.startsWith('~')) {
+        const who = arg.slice(1).toLowerCase()
+        if (who === '') return error('go who? try: go ~marisol')
+
+        const profile = await env.getProfile(who)
+        if (!profile) {
+          const { names } = await env.who(location.room)
+          const near = nearestSlug(who, names)
+          return error(
+            near
+              ? `there’s no one called ${who}. did you mean ~${near}?`
+              : `there’s no one called ${who}. try: who`,
+          )
+        }
+        return { lines: renderProfile(profile), location: { person: profile.name } }
       }
 
       // A bare number is a post address, and post addresses only exist inside
       // rooms that keep things (§3.4, §3.10).
       if (/^\d+$/.test(arg)) {
         const id = Number(arg)
-        if (context === 'lobby') {
-          return error(`post numbers only work inside a room. try: go ${hint} first.`)
+        // A profile has no post numbers of its own for the same reason it has
+        // no `say`: the posts on it belong to rooms, and their addresses say so.
+        if (context === 'lobby' || context === 'person') {
+          return error(`post numbers only work inside a room. try: go ${await hint()} first.`)
         }
         if (context === 'commons') {
           return error('commons doesn’t keep posts, so there’s nothing to open here.')
@@ -123,6 +192,14 @@ export const COMMANDS: readonly Command[] = [
       // the same way an absolute path does.
       const room = await env.getRoom(arg)
       if (!room) {
+        // Somebody's name typed as though it were a room is the commonest way
+        // anyone will discover profiles exist, so the error teaches the tilde
+        // rather than just reporting a miss (§3.7).
+        const person = await env.getProfile(arg)
+        if (person) {
+          return error(`there’s no room called ${arg}. ${arg} is a person — try: go ~${arg}`)
+        }
+
         const rooms = await env.listRooms()
         const near = nearestSlug(
           arg,
@@ -142,7 +219,8 @@ export const COMMANDS: readonly Command[] = [
     // §3.3 — one verb for all contribution. There is no `reply` verb to learn;
     // it exists only as an alias.
     contexts: ['room', 'commons', 'post'],
-    gloss: (c) => (c === 'post' ? 'reply here' : c === 'commons' ? 'say something' : 'post something here'),
+    gloss: (c) =>
+      c === 'post' ? 'reply here' : c === 'commons' ? 'say something' : 'post something here',
     detail: () =>
       'contributes wherever you’re standing. in a room it starts a new post; inside a post it adds a reply.',
     insert: () => 'say ',
@@ -161,7 +239,9 @@ export const COMMANDS: readonly Command[] = [
         return { lines: session.begin({ location, body: arg }) }
       }
 
-      return { lines: await session.write(location, arg) }
+      const written = await session.write(location, arg)
+      // §3.9 — nothing typed is ever lost, including to a network blip.
+      return { lines: written.lines, retry: written.failed ? arg : undefined }
     },
   },
 
@@ -206,7 +286,7 @@ export const COMMANDS: readonly Command[] = [
     // §3.1 — backs out one level, always, from anywhere.
     contexts: ALL,
     gloss: (c) => (c === 'post' ? 'back to the room' : 'back to the lobby'),
-    detail: () => 'backs you out one level, from anywhere.',
+    detail: () => 'backs you out one level, from anywhere. from somebody’s page, back to the lobby.',
     insert: () => 'leave',
     wrongContext: () => '',
     async run({ context, location, env }) {
@@ -280,17 +360,190 @@ export const COMMANDS: readonly Command[] = [
   },
 
   {
-    // §4.8 — the one pipe. "If it never ships, this is a themed UI. If it
-    // ships, it justifies the premise entirely."
-    verb: 'posts',
-    aliases: ['find', 'search'],
+    // §4.5 — the taste call, handed to whoever is looking. §9 flagged
+    // green-on-black as the obvious choice worth departing from; this departs
+    // from it by default and keeps it one word away.
+    verb: 'theme',
+    aliases: ['themes', 'colour', 'colours', 'color', 'colors'],
+    contexts: ALL,
+    gloss: () => 'change the colours',
+    detail: () =>
+      `changes how this looks, and remembers it on this device. ${THEMES.map((t) => t.name).join(', ')}. type theme on its own to see them.`,
+    insert: () => 'theme ',
+    wrongContext: () => '',
+    async run({ arg }) {
+      const current = readTheme()
+
+      if (arg === '') {
+        const lines: Line[] = THEMES.map((theme) => ({
+          text: `${theme.name} — ${theme.gloss}${theme.name === current ? '   (yours)' : ''}`,
+          tone: theme.name === current ? 'accent' : 'dim',
+        }))
+        lines.push({ text: `type theme ${THEMES[1].name} to change.`, tone: 'faint' })
+        return { lines }
+      }
+
+      const chosen = findTheme(arg)
+      if (!chosen) {
+        const near = nearestSlug(arg, THEMES.map((t) => t.name))
+        return error(
+          near
+            ? `there’s no ${arg} theme. did you mean ${near}?`
+            : `there’s no ${arg} theme. try: theme`,
+        )
+      }
+
+      applyTheme(chosen.name)
+      return {
+        lines: [{ text: `${chosen.name} — ${chosen.gloss}.`, tone: 'faint' }],
+      }
+    },
+  },
+
+  {
+    // §4.1 — the reason anyone comes back. Its lean: "status bar shows the
+    // count persistently; `mail` lists them with `go <id>` to jump. Pull-only,
+    // no push, no email."
+    verb: 'mail',
+    aliases: ['replies', 'inbox', 'unread'],
+    contexts: ALL,
+    gloss: () => 'replies waiting for you',
+    detail: () =>
+      'shows replies to things you said, newest first, each with the address to walk to. reading them clears the count. nothing is pushed and nothing is emailed — it waits until you ask.',
+    insert: () => 'mail',
+    wrongContext: () => '',
+    async run({ env, session }) {
+      if (session.name() === null) {
+        return {
+          lines: [
+            { text: 'no mail — you’re reading as a guest.', tone: 'faint' },
+            { text: 'say something and replies to it will land here.', tone: 'faint' },
+          ],
+        }
+      }
+
+      const items = await env.readMail()
+      if (items.length === 0) {
+        return { lines: [{ text: 'nothing waiting.', tone: 'faint' }] }
+      }
+
+      const lines: Line[] = []
+      for (const item of items) {
+        // The address first, because a notification you cannot walk to is just
+        // an alert. `go music/12` is not a thing, so both parts are shown.
+        lines.push({
+          text: `${item.room}/${item.postId}  ${item.author}, ${formatAgo(item.createdAt)}`,
+          tone: 'accent',
+        })
+        lines.push({ text: item.body, depth: 1 })
+      }
+      lines.push({ text: '' })
+      lines.push({
+        text: `go ${items[0].room} then go ${items[0].postId} to answer the newest.`,
+        tone: 'faint',
+      })
+      return { lines, mail: 0 }
+    },
+  },
+
+  {
+    // §4.6, revised — as many renames as you like.
+    //
+    // The document leaned one ever, with the old name reserved forever so
+    // nobody could impersonate. Unlimited is the right half to change: "someone
+    // who picks badly at 2am is stuck with it" is not a once-in-a-lifetime
+    // event, and a cap only moves the trap along by one.
+    //
+    // Releasing the old name immediately is the half that costs something, so
+    // the handler says so out loud rather than letting people find out later.
+    verb: 'rename',
+    aliases: ['name', 'callme'],
+    contexts: ALL,
+    gloss: () => 'change my name',
+    detail: () =>
+      'changes what you are called, as often as you like. everything you have said follows the new name, and the old one goes free for anyone to take the moment you drop it — so do not release a name you want back.',
+    insert: () => 'rename ',
+    wrongContext: () => '',
+    async run({ arg, session }) {
+      if (arg === '') {
+        const current = session.name()
+        return error(
+          current === null
+            ? 'you don’t have a name yet. say something and i’ll ask you for one.'
+            : `you’re ${current}. rename to what? try: rename ${current}_`,
+        )
+      }
+      const { lines, identity } = await session.rename(arg)
+      return { lines, identity }
+    },
+  },
+
+  {
+    // Not hidden, and not a footer. A policy nobody can find is not published,
+    // and the moment somebody is asked for an email address is exactly the
+    // moment they are owed a way to read what happens to it — so the signup
+    // question names this command directly.
+    verb: 'privacy',
+    aliases: ['data'],
+    contexts: ALL,
+    gloss: () => 'what’s kept about you',
+    detail: () =>
+      'what thewall holds about you, why, who else can see it, and how to have it deleted. the whole policy is at thewall.social/privacy.',
+    insert: () => 'privacy',
+    wrongContext: () => '',
+    async run() {
+      return { lines: PRIVACY.summary.map((text) => ({ text, tone: 'faint' as const })) }
+    },
+  },
+
+  {
+    verb: 'terms',
+    aliases: ['tos', 'rules'],
+    contexts: ALL,
+    gloss: () => 'the deal, briefly',
+    detail: () =>
+      'what you agree to by using this, what not to post, and what happens if you do. the whole thing is at thewall.social/terms.',
+    insert: () => 'terms',
+    wrongContext: () => '',
+    async run() {
+      return { lines: TERMS.summary.map((text) => ({ text, tone: 'faint' as const })) }
+    },
+  },
+
+  {
+    // §4.7 — hidden like the pipe, but for a different reason: nobody needs to
+    // know it exists until the moment they do, and the message that asks them
+    // to verify names it directly.
+    verb: 'resend',
+    aliases: ['verify', 'key'],
     hidden: true,
+    contexts: ALL,
+    gloss: () => 'send my key again',
+    detail: () =>
+      'sends another sign-in link to your address. the one from signup expires, and you need a followed link to keep your name and keep posting.',
+    insert: () => 'resend',
+    wrongContext: () => '',
+    async run({ session }) {
+      return { lines: await session.resendKey() }
+    },
+  },
+
+  {
+    // §3.5 says the English verb is canonical, and searching is a verb — but
+    // `posts` stays as an alias because it is the name §4.8 uses, and because
+    // `posts --by=x | count` reads better than `find` does as a pipe source.
+    //
+    // Not hidden. §4.8's lean is that the *pipe* is documented only inside
+    // `what find` — hiding the search itself was over-applying it, and a search
+    // nobody can discover is barely a search.
+    verb: 'find',
+    aliases: ['posts', 'search', 'grep'],
     pipeable: true,
     contexts: ALL,
-    gloss: () => 'find posts across rooms',
+    gloss: () => 'find something that was said',
     detail: () =>
-      'finds posts across every room. narrow it with --room, --by, --since or --limit, and pipe the result somewhere: posts --by=jameson --since=7d | count, or | go to open the newest one.',
-    insert: () => 'posts ',
+      'looks for words in what people have said, everywhere or just here: find tomatoes. narrow it with --room, --by, --since or --limit. results can be piped: find --by=jameson --since=7d | count, or | go to open the newest.',
+    insert: () => 'find ',
     wrongContext: () => '',
     async run({ arg, location, env }) {
       // Only this command splits on `|`. That is why `say i love a|b` keeps
@@ -303,9 +556,9 @@ export const COMMANDS: readonly Command[] = [
 
       const hits = await env.searchPosts(query.query)
 
-      if (sinks.length === 0) return { lines: renderHits(hits) }
+      if (sinks.length === 0) return { lines: renderHits(hits, query.query.text) }
       if (sinks.length > 1) {
-        return error('one pipe at a time for now. try: posts --since=7d | count')
+        return error('one pipe at a time for now. try: find --since=7d | count')
       }
 
       const sink = sinks[0].head.toLowerCase()
@@ -347,20 +600,19 @@ function buildQuery(
     // The doc's own example reaches for --tag. Rooms already do that job, and
     // saying so is more use than listing the flags that do exist.
     if (name === 'tag') {
-      return { problem: 'there are no tags — rooms do that job. try: posts --room=poker' }
+      return { problem: 'there are no tags — rooms do that job. try: find --room=poker' }
     }
     return { problem: `i don’t know --${name}. try: ${FLAG_NAMES.map((f) => `--${f}`).join(', ')}` }
   }
 
-  if (loose.length > 0) {
-    return { problem: `posts takes flags, not words. try: posts --by=${loose[0].toLowerCase()}` }
-  }
-
+  // Bare words are the search itself. Refusing them, as this used to, turned
+  // away the most obvious way anyone would reach for this.
   const query: PostQuery = { limit: 20 }
+  if (loose.length > 0) query.text = loose.join(' ')
 
   const room = values.get('room')
   if (room !== undefined) {
-    if (room === '') return { problem: 'which room? try: posts --room=music' }
+    if (room === '') return { problem: 'which room? try: find --room=music' }
     query.room = room.toLowerCase()
   } else if (location.room !== undefined) {
     // Standing somewhere is itself a filter; naming the room again would be
@@ -370,8 +622,12 @@ function buildQuery(
 
   const by = values.get('by')
   if (by !== undefined) {
-    if (by === '') return { problem: 'said by whom? try: posts --by=marisol' }
+    if (by === '') return { problem: 'said by whom? try: find --by=marisol' }
     query.by = by.toLowerCase()
+  } else if (location.person !== undefined) {
+    // Standing on somebody is a filter for the same reason standing in a room
+    // is: `find tomatoes` on ~marisol means the ones she said. --by overrides.
+    query.by = location.person
   }
 
   const since = values.get('since')
@@ -393,9 +649,9 @@ function buildQuery(
   return { query }
 }
 
-function renderHits(hits: readonly PostHit[]): Line[] {
+function renderHits(hits: readonly PostHit[], term?: string): Line[] {
   if (hits.length === 0) {
-    return [{ text: 'nothing matched.', tone: 'faint' }]
+    return [{ text: term ? `nothing said about ${term}.` : 'nothing matched.', tone: 'faint' }]
   }
 
   const lines: Line[] = []
@@ -414,10 +670,19 @@ function renderHits(hits: readonly PostHit[]): Line[] {
  * where a newcomer is standing; the doing verbs take the slots elsewhere.
  */
 export const CHIP_SETS: Record<Context, readonly string[]> = {
-  lobby: ['look', 'go', 'who', 'what', 'help'],
-  room: ['look', 'go', 'say', 'who', 'leave'],
-  commons: ['look', 'say', 'who', 'leave'],
-  post: ['look', 'say', 'who', 'leave'],
+  lobby: ['look', 'go', 'who', 'theme', 'help'],
+  // `say` leads wherever it is valid. The palette is a horizontal scroller on
+  // a 380px viewport, and at five chips it overflows — so third place put the
+  // primary action, the one §3.9's whole design hangs on, off the right edge
+  // where nothing indicated it existed. In a room you have already seen the
+  // content; what you need is the verb.
+  room: ['say', 'look', 'go', 'who', 'leave'],
+  commons: ['say', 'look', 'who', 'leave'],
+  post: ['say', 'look', 'who', 'leave'],
+  // No `say`. The palette is the fastest way anyone learns what a place is for,
+  // and a profile is for reading and walking away from (§3.10). `go` leads
+  // because every line on the page is an address in a room.
+  person: ['go', 'look', 'find', 'leave'],
 }
 
 const BY_NAME = new Map<string, Command>()

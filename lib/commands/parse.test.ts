@@ -13,8 +13,10 @@ const EPHEMERAL = ['commons']
 // already has a name — the signup flow has its own suite.
 const signedIn = new Session(
   { async checkName() { return { available: true, alternates: [] } },
-    async create(name) { return { ok: true as const, name } } },
-  { async post() { return 1 }, async reply() {} },
+    async create(name) { return { ok: true as const, name } },
+    async resend() { return { note: 'sent' } } },
+  { async post() { return 1 }, async reply() {},
+    async rename(name) { return { ok: true as const, name } } },
   'tester',
 )
 const run = createRunner(fixtureEnv(), EPHEMERAL, signedIn)
@@ -205,7 +207,7 @@ describe('§3.6 — the palette is a glossary derived from the registry', () => 
   it('leaves a trailing space exactly when an argument follows', () => {
     for (const context of contexts) {
       for (const chip of chipsForContext(context)) {
-        const takesArg = ['go', 'say', 'what'].includes(chip.verb)
+        const takesArg = ['go', 'say', 'what', 'theme', 'find'].includes(chip.verb)
         expect(chip.insert.endsWith(' '), `${chip.verb} in ${context}`).toBe(takesArg)
       }
     }
@@ -217,6 +219,49 @@ describe('§3.6 — the palette is a glossary derived from the registry', () => 
         expect(parse(chip.insert)?.command?.verb).toBe(chip.verb)
       }
     }
+  })
+})
+
+describe('commands that need no data do not ask for any', () => {
+  /** An Env that counts reads and fails on all of them. */
+  function brokenEnv() {
+    let reads = 0
+    const boom = () => {
+      reads += 1
+      throw new Error('the database is having a moment')
+    }
+    return {
+      reads: () => reads,
+      env: {
+        listRooms: boom,
+        getRoom: boom,
+        getPost: boom,
+        who: boom,
+        searchPosts: boom,
+      } as unknown as ReturnType<typeof fixtureEnv>,
+    }
+  }
+
+  it('help and what work while the database is down', async () => {
+    const { env, reads } = brokenEnv()
+    const offline = createRunner(env, EPHEMERAL, signedIn)
+
+    for (const input of ['help', 'what go', 'what', 'zzz']) {
+      const out = text((await offline(input, { room: 'music' })).lines)
+      expect(out.length, input).toBeGreaterThan(0)
+    }
+
+    // The room hint used to be resolved before dispatch, so every command —
+    // including the two a confused person reaches for — cost a query, and
+    // failed with it.
+    expect(reads()).toBe(0)
+  })
+
+  it('but a wrong-context error still names a real room', async () => {
+    // `say` at the lobby has to suggest somewhere that exists, so this one
+    // genuinely needs the lookup.
+    const out = text((await run('say hello', {})).lines)
+    expect(out).toBe('you have to be in a room first. try: go music')
   })
 })
 

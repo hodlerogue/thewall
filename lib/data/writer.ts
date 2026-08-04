@@ -39,6 +39,21 @@ export function supabaseWriter(client: SupabaseClient): Writer {
 
       if (error) throw new Error(friendly(error.message))
     },
+
+    async rename(name: string) {
+      // Asked *before* the change, because afterwards the name is yours and the
+      // question "was this somebody else's?" answers no.
+      const { data: before } = await client.rpc('name_changed_hands', { p_name: name })
+
+      const { error } = await client.rpc('change_name', { p_name: name })
+      if (error) return { ok: false as const, reason: friendly(error.message) }
+
+      return {
+        ok: true as const,
+        name,
+        recycled: typeof before === 'string' ? new Date(before) : undefined,
+      }
+    },
   }
 }
 
@@ -51,6 +66,12 @@ export function httpSignupApi(): SignupApi {
       return (await response.json()) as { available: boolean; alternates: string[] }
     },
 
+    async resend() {
+      const response = await fetch('/api/verify/resend', { method: 'POST' })
+      const payload = (await response.json().catch(() => ({}))) as { note?: string; error?: string }
+      return { note: payload.note ?? payload.error ?? 'couldn’t send just now.' }
+    },
+
     async create(name: string, email: string) {
       const response = await fetch('/api/signup', {
         method: 'POST',
@@ -58,17 +79,65 @@ export function httpSignupApi(): SignupApi {
         body: JSON.stringify({ name, email }),
       })
 
-      const payload = (await response.json().catch(() => ({}))) as { name?: string; error?: string }
+      const payload = (await response.json().catch(() => ({}))) as {
+        name?: string
+        note?: string
+        error?: string
+      }
       if (!response.ok || !payload.name) {
         return { ok: false as const, reason: payload.error ?? 'that didn’t work. try again?' }
       }
-      return { ok: true as const, name: payload.name }
+      // The note says what actually happened to the mail, rather than assuming.
+      return { ok: true as const, name: payload.name, note: payload.note }
     },
   }
 }
 
-/** Database errors are for logs. What reaches the prompt is a sentence. */
-function friendly(message: string): string {
+/**
+ * Database errors are for logs. What reaches the prompt is a sentence.
+ *
+ * Exported because the fall-through is "that didn't send. try again?", which is
+ * a lie for every refusal the schema makes on purpose — and nothing else would
+ * notice a new constraint arriving without a branch here.
+ */
+export function friendly(message: string): string {
+  // §4.7 — the gate. The database says it plainly; this adds the way out.
+  if (message.includes('check your email')) {
+    return 'check your email to keep saying things — click the link and this is yours. no link? type resend.'
+  }
+  if (message.includes('posts_body_line_limit') || message.includes('replies_body_line_limit')) {
+    return 'that’s a lot of blank lines. say it in fewer.'
+  }
+  if (message.includes('body_not_blank')) {
+    return 'that’s empty — say something.'
+  }
+  if (message.includes('body_length')) {
+    return 'that’s longer than 2000 characters. say it shorter, or say it in two.'
+  }
+  // The operator's levers, as they land on the person they were pulled at.
+  if (message.includes('say things here anymore')) {
+    // Passed through rather than replaced: ban() carries the reason, and being
+    // told why is the difference between a decision and a wall.
+    return message
+  }
+  // §4.6 — the rename path. `is taken` is the common one and already reads as
+  // a sentence, so it is passed through rather than flattened.
+  if (message.includes('is taken')) {
+    return message
+  }
+  if (message.includes('a lot of names in an hour')) {
+    return 'that’s a lot of names in an hour. give it a while and try again.'
+  }
+  if (message.includes('already your name')) {
+    return 'that’s already your name.'
+  }
+  if (message.includes('too fast')) {
+    return 'that’s a lot of words in a very short time. give it a few minutes and say it again.'
+  }
+  if (message.includes('no room called')) {
+    // A room that vanished mid-sentence — hidden, or never there.
+    return 'that room isn’t there. type look to see what is.'
+  }
   if (message.includes('commons does not keep threads')) {
     return 'commons doesn’t keep threads — say it as its own thing instead.'
   }

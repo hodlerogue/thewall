@@ -1,6 +1,7 @@
-import { createHash } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { suggestAlternates, validateName } from '@/lib/auth/names'
+import { clientHash } from '@/lib/auth/clientHash'
+import { sendMagicLink } from '@/lib/auth/mail'
 import { createAdminClient, createRouteClient } from '@/lib/supabase/server'
 
 /**
@@ -68,10 +69,10 @@ export async function POST(request: Request) {
     )
   }
 
-  // email_confirm marks the address as confirmed without the round trip, which
-  // is exactly the §4.7 trade: posting works immediately, the key arrives in
-  // parallel, and throwaway addresses get in. Revisit when the manual kill
-  // switch stops being practical.
+  // email_confirm is what lets the session start now, which is what lets the
+  // held sentence post now (§3.9). It is NOT the verification signal — nobody
+  // has proven they can read this address yet. That claim belongs to
+  // profiles.verified_at, which only /auth/callback ever sets.
   const { data: created, error: createError } = await admin.auth.admin.createUser({
     email: body.email,
     email_confirm: true,
@@ -108,11 +109,12 @@ export async function POST(request: Request) {
     options: { redirectTo: `${siteUrl()}/auth/callback` },
   })
 
-  if (keyLink?.properties?.action_link) {
-    // No email provider in scope. The link goes to the server log, which is
-    // where you read it in development; swapping in a sender is one call.
-    console.log(`\n  magic link for ${body.email}:\n  ${keyLink.properties.action_link}\n`)
-  }
+  // §4.7, as revised: this link is what turns a name into an account someone
+  // can come back to. Until it is followed they get one contribution — the
+  // held sentence below — and then they are asked.
+  const delivery = keyLink?.properties?.action_link
+    ? await sendMagicLink(body.email, keyLink.properties.action_link)
+    : { sent: false, note: 'couldn’t make you a key just now. type resend to try again.' }
 
   const { data: sessionLink, error: linkError } = await admin.auth.admin.generateLink({
     type: 'magiclink',
@@ -135,17 +137,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'could not sign you in' }, { status: 500 })
   }
 
-  return NextResponse.json({ name: validated.name })
-}
-
-/**
- * Hashed, not stored: the rate limit needs to tell callers apart, not identify
- * them, and a plain address on disk is a liability with no upside.
- */
-function clientHash(request: Request): string {
-  const forwarded = request.headers.get('x-forwarded-for') ?? ''
-  const address = forwarded.split(',')[0]?.trim() || 'unknown'
-  return createHash('sha256').update(address).digest('hex')
+  return NextResponse.json({ name: validated.name, note: delivery.note })
 }
 
 function siteUrl(): string {

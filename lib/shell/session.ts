@@ -1,4 +1,5 @@
 import { suggestAlternates, validateName } from '@/lib/auth/names'
+import { formatAgo } from '@/lib/shell/model'
 import type { Line, Location } from '@/lib/shell/types'
 
 /**
@@ -26,12 +27,24 @@ export interface SignupApi {
     name: string,
     email: string,
   ): Promise<{ ok: true; name: string; note?: string } | { ok: false; reason: string }>
+  /** Another key. Links expire, so this is part of the rule, not a nicety. */
+  resend(): Promise<{ note: string }>
 }
 
 export interface Writer {
   /** Returns the new post's permanent address (§3.4). */
   post(room: string, body: string): Promise<number>
   reply(room: string, postNo: number, body: string): Promise<void>
+  /**
+   * §4.6 — change your name, as often as you like.
+   *
+   * `recycled` is when the new name was last somebody else's, if it was. It is
+   * on the result rather than checked separately because taking a name that
+   * has been worn before is a thing worth being told at the moment you take it.
+   */
+  rename(name: string): Promise<
+    { ok: true; name: string; recycled?: Date } | { ok: false; reason: string }
+  >
 }
 
 type Mode = 'command' | 'ask-name' | 'ask-email'
@@ -40,6 +53,14 @@ export interface AnswerResult {
   lines: Line[]
   /** Set when the prompt's identity changed, so the label can follow. */
   identity?: string | null
+  /** Set when the held sentence could not be sent, so it is not lost. */
+  retry?: string
+}
+
+export interface WriteResult {
+  lines: Line[]
+  /** True when nothing was written, so the caller can hand the words back. */
+  failed: boolean
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -131,6 +152,13 @@ export class Session {
         // echo to the screen (§3.9, §9).
         { text: 'where should i send your key?', tone: 'accent' },
         { text: 'no password — a link, so you can get back in later.', tone: 'faint' },
+        // The moment somebody is asked for an address is the moment they are
+        // owed a way to read what happens to it. A link in a footer nobody
+        // scrolls to is not that; a command they can type right now is.
+        {
+          text: 'it’s never shown to anyone. type privacy to see what’s kept, or terms for the rest.',
+          tone: 'faint',
+        },
       ],
     }
   }
@@ -161,36 +189,106 @@ export class Session {
     const held = this.held
     this.held = null
 
-    if (held) {
-      lines.push({ text: 'now — the thing you were trying to say.', tone: 'accent' })
-      lines.push(...(await this.write(held.location, held.body)))
-    } else {
+    if (!held) {
       lines.push({ text: `you’re ${result.name} now.`, tone: 'dim' })
+      return { lines, identity: this.who }
     }
 
-    return { lines, identity: this.who }
+    lines.push({ text: 'now — the thing you were trying to say.', tone: 'accent' })
+    const written = await this.write(held.location, held.body)
+    lines.push(...written.lines)
+
+    // Losing the sentence here would be the worst possible moment for it.
+    return { lines, identity: this.who, retry: written.failed ? held.body : undefined }
+  }
+
+  /** §4.7 — send another key. Only meaningful once you have an account. */
+  async resendKey(): Promise<Line[]> {
+    if (this.who === null) {
+      return [{ text: 'nothing to send yet — say something first and i’ll ask who you are.', tone: 'error' }]
+    }
+    const { note } = await this.api.resend()
+    return [{ text: note, tone: 'faint' }]
+  }
+
+  /**
+   * §4.6 — rename, unlimited, and the old name goes back on the shelf.
+   *
+   * The document leaned one rename ever, with the old name kept reserved so
+   * nobody could impersonate. Both halves are decided differently here, and the
+   * second is why the success message spends two lines on consequences: posts
+   * carry your *current* name, so renaming rewrites attribution on everything
+   * you have ever said, and what you release is free the same minute. Someone
+   * who does not know that has been surprised rather than served.
+   */
+  async rename(raw: string): Promise<AnswerResult> {
+    if (this.who === null) {
+      return {
+        lines: [
+          { text: 'you don’t have a name yet.', tone: 'error' },
+          { text: 'say something and i’ll ask you for one.', tone: 'faint' },
+        ],
+      }
+    }
+
+    const validated = validateName(raw)
+    if (!validated.ok) {
+      const lines: Line[] = [{ text: validated.reason, tone: 'error' }]
+      if (validated.suggestion) lines.push({ text: `${validated.suggestion} would work.`, tone: 'faint' })
+      return { lines }
+    }
+
+    if (validated.name === this.who) {
+      return { lines: [{ text: `you’re already ${this.who}.`, tone: 'faint' }] }
+    }
+
+    const previous = this.who
+    const result = await this.writer.rename(validated.name)
+    if (!result.ok) {
+      return { lines: [{ text: result.reason, tone: 'error' }] }
+    }
+
+    this.who = result.name
+    const lines: Line[] = [
+      { text: `you’re ${result.name} now.`, tone: 'accent' },
+      { text: `everything you’ve said says ${result.name} too — it follows you.`, tone: 'faint' },
+      { text: `${previous} is free for anyone to take.`, tone: 'faint' },
+    ]
+    if (result.recycled) {
+      lines.push({
+        text: `and ${result.name} was somebody else’s until ${formatAgo(result.recycled)}.`,
+        tone: 'faint',
+      })
+    }
+    return { lines, identity: result.name }
   }
 
   /** The write path itself, used by `say` and by the held-message commit. */
-  async write(location: Location, body: string): Promise<Line[]> {
+  async write(location: Location, body: string): Promise<WriteResult> {
     if (!location.room) {
-      return [{ text: 'you have to be in a room to say something.', tone: 'error' }]
+      return {
+        lines: [{ text: 'you have to be in a room to say something.', tone: 'error' }],
+        failed: true,
+      }
     }
 
     try {
       if (location.postId !== undefined) {
         await this.writer.reply(location.room, location.postId, body)
-        return [{ text: 'said.', tone: 'faint' }]
+        return { lines: [{ text: 'said.', tone: 'faint' }], failed: false }
       }
       const postNo = await this.writer.post(location.room, body)
-      return [{ text: `said — it’s post ${postNo}.`, tone: 'faint' }]
+      return { lines: [{ text: `said — it’s post ${postNo}.`, tone: 'faint' }], failed: false }
     } catch (error) {
-      return [
-        {
-          text: error instanceof Error ? error.message : 'that didn’t send. try again?',
-          tone: 'error',
-        },
-      ]
+      return {
+        lines: [
+          {
+            text: error instanceof Error ? error.message : 'that didn’t send. try again?',
+            tone: 'error',
+          },
+        ],
+        failed: true,
+      }
     }
   }
 }

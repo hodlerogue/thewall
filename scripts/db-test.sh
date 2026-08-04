@@ -55,32 +55,48 @@ echo ''
 echo '§3.4 — the allocator under concurrent writers'
 
 writers=8
-each=25
-tester='99999999-9999-4999-8999-999999999999'
+each=12
 
+# One racer per writer, rather than eight sessions sharing an account.
+#
+# Two reasons, both of them the schema behaving correctly. Contributing is now
+# rate limited, and one account firing hundreds of posts in a second is the
+# exact thing that bounds — so a shared account would be testing the limiter
+# rather than the allocator. And each has to be verified, because §4.7 allows
+# one contribution before the link is followed. Eight concurrent writers is
+# eight people anyway, which is what the allocator is actually up against.
 psql -d "${db}" -q -c "
   insert into auth.users (id, aud, role, email)
-  values ('${tester}', 'authenticated', 'authenticated', 'racer@seed.invalid')
+  select ('40000000-0000-4000-8000-00000000000' || n)::uuid,
+         'authenticated', 'authenticated', 'racer' || n || '@seed.invalid'
+    from generate_series(1, ${writers}) n
   on conflict (id) do nothing;
-  insert into public.profiles (id, name) values ('${tester}', 'racer')
+
+  insert into public.profiles (id, name, verified_at)
+  select ('40000000-0000-4000-8000-00000000000' || n)::uuid, 'racer' || n, now()
+    from generate_series(1, ${writers}) n
   on conflict (id) do nothing;"
 
-before=$(psql -d "${db}" -tAc "select next_post_no from public.rooms where slug = 'poker'")
+before=$(psql -d "${db}" -tAc "select count(*) from public.posts where room_slug = 'poker'")
 
 seq "${writers}" | xargs -P "${writers}" -I{} psql -d "${db}" -q -c "
   set role authenticated;
-  set request.jwt.claim.sub = '${tester}';
+  set request.jwt.claim.sub = '40000000-0000-4000-8000-00000000000{}';
   select public.create_post('poker', 'concurrent {} #' || g) from generate_series(1, ${each}) g;
 " >/dev/null 2>&1
 
+# Counted against what was already there rather than against the allocator's
+# counter: other tests in this run insert into poker directly, and the property
+# being checked is only that these writes collided with nothing.
 read -r total distinct_addresses <<<"$(psql -d "${db}" -tAF' ' -c \
   "select count(*), count(distinct post_no) from public.posts where room_slug = 'poker'")"
-expected=$(( before - 1 + writers * each ))
+written=$(( total - before ))
+expected=$(( writers * each ))
 
-if [ "${total}" = "${distinct_addresses}" ] && [ "${total}" = "${expected}" ]; then
-  echo "  ok    ${writers} writers x ${each} posts produced ${total} distinct addresses, no collisions"
+if [ "${total}" = "${distinct_addresses}" ] && [ "${written}" = "${expected}" ]; then
+  echo "  ok    ${writers} writers x ${each} posts landed on ${written} addresses, none of them shared"
 else
-  echo "  FAILED: ${total} posts but ${distinct_addresses} distinct addresses (expected ${expected})"
+  echo "  FAILED: ${written} posts written (expected ${expected}), ${total} rows on ${distinct_addresses} distinct addresses"
   exit 1
 fi
 
