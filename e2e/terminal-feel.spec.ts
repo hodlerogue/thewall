@@ -119,3 +119,68 @@ test('the scrollback does not grow without bound', async ({ page }) => {
   )
   expect(overflow).toBeLessThanOrEqual(0)
 })
+
+test('something blinks where you are meant to type', async ({ page }) => {
+  // The input is transparent, borderless and empty, and a browser draws no
+  // caret in a field it has not been given — so on a phone, before the first
+  // tap, nothing on screen said "here".
+  const caret = page.locator('.caret')
+  await expect(caret).toBeVisible()
+
+  // Exactly where the first character lands: after the label, and taking no
+  // width of its own, so the text starts in the same place either way.
+  const box = (await caret.boundingBox())!
+  const label = (await page.getByTestId('prompt-label').boundingBox())!
+  const input = (await prompt(page).boundingBox())!
+  expect(box.x).toBeGreaterThanOrEqual(label.x + label.width - 1)
+  expect(box.x).toBeLessThanOrEqual(input.x + 2)
+
+  // It blinks, rather than merely sitting there.
+  const animation = await caret.evaluate((el) => getComputedStyle(el).animationName)
+  expect(animation).toBe('caret-blink')
+})
+
+test('the drawn cursor gets out of the way of the real one', async ({ page }) => {
+  // Two cursors is one too many, and once there are words the words are the
+  // signal.
+  await prompt(page).focus()
+  await expect(page.locator('.caret')).toHaveCount(0)
+
+  await prompt(page).fill('go music')
+  await expect(page.locator('.caret')).toHaveCount(0)
+
+  await prompt(page).fill('')
+  await prompt(page).blur()
+  await expect(page.locator('.caret')).toBeVisible()
+})
+
+test('reply is in help, and says what it needs', async ({ page }) => {
+  // The thing everybody wants to do second. `say` only reads as "reply" once
+  // you are already inside a post, and an alias is invisible by design (§3.5),
+  // so the step people were missing was never written down anywhere.
+  await type(page, 'leave')
+  await type(page, 'go music')
+  await type(page, 'help')
+  await expect(scrollback(page)).toContainText('reply')
+
+  await type(page, 'reply nice one')
+  await expect(scrollback(page)).toContainText('replies live inside a post')
+  // Named with a post that is actually there, not an invented number.
+  await expect(scrollback(page)).toContainText('go 12')
+
+  // And inside one, it is simply say.
+  await type(page, 'go 12')
+  await type(page, 'help')
+  await expect(scrollback(page)).toContainText('answer this')
+})
+
+test('reply in a room no longer posts a brand new post', async ({ page }) => {
+  // It was an alias for `say`, so this used to start a top-level post — the
+  // opposite of what the word asks for, and irreversible once sent.
+  await type(page, 'leave')
+  await type(page, 'go music')
+  await type(page, 'reply this should not become a post')
+
+  await expect(scrollback(page)).not.toContainText('said — it’s post')
+  await expect(scrollback(page)).not.toContainText('what do you want to be called')
+})

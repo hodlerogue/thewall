@@ -108,6 +108,16 @@ export function Terminal({
   const [pending, setPending] = useState(false)
   const [mail, setMail] = useState(initialMail)
   const [announcement, setAnnouncement] = useState('')
+  /*
+   * Whether the prompt holds the caret.
+   *
+   * Only ever used to decide whether to draw one ourselves. Nothing on screen
+   * said "type here": the input is transparent, borderless and empty, and a
+   * browser draws no caret in a field it has not been given. On a phone, where
+   * there is no cursor of any kind until you tap, the answer to "where do I
+   * type" was a thin strip of nothing to the right of the label.
+   */
+  const [focused, setFocused] = useState(false)
 
   const scrollbackRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -488,6 +498,12 @@ export function Terminal({
           >
             {label}
           </label>
+          {/* Where the caret would be, when there is not a real one — so the
+              block sits exactly where your first character lands. Hidden the
+              moment the field is focused, because the browser's own caret
+              takes over and two would be one too many, and hidden as soon as
+              there is text, because then the words are the signal. */}
+          {!focused && input === '' && <span className="caret" aria-hidden="true" />}
           <input
             id="prompt"
             ref={inputRef}
@@ -495,6 +511,8 @@ export function Terminal({
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={onKey}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="none"

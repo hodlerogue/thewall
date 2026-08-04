@@ -22,11 +22,22 @@ const signedIn = new Session(
 const run = createRunner(fixtureEnv(), EPHEMERAL, signedIn)
 const text = (lines: { text: string }[]) => lines.map((l) => l.text).join('\n')
 
-/** The §3.5 table, transcribed from the doc rather than from the code. */
+/**
+ * The §3.5 table, transcribed from the doc rather than from the code.
+ *
+ * One departure, recorded rather than quietly made: the doc lists `reply` as an
+ * alias for `say`, on §3.3's reasoning that there is no reply verb to learn.
+ * It cost more than it saved. Aliases are never announced (§3.5), so nobody
+ * could discover it — and in a *room* it resolved to `say` and posted a brand
+ * new post, which is the opposite of what typing "reply" asks for. It is a
+ * command of its own now, which does nothing `say` cannot but appears in help
+ * everywhere and teaches the step people are missing.
+ */
 const ALIAS_TABLE: Record<string, string[]> = {
   look: ['ls', 'see', 'list', 'show', 'rooms'],
   go: ['cd', 'enter', 'open', 'join', 'read'],
-  say: ['wall', 'post', 'reply', 'write', 'talk'],
+  say: ['wall', 'post', 'write', 'talk'],
+  reply: ['re', 'answer'],
   who: ['people', 'online', 'users'],
   leave: ['back', 'exit', 'up', 'cd ..'],
   what: ['man', 'explain', 'info', '?'],
@@ -46,8 +57,8 @@ describe('§3.5 — english verbs are canonical, unix names are aliases', () => 
   it('resolves aliases carrying arguments', () => {
     expect(parse('cd music')).toMatchObject({ arg: 'music' })
     expect(parse('cd music')?.command?.verb).toBe('go')
-    expect(parse('reply nice one')).toMatchObject({ arg: 'nice one' })
-    expect(parse('reply nice one')?.command?.verb).toBe('say')
+    expect(parse('answer nice one')).toMatchObject({ arg: 'nice one' })
+    expect(parse('answer nice one')?.command?.verb).toBe('reply')
   })
 
   it('is case-insensitive and tolerates extra whitespace', () => {

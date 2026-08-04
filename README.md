@@ -82,8 +82,8 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 242 unit tests: parser, aliases, errors, signup, search, themes, names, policy
-npm run test:e2e   # 82 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm test           # 243 unit tests: parser, aliases, errors, signup, search, themes, names, policy
+npm run test:e2e   # 86 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
 npm run test:db    # 106 assertions against the real migrations, on a throwaway database
 ```
 
@@ -129,6 +129,15 @@ prompt string, the palette set, the valid command set and the URL at once — wh
 is why `thewall.social/music/12` and `go 12` are the same address (§3.4). The lobby
 lives at `/lobby` so that `/` can put arrivals in commons without making `leave`
 impossible.
+
+**`reply` is a command, against §3.3's lean.** The doc says there is no reply
+verb to learn — one verb for all contribution — and `reply` was an alias for
+`say`. That cost more than it saved twice over: aliases are never announced
+(§3.5), so nobody could find it, and in a *room* it resolved to `say` and
+posted a brand new post, which is the opposite of what the word asks for.
+Inside a post it is still exactly `say`, looked up rather than duplicated, so
+there is one contribution path. Everywhere else it teaches the step people were
+missing, naming a post that actually exists.
 
 **Signup is an input mode, not a page** (§3.9). The sentence you typed is held
 before the first question and posted the moment the account exists, so it is
