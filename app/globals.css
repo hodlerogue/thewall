@@ -241,6 +241,36 @@ body {
   color: var(--accent);
   white-space: nowrap;
 }
+/*
+ * The blinking block, for when the browser is not drawing a caret.
+ *
+ * A terminal's cursor is the whole of its "you may type now" affordance, and
+ * this had none: an empty transparent input reads as empty space. Steps rather
+ * than a fade, because a terminal cursor snaps — and off entirely for anyone
+ * who has asked for less motion, where a permanent block still marks the spot.
+ */
+.caret {
+  flex: 0 0 auto;
+  width: 0.55em;
+  height: 1.15em;
+  margin-right: -0.55em; /* occupies no width: the input still starts here */
+  background: var(--accent);
+  animation: caret-blink 1.06s steps(1, end) infinite;
+}
+
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
 .prompt-label-guest {
   color: var(--fg-faint); /* §3.9: guest state is ambient, never nagging */
 }

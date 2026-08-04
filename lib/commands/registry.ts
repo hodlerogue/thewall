@@ -92,6 +92,17 @@ function applyTheme(name: string): void {
 
 const error = (text: string): RunResult => ({ lines: [{ text, tone: 'error' }] })
 
+/** A post address that exists, for an error that tells you to open one. */
+async function newestPostIn(env: Env, room: string | undefined): Promise<number | string> {
+  if (room === undefined) return 12
+  try {
+    const found = await env.getRoom(room)
+    return found?.posts[0]?.id ?? 12
+  } catch {
+    return 12
+  }
+}
+
 /** One line of `doctor`, aligned so a column of them can be read down. */
 function row(label: string, ok: boolean, note = ''): Line {
   return {
@@ -223,9 +234,15 @@ export const COMMANDS: readonly Command[] = [
 
   {
     verb: 'say',
-    aliases: ['wall', 'post', 'reply', 'write', 'talk'],
-    // §3.3 — one verb for all contribution. There is no `reply` verb to learn;
-    // it exists only as an alias.
+    aliases: ['wall', 'post', 'write', 'talk'],
+    /*
+     * §3.3 — one verb for all contribution, and `say` is still it: inside a
+     * post this is what adds a reply. `reply` used to be an alias here, which
+     * was worse than not having it. Aliases are never announced (§3.5), so
+     * nobody could find it — and in a *room* it resolved to this and posted a
+     * brand new post, which is the opposite of what somebody typing "reply"
+     * wants. It is a command of its own below, and does nothing this cannot.
+     */
     contexts: ['room', 'commons', 'post'],
     gloss: (c) =>
       c === 'post' ? 'reply here' : c === 'commons' ? 'say something' : 'post something here',
@@ -250,6 +267,48 @@ export const COMMANDS: readonly Command[] = [
       const written = await session.write(location, arg)
       // §3.9 — nothing typed is ever lost, including to a network blip.
       return { lines: written.lines, retry: written.failed ? arg : undefined }
+    },
+  },
+
+  {
+    /*
+     * Not a second way to contribute — inside a post this is `say`, exactly.
+     * It exists because §3.3's "there is no reply verb to learn" turned out to
+     * cost more than it saved: the one thing everybody wants to do second is
+     * answer somebody, `say` only reads as "reply" once you are already inside
+     * a post, and an alias is invisible by design. So the word people reach for
+     * is a command, which means it appears in `help` from everywhere and
+     * teaches the step they are missing.
+     */
+    verb: 'reply',
+    aliases: ['re', 'answer'],
+    contexts: ALL,
+    // No dash inside a gloss: help renders `verb — gloss`, and a second one
+    // turns the line into a puzzle.
+    gloss: (c) => (c === 'post' ? 'answer this' : 'answer a post, once you open it'),
+    detail: () =>
+      'answers somebody. replies live inside a post, so open one first: go 12, then reply. inside a post this and say are the same thing.',
+    insert: (c) => (c === 'post' ? 'reply ' : 'go '),
+    wrongContext: () => '',
+    async run(args) {
+      const { context, location, env } = args
+
+      // Inside a post this *is* say — looked up rather than duplicated, so
+      // there is exactly one contribution path and §3.9's held-sentence
+      // machinery cannot be bypassed by a second door onto it.
+      if (context === 'post') return findCommand('say')!.run(args)
+
+      // §3.7 — name the fix, and name a real one. A post that is actually
+      // there beats an invented number, which is the difference between an
+      // instruction somebody can follow and one they have to decode.
+      const example = await newestPostIn(env, location.room)
+      return error(
+        context === 'lobby' || context === 'person'
+          ? 'replies live inside a post. go to a room first, then open one.'
+          : context === 'commons'
+            ? 'commons doesn’t keep replies — say it as its own thing instead.'
+            : `replies live inside a post. open one first — try: go ${example}`,
+      )
     },
   },
 
