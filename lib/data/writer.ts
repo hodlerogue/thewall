@@ -78,8 +78,14 @@ export function httpSignupApi(): SignupApi {
   }
 }
 
-/** Database errors are for logs. What reaches the prompt is a sentence. */
-function friendly(message: string): string {
+/**
+ * Database errors are for logs. What reaches the prompt is a sentence.
+ *
+ * Exported because the fall-through is "that didn't send. try again?", which is
+ * a lie for every refusal the schema makes on purpose — and nothing else would
+ * notice a new constraint arriving without a branch here.
+ */
+export function friendly(message: string): string {
   // §4.7 — the gate. The database says it plainly; this adds the way out.
   if (message.includes('check your email')) {
     return 'check your email to keep saying things — click the link and this is yours. no link? type resend.'
@@ -92,6 +98,19 @@ function friendly(message: string): string {
   }
   if (message.includes('body_length')) {
     return 'that’s longer than 2000 characters. say it shorter, or say it in two.'
+  }
+  // The operator's levers, as they land on the person they were pulled at.
+  if (message.includes('say things here anymore')) {
+    // Passed through rather than replaced: ban() carries the reason, and being
+    // told why is the difference between a decision and a wall.
+    return message
+  }
+  if (message.includes('too fast')) {
+    return 'that’s a lot of words in a very short time. give it a few minutes and say it again.'
+  }
+  if (message.includes('no room called')) {
+    // A room that vanished mid-sentence — hidden, or never there.
+    return 'that room isn’t there. type look to see what is.'
   }
   if (message.includes('commons does not keep threads')) {
     return 'commons doesn’t keep threads — say it as its own thing instead.'

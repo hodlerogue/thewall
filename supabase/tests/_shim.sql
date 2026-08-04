@@ -47,10 +47,15 @@ begin
   if not exists (select 1 from pg_roles where rolname = 'authenticated') then
     create role authenticated nologin noinherit;
   end if;
+  -- The moderation levers are granted to this and nothing else, so a cluster
+  -- without it would silently test a grant that was never made.
+  if not exists (select 1 from pg_roles where rolname = 'service_role') then
+    create role service_role nologin noinherit bypassrls;
+  end if;
   if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
     create publication supabase_realtime;
   end if;
 end
 $$;
 
-grant usage on schema public, auth to anon, authenticated;
+grant usage on schema public, auth to anon, authenticated, service_role;

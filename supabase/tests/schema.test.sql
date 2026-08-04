@@ -442,5 +442,306 @@ begin;
   );
 commit;
 
+
+\echo ''
+\echo '§6 — the manual kill switch, and nothing destroyed by using it'
+
+-- Somebody to remove, with a post that other people have replied to. That is
+-- the case the whole design of this turns on: the wrong lever takes their
+-- neighbours' words with it.
+insert into auth.users (id, aud, role, email)
+values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'authenticated', 'authenticated', 'nuisance@seed.invalid')
+on conflict (id) do nothing;
+insert into public.profiles (id, name, verified_at)
+values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'nuisance', now())
+on conflict (id) do nothing;
+
+insert into public.posts (room_slug, post_no, author_id, body)
+values ('poker', 900, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'something worth removing');
+
+insert into public.replies (post_id, author_id, body)
+select id, '99999999-9999-4999-8999-999999999999', 'a bystander answering'
+  from public.posts where room_slug = 'poker' and post_no = 900;
+
+select tests.ok(public.hide_post('poker', 900) = 1, 'hide_post hides exactly one post');
+
+begin;
+  set local role anon;
+  select tests.ok(
+    (select count(*) from public.posts where room_slug = 'poker' and post_no = 900) = 0,
+    'a hidden post is gone for readers'
+  );
+  select tests.ok(
+    (select count(*) from public.replies where body = 'a bystander answering') = 0,
+    'and so is the conversation under it'
+  );
+commit;
+
+-- The point of a soft delete: the bystander's words are still there.
+select tests.ok(
+  (select count(*) from public.replies where body = 'a bystander answering') = 1,
+  'but nothing was destroyed — the reply is still in the table'
+);
+
+-- A hidden post cannot be found, so an insert that looks it up matches nothing
+-- and is refused only in the sense that it wrote nothing. The claim worth
+-- testing is the other one: somebody who kept the internal id is stopped by the
+-- policy itself, not by being unable to see it.
+create table if not exists tests.ids (k text primary key, v bigint);
+grant select on tests.ids to anon, authenticated;
+insert into tests.ids (k, v)
+select 'hidden_post', id from public.posts where room_slug = 'poker' and post_no = 900
+on conflict (k) do update set v = excluded.v;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+  select tests.raises(
+    $sql$insert into public.replies (post_id, author_id, body)
+         values ((select v from tests.ids where k = 'hidden_post'),
+                 '99999999-9999-4999-8999-999999999999', 'still talking')$sql$,
+    'a hidden post cannot be replied to, even by someone who kept its id'
+  );
+commit;
+
+select tests.ok(public.hide_post('poker', 900, false) = 1, 'unhiding puts it back');
+
+begin;
+  set local role anon;
+  select tests.ok(
+    (select count(*) from public.posts where room_slug = 'poker' and post_no = 900) = 1,
+    'the post returns'
+  );
+  select tests.ok(
+    (select count(*) from public.replies where body = 'a bystander answering') = 1,
+    'with the conversation it had'
+  );
+commit;
+
+-- §3.4 — hiding is not deleting, and neither one moves an address.
+select public.hide_post('poker', 900);
+select tests.ok(
+  (select count(*) from public.posts where room_slug = 'poker' and post_no = 900) = 1,
+  'a hidden post keeps its row, so nothing after it renumbers'
+);
+select tests.raises(
+  $sql$insert into public.posts (room_slug, post_no, author_id, body)
+       values ('poker', 900, '99999999-9999-4999-8999-999999999999', 'taking the empty seat')$sql$,
+  'and it keeps its address, which cannot be reissued while it is hidden'
+);
+select public.hide_post('poker', 900, false);
+
+\echo ''
+\echo '§6 — banning somebody keeps their name and their neighbours'
+
+select tests.ok(
+  public.ban('nuisance', 'flooding poker') = 1,
+  'ban hides what they said, and says how much'
+);
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  select tests.raises(
+    $sql$select public.create_post('poker', 'back again')$sql$,
+    'a banned account cannot post'
+  );
+  select tests.raises(
+    $sql$insert into public.replies (post_id, author_id, body)
+         select id, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'back again'
+           from public.posts where room_slug = 'music' and post_no = 12$sql$,
+    'or reply'
+  );
+commit;
+
+select tests.ok(
+  (select count(*) from public.profiles where name = 'nuisance') = 1,
+  'the account is still there — the name stays reserved and dead (§4.6)'
+);
+
+-- The reply was written by the bystander, not by the banned account, so it must
+-- survive the ban. Deleting the account would have cascaded it away.
+select tests.ok(
+  (select count(*) from public.replies where body = 'a bystander answering') = 1,
+  'and nobody else lost what they wrote'
+);
+
+select tests.ok(public.unban('nuisance') = 1, 'unban restores what ban hid');
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  select tests.ok(
+    (public.create_post('poker', 'trying again politely')).post_no is not null,
+    'and lets them speak again'
+  );
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+  select tests.raises($sql$select public.ban('nuisance')$sql$, 'the levers are not reachable by a signed-in user');
+commit;
+
+begin;
+  set local role anon;
+  select tests.raises($sql$select public.hide_room('poker')$sql$, 'nor by anyone reading');
+commit;
+
+\echo ''
+\echo '§6 — hiding a whole room'
+
+select tests.ok(public.hide_room('latenight') = 1, 'hide_room hides it');
+
+begin;
+  set local role anon;
+  select tests.ok(
+    (select count(*) from public.rooms where slug = 'latenight') = 0,
+    'a hidden room does not exist for readers'
+  );
+  select tests.ok(
+    (select count(*) from public.posts where room_slug = 'latenight') = 0,
+    'and neither does anything inside it'
+  );
+  select tests.ok(
+    (select count(*) from public.room_overview where slug = 'latenight') = 0,
+    'and it is not in the lobby'
+  );
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+  -- create_post is security definer, so the read policy does not protect it.
+  -- Anyone who remembered the name could otherwise keep posting into it.
+  select tests.raises(
+    $sql$select public.create_post('latenight', 'anyone still awake')$sql$,
+    'and nobody who remembers the name can post into it'
+  );
+commit;
+
+select public.hide_room('latenight', false);
+
+\echo ''
+\echo '§4.2 — decay rules, written and not enabled'
+
+select tests.ok(
+  public.archive_quiet_rooms(interval '1 second') > 0,
+  'a room nobody has posted in goes quiet'
+);
+
+begin;
+  set local role anon;
+  select tests.ok(
+    (select count(*) from public.room_overview where slug = 'latenight') = 0,
+    'an archived room drops out of the lobby'
+  );
+  select tests.ok(
+    (select count(*) from public.rooms where slug = 'latenight') = 1,
+    'but is still reachable by name — archived, not deleted'
+  );
+  select tests.ok(
+    (select count(*) from public.posts where room_slug = 'latenight') > 0,
+    'and everything in it is still readable'
+  );
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+  select public.create_post('latenight', 'still awake, as it happens');
+commit;
+
+begin;
+  set local role anon;
+  select tests.ok(
+    (select count(*) from public.room_overview where slug = 'latenight') = 1,
+    'and saying something in it brings it back'
+  );
+commit;
+
+-- Commons is empty by design every morning (§3.10); archiving the front door
+-- would be a bug, not decay.
+select tests.ok(
+  (select archived_at from public.rooms where slug = 'commons') is null,
+  'commons is never archived for being quiet'
+);
+
+\echo ''
+\echo 'a rate limit on saying things, which there was none of'
+
+insert into auth.users (id, aud, role, email)
+values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'authenticated', 'authenticated', 'flood@seed.invalid')
+on conflict (id) do nothing;
+insert into public.profiles (id, name, verified_at)
+values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'flood', now())
+on conflict (id) do nothing;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+  -- Nineteen posts and one reply: twenty contributions, which is the whole
+  -- allowance, and it has to be one allowance rather than two.
+  select public.create_post('poker', 'flooding ' || g) from generate_series(1, 19) g;
+
+  insert into public.replies (post_id, author_id, body)
+  select id, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'and a reply'
+    from public.posts where room_slug = 'music' and post_no = 12;
+
+  select tests.raises(
+    $sql$select public.create_post('poker', 'and one more')$sql$,
+    'the twenty-first contribution in five minutes is refused'
+  );
+  select tests.raises(
+    $sql$insert into public.replies (post_id, author_id, body)
+         select id, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'or a reply'
+           from public.posts where room_slug = 'music' and post_no = 12$sql$,
+    'and replying does not have its own separate allowance'
+  );
+commit;
+
+-- The window is what makes it a rate limit rather than a quota.
+update public.posts   set created_at = created_at - interval '10 minutes' where author_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+update public.replies set created_at = created_at - interval '10 minutes' where author_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  select tests.ok(
+    (public.create_post('poker', 'later, calmly')).post_no is not null,
+    'and once the window passes they can speak again'
+  );
+commit;
+
+\echo ''
+\echo '§4.7 — the gate holds inside a single statement, not just between them'
+
+insert into auth.users (id, aud, role, email)
+values ('66666666-6666-4666-8666-666666666666', 'authenticated', 'authenticated', 'batch@seed.invalid')
+on conflict (id) do nothing;
+insert into public.profiles (id, name)
+values ('66666666-6666-4666-8666-666666666666', 'batch')
+on conflict (id) do nothing;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '66666666-6666-4666-8666-666666666666';
+
+  -- may_contribute was STABLE, so every call in one statement read the snapshot
+  -- taken before it began and each of them saw an account that had written
+  -- nothing. One free contribution became as many as fitted in a select.
+  select tests.raises(
+    $sql$select public.create_post('poker', 'batched ' || g) from generate_series(1, 3) g$sql$,
+    'three posts in one statement cannot all be the free one'
+  );
+commit;
+
+select tests.ok(
+  (select count(*) from public.posts where author_id = '66666666-6666-4666-8666-666666666666') = 0,
+  'and the statement that tried it wrote nothing at all'
+);
+
 \echo ''
 \echo 'all schema tests passed'
