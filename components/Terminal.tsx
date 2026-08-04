@@ -19,16 +19,29 @@ export function Terminal({
   run: Runner
   chipsFor: (location: Location) => readonly Chip[]
   name?: string | null
-  /** Live arrivals for wherever you are standing. Absent in fixtures mode. */
-  subscribe?: (location: Location, append: (lines: Line[]) => void) => () => void
+  /**
+   * Who is here and what they say, for wherever you are standing. Absent in
+   * fixtures mode. Takes the name because presence has to say who you are, and
+   * because arrivals are filtered by it — you saw your own words already.
+   */
+  subscribe?: (
+    location: Location,
+    name: string | null,
+    append: (lines: Line[]) => void,
+  ) => () => void
 }) {
   const [lines, setLines] = useState<Line[]>([...initialLines])
   const [location, setLocation] = useState<Location>(initialLocation)
   const [name, setName] = useState<string | null>(initialName)
   const [input, setInput] = useState('')
 
+  const [pending, setPending] = useState(false)
+
   const scrollbackRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  // A ref rather than the state, because `submit` must see the current value
+  // synchronously — two Enters land in the same tick.
+  const inFlight = useRef(false)
 
   /*
    * §4.4 — the reason this phase exists.
@@ -80,6 +93,16 @@ export function Terminal({
       const text = raw.trim()
       if (text === '') return
 
+      // One at a time. Every command is a network round trip, and a second
+      // Enter used to start a second command against the *pre-move* location:
+      // outputs then landed in completion order rather than submission order,
+      // and the prompt label, the URL and the last thing printed could all
+      // disagree. Pressing Enter twice usually means "did that work?", which
+      // the pending line below now answers.
+      if (inFlight.current) return
+      inFlight.current = true
+      setPending(true)
+
       const echo: Line = { text: `${promptLabel(name, location)} ${text}`, tone: 'echo' }
       setInput('')
       setLines((prev) => [...prev, echo])
@@ -94,6 +117,9 @@ export function Terminal({
         setLines((prev) => [...prev, ...describeError(error)])
         setInput(text)
         return
+      } finally {
+        inFlight.current = false
+        setPending(false)
       }
 
       setLines((prev) => [...prev, ...result.lines])
@@ -136,14 +162,16 @@ export function Terminal({
     return () => window.removeEventListener('popstate', onPop)
   }, [run])
 
-  // Someone else speaking where you are standing. Re-subscribes on every move,
-  // because what counts as "here" changes with you.
+  // Where you are standing, as a subscription. Re-opened on every move and on
+  // signing up: "here" changes with you, and so does who you are when you get
+  // there. Wiring this once at boot is why `who` used to answer with the room
+  // you first landed in and why you never appeared in any room you walked to.
   useEffect(() => {
     if (!subscribe) return
-    return subscribe(location, (incoming) => {
+    return subscribe(location, name, (incoming) => {
       setLines((prev) => [...prev, { text: '' }, ...incoming])
     })
-  }, [subscribe, location.room, location.postId])
+  }, [subscribe, location.room, location.postId, name])
 
   const label = promptLabel(name, location)
 
@@ -167,6 +195,14 @@ export function Terminal({
       </div>
 
       <div className="composer">
+        {/* Between Enter and the answer there used to be nothing at all — on a
+            phone that is up to a second of a prompt that visibly swallowed
+            your input and printed no reply. */}
+        {pending && (
+          <p className="pending" data-testid="pending">
+            …
+          </p>
+        )}
         <Palette chips={chipsFor(location)} onInsert={insert} />
         <form
           className="prompt-row"

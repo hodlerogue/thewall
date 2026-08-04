@@ -116,6 +116,12 @@ body {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+.pending {
+  margin: 0;
+  padding: 6px 12px 0;
+  color: var(--fg-faint);
+}
+
 .palette {
   display: flex;
   gap: 6px;

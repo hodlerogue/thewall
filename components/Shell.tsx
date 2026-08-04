@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { Terminal } from '@/components/Terminal'
 import { createChipsFor, createRunner } from '@/lib/commands/run'
 import { createLive, type Live } from '@/lib/data/live'
-import { createPresence } from '@/lib/data/presence'
 import { supabaseEnv } from '@/lib/data/supabaseEnv'
 import { httpSignupApi, supabaseWriter } from '@/lib/data/writer'
 import { fixtureEnv, type Env } from '@/lib/shell/env'
@@ -49,7 +48,6 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
     let rooms: Awaited<ReturnType<Env['listRooms']>> | undefined
 
     let cancelled = false
-    let cleanup: (() => void) | undefined
 
     async function load() {
       const useFixtures = process.env.NEXT_PUBLIC_USE_FIXTURES === '1'
@@ -69,8 +67,9 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
       let writer: Writer
       let signup: SignupApi
       let existingName: string | null = null
-      let userId: string | null = null
       let live: Live | undefined
+      // Filled once the rooms are known; createLive reads it at event time.
+      const ephemeralNames: string[] = []
 
       if (useFixtures) {
         env = fixtureEnv()
@@ -78,8 +77,12 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
         signup = fixtureSignup()
       } else {
         const client = createClient()
-        const presence = createPresence(client)
-        env = supabaseEnv(client, presence)
+        // The Env needs the channel to answer `who`, and the channel is opened
+        // by the Terminal as you move — so this is handed over before either
+        // exists, and reads through it at call time.
+        const opened = createLive(client, ephemeralNames)
+        live = opened
+        env = supabaseEnv(client, opened)
         writer = supabaseWriter(client)
         signup = httpSignupApi()
 
@@ -89,7 +92,6 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
         // failed profile read is, and silently demoting a returning user to
         // `guest` would ask them to sign up for a name they already own.
         if (!userError && userData.user) {
-          userId = userData.user.id
           const { data, error } = await client
             .from('profiles')
             .select('name')
@@ -100,23 +102,9 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
         }
 
         rooms = await env.listRooms()
-        const ephemeralSlugs = rooms.filter((room) => room.ephemeral).map((room) => room.slug)
-
-        // Signing up gives you an id partway through the session, and without
-        // this the live feed would start echoing your own posts back at you.
-        const { data: authListener } = client.auth.onAuthStateChange((_event, session) => {
-          userId = session?.user?.id ?? null
-        })
-
-        // Read at event time rather than captured, for the same reason.
-        live = createLive(client, ephemeralSlugs, () => userId)
-
-        await presence.enter(target.room, existingName)
-
-        cleanup = () => {
-          authListener.subscription.unsubscribe()
-          void presence.leave()
-        }
+        ephemeralNames.push(
+          ...rooms.filter((room) => room.ephemeral).map((room) => room.slug),
+        )
       }
 
       const session = new Session(signup, writer, existingName)
@@ -158,7 +146,6 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
 
     return () => {
       cancelled = true
-      cleanup?.()
     }
   }, [targetPath])
 

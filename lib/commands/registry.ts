@@ -24,8 +24,15 @@ export interface HandlerArgs {
   location: Location
   context: Context
   env: Env
-  /** A real room slug, for errors that name the fix. */
-  hint: string
+  /**
+   * A real room slug, for errors that name the fix — resolved only if asked.
+   *
+   * Eagerly computing this made every command a database round trip for a
+   * value most handlers never read, and meant `help` and `what` — the two
+   * commands a confused person reaches for, which need no data at all — broke
+   * whenever the database did.
+   */
+  hint: () => Promise<string>
   /** Who you are, and the machinery that asks if you aren't anyone yet (§3.9). */
   session: Session
 }
@@ -71,7 +78,7 @@ export const COMMANDS: readonly Command[] = [
       'shows you what’s around you. at the lobby that’s the rooms, inside a room it’s the posts, inside a post it’s the replies.',
     insert: () => 'look',
     wrongContext: () => '',
-    async run({ context, location, env, hint }) {
+    async run({ context, location, env }) {
       if (context === 'lobby') return { lines: renderRoomList(await env.listRooms()) }
 
       const room = await env.getRoom(location.room!)
@@ -99,7 +106,7 @@ export const COMMANDS: readonly Command[] = [
       if (arg === '') {
         return error(
           context === 'lobby' || context === 'commons'
-            ? `go where? try: go ${hint}`
+            ? `go where? try: go ${await hint()}`
             : 'go where? try: go 12, or the name of a room.',
         )
       }
@@ -109,7 +116,7 @@ export const COMMANDS: readonly Command[] = [
       if (/^\d+$/.test(arg)) {
         const id = Number(arg)
         if (context === 'lobby') {
-          return error(`post numbers only work inside a room. try: go ${hint} first.`)
+          return error(`post numbers only work inside a room. try: go ${await hint()} first.`)
         }
         if (context === 'commons') {
           return error('commons doesn’t keep posts, so there’s nothing to open here.')

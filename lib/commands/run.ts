@@ -37,7 +37,10 @@ export function createRunner(
     if (!parsed) return { lines: [] }
 
     const context = contextOf(location, ephemeralRooms)
-    const hint = await roomHint(env)
+
+    // Resolved at most once, and only if something asks. See HandlerArgs.hint.
+    let hinted: Promise<string> | undefined
+    const hint = () => (hinted ??= roomHint(env))
 
     if (!parsed.command) {
       const near = nearestCommand(parsed.head)
@@ -55,7 +58,7 @@ export function createRunner(
 
     if (!parsed.command.contexts.includes(context)) {
       return {
-        lines: [{ text: parsed.command.wrongContext(context, hint), tone: 'error' }],
+        lines: [{ text: parsed.command.wrongContext(context, await hint()), tone: 'error' }],
       }
     }
 
