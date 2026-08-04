@@ -60,8 +60,26 @@ export interface Env {
   diagnose(): Promise<Check[]>
 }
 
-/** In-memory Env over the §5 seed content, for tests and the mobile gate. */
-export function fixtureEnv(rooms: Room[] = ROOMS): Env {
+/** Somebody the fixtures know about. Mutable in demo mode — see `fixtureEnv`. */
+export type FixturePerson = {
+  name: string
+  joinedAt: Date
+  verified: boolean
+  nameChangedHands?: Date
+}
+
+/**
+ * In-memory Env over the §5 seed content, for tests and the mobile gate.
+ *
+ * `people` is read at call time rather than copied, so the demo can hand in an
+ * array it pushes to. Without that, somebody who signs up in fixtures mode has
+ * no page of their own — and their own page is the only place a wall can be
+ * tried at all.
+ */
+export function fixtureEnv(
+  rooms: Room[] = ROOMS,
+  people: readonly FixturePerson[] = PEOPLE,
+): Env {
   const visiblePosts = (room: Room): Post[] =>
     // §3.10 — commons keeps nothing. The real enforcement is the select policy
     // in the schema; this mirrors it so the fixture behaves the same way.
@@ -73,7 +91,10 @@ export function fixtureEnv(rooms: Room[] = ROOMS): Env {
   // instead of restating the query that decides what a person's posts are.
   const env: Env = {
     async listRooms() {
-      return rooms.map((room) => {
+      // Walls are rooms everywhere except here (§4.2). The real Env gets this
+      // for free — `room_overview` filters on `owner_id is null` — and this
+      // mirrors it so the lobby reads the same against fixtures.
+      return rooms.filter((room) => room.owner === undefined).map((room) => {
         const latest = visiblePosts(room)[0]
         return {
           slug: room.slug,
@@ -136,7 +157,7 @@ export function fixtureEnv(rooms: Room[] = ROOMS): Env {
     },
 
     async getProfile(name) {
-      const person = PEOPLE.find((p) => p.name === name.toLowerCase())
+      const person = people.find((p) => p.name === name.toLowerCase())
       if (!person) return undefined
       return {
         name: person.name,

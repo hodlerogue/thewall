@@ -84,7 +84,7 @@ export function Terminal({
   initialLines: readonly Line[]
   initialLocation: Location
   run: Runner
-  chipsFor: (location: Location) => readonly Chip[]
+  chipsFor: (location: Location, name: string | null) => readonly Chip[]
   name?: string | null
   /**
    * Who is here and what they say, for wherever you are standing. Absent in
@@ -398,7 +398,7 @@ export function Terminal({
         // Tab used to move focus out of the prompt entirely, which loses your
         // place — worse than doing nothing.
         event.preventDefault()
-        const completed = complete(input, chipsFor(location))
+        const completed = complete(input, chipsFor(location, name))
         if (completed !== null) setInput(completed)
         return
       }
@@ -409,7 +409,7 @@ export function Terminal({
         historyAt.current = null
       }
     },
-    [chipsFor, input, location],
+    [chipsFor, input, location, name],
   )
 
   const label = promptLabel(name, location)
@@ -483,7 +483,7 @@ export function Terminal({
             you have {mail} {mail === 1 ? 'reply' : 'replies'} waiting — type mail
           </p>
         )}
-        <Palette chips={chipsFor(location)} onInsert={insert} />
+        <Palette chips={chipsFor(location, name)} onInsert={insert} />
         <form
           className="prompt-row"
           onSubmit={(event) => {

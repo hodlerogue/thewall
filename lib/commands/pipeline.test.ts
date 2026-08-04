@@ -49,7 +49,10 @@ describe('§4.8 — one working pipe', () => {
 
   it('pipes into count', async () => {
     const all = text((await run('posts', LOBBY)).lines)
-    const total = (all.match(/^\w+\/\d+ /gm) ?? []).length
+    // `~name/2` is an address too — a wall is a room, and a search crosses it
+    // like any other. Counting only `\w` slugs silently dropped them and made
+    // the pipe look like it had lost rows.
+    const total = (all.match(/^~?\w+\/\d+ /gm) ?? []).length
 
     const counted = text((await run('posts | count', LOBBY)).lines)
     expect(counted).toBe(`${total} posts`)

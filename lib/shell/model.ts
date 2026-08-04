@@ -24,6 +24,14 @@ export interface Post {
 export interface Room {
   slug: string
   gloss: string
+  /**
+   * Whose wall this is, if it is one. Absent for the curated rooms.
+   *
+   * A wall is a room with an owner rather than a new kind of object, so every
+   * address, lever and query already reaches it — and the one thing it does not
+   * get is a place in the lobby (§4.2).
+   */
+  owner?: string
   /** §3.10 — commons keeps nothing. Posts expire, no IDs, no threads. */
   ephemeral: boolean
   posts: Post[]

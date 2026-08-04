@@ -11,8 +11,10 @@ It started as the §6 weekend build. What is here now is that plus the things th
 doc itself named as unfinished: §4.1's notifications, which it calls its highest
 priority ("no notification means no reason to return"), §4.7 revised so an
 account survives to a second device, §4.6's rename, the manual kill switch §6
-leaves in scope, §4.5's taste call handed to whoever is looking, and profiles as
-a read-only view. Terms and a privacy policy are here too — the doc never
+leaves in scope, §4.5's taste call handed to whoever is looking, and profiles —
+with walls behind them, which §3.10 argued against and which are built here as
+rooms with owners that never appear in the lobby. Terms and a privacy policy are
+here too — the doc never
 mentions them, and a site that asks for an email address needs both.
 Everything still out is listed at the bottom, with the section that argues for
 leaving it out.
@@ -231,24 +233,51 @@ clears the count, because in a pull-only design looking is the only signal there
 is. Each one carries its `room/id`, since a notification you cannot walk to is
 just an alert.
 
-## Somebody, as a view
+## Somebody, and their wall
 
 `go ~marisol`, or `thewall.social/~marisol` — the same value, since §3.4 makes
 the prompt path and the URL one thing. It shows who they are, when they arrived,
 whether they ever followed a key, and their recent posts, each carrying the
 `room/id` it actually lives at.
 
-**Nothing on a profile is postable**, and that is the whole design rather than a
-missing feature. §3.10 is the doc's most emphatic architectural warning — a space
-that absorbs activity "deletes the geography that makes this feel like a place" —
-and a personal wall is that trap in a different hat, competing with six rooms
-for the one conversation a small community has. So `person` is a valid context
-for every verb except `say`, the palette there omits it, and `say` on a profile
-answers "you have to be in a room first". The read-only version is a strict
-subset, so walls can be built on top later without rework.
+It also shows her wall, and this is the part that changed. It began read-only,
+on §3.10's warning that a space which absorbs activity "deletes the geography
+that makes this feel like a place". That warning is real, but it is about the
+*room list* — "forty rooms with three people each kills the entire feeling"
+(§4.2) — so the answer is not to refuse walls, it is to keep them out of the
+lobby.
+
+**A wall is a room with an owner.** `rooms.owner_id`, slug `~name`, and nothing
+else new:
+
+- the address allocator, the reply trigger, mail, search, the decay policy and
+  every lever in `scripts/moderate.sh` already reach it, because it is a room;
+- `~marisol/2` is an ordinary post address, so it routes, shares and previews
+  with no special case;
+- only the owner may start something on their wall, and anybody may answer —
+  which is what makes it a wall and not a diary. Both are enforced in
+  `create_post`, not in the client;
+- the wall is created lazily, on the first thing you put on it, so nobody has an
+  empty room standing in their name;
+- renaming moves it. The foreign key is `on update cascade`, so `~oldname`
+  stops resolving and every post on it arrives at `~newname` (§4.6);
+- and `room_overview` filters `owner_id is null`, so no wall is ever in the
+  lobby. That is the one thing a wall does not inherit, and it is the whole of
+  the mitigation.
+
+The one client rule worth stating: `say` is refused on somebody else's page
+*before* the signup ask, not after. A page only exists for somebody who exists,
+so a visitor with no name is never on their own wall — asking would collect a
+name in exchange for a sentence the wall then refuses, which is §3.9's promise
+turned into a trap.
 
 Standing on somebody is a search filter the same way standing in a room is:
 `find tomatoes` there means the ones she said.
+
+`go` also takes a whole address — `go music/12`, `go ~marisol/2` — which is the
+shape `find`, `mail` and a profile all print. It was always the obvious thing to
+type back and it always failed; walls only made the failure louder, since
+`go ~marisol/2` used to answer "there's no one called marisol/2".
 
 ## Colours
 

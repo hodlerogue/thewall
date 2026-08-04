@@ -1,24 +1,26 @@
 import { describe, expect, it } from 'vitest'
-import { CHIP_SETS, COMMANDS, findCommand } from '@/lib/commands/registry'
-import { chipsForContext, createRunner } from '@/lib/commands/run'
+import { CHIP_SETS, COMMANDS, findCommand, OWN_WALL_CHIPS } from '@/lib/commands/registry'
+import { chipsForContext, createChipsFor, createRunner } from '@/lib/commands/run'
 import { fixtureEnv } from '@/lib/shell/env'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
 import type { Context, Line, Location } from '@/lib/shell/types'
 
 /**
- * §3.10 — a profile is a view, not a place.
+ * A profile, and the wall behind it.
  *
- * The doc's most emphatic architectural warning is that a space which absorbs
- * activity "deletes the geography that makes this feel like a place". A
- * personal wall is that trap in a different hat, so the property under test is
- * not that profiles render — it is that nothing about them is postable, and
- * that every post shown on one still carries the room it lives in.
+ * This started as a view with nothing postable on it, on §3.10's warning that a
+ * space which absorbs activity "deletes the geography that makes this feel like
+ * a place". Walls exist now, so the property under test moved rather than
+ * disappeared: a wall is a *room with an owner*, only its owner may start
+ * things on it, anyone may answer them, and no wall ever appears in the lobby —
+ * which is where §3.10's warning actually bites.
  */
 
 const text = (lines: Line[]) => lines.map((l) => l.text).join('\n')
 
-function harness() {
+function harness(me: string | null = 'jameson') {
   const posted: { room: string; body: string }[] = []
+  const replied: { room: string; postId: number; body: string }[] = []
 
   const api: SignupApi = {
     async checkName(name) {
@@ -37,15 +39,18 @@ function harness() {
       posted.push({ room, body })
       return 99
     },
-    async reply() {},
+    async reply(room, postId, body) {
+      replied.push({ room, postId, body })
+    },
     async rename(name: string) {
       return { ok: true as const, name }
     },
   }
 
-  // Already named, so a refusal to post cannot be mistaken for the signup ask.
-  const session = new Session(api, writer, 'jameson')
-  return { run: createRunner(fixtureEnv(), ['commons'], session), posted }
+  // Named by default, so a refusal to post cannot be mistaken for the signup
+  // ask; `null` is how the nameless-visitor path gets exercised.
+  const session = new Session(api, writer, me)
+  return { run: createRunner(fixtureEnv(), ['commons'], session), posted, replied }
 }
 
 const AT: Record<string, Location> = {
@@ -104,25 +109,117 @@ describe('reaching somebody', () => {
   })
 })
 
-describe('nothing on a profile is postable', () => {
-  it('refuses say by naming the fix, not by failing (§3.7)', async () => {
+describe('a wall belongs to one person', () => {
+  it('refuses somebody else’s wall by naming what you can do instead (§3.7)', async () => {
     const { run, posted } = harness()
     const out = text((await run('say hello there', AT.person)).lines)
 
-    expect(out).toContain('you have to be in a room first')
-    expect(out).toContain('try: go ')
+    expect(out).toContain('marisol')
+    // Not "you can't" — the fix, which is that answering is open to everyone,
+    // named against a post that is really on the wall.
+    expect(out).toContain('you can answer what’s here: go 2'.replace('’', "'"))
     expect(posted).toHaveLength(0)
   })
 
-  it('keeps say out of the palette, so it never reads like a wall', () => {
-    expect(CHIP_SETS.person).not.toContain('say')
-    expect(chipsForContext('person').map((chip) => chip.verb)).not.toContain('say')
+  it('puts your own words on your own wall', async () => {
+    const { run, posted } = harness('marisol')
+    const result = await run('say tomatoes again', { person: 'marisol' })
+
+    expect(posted).toEqual([{ room: '~marisol', body: 'tomatoes again' }])
+    expect(result.retry).toBeUndefined()
   })
 
-  it('has no post numbers of its own', async () => {
+  it('does not ask a nameless visitor for a name it cannot use', async () => {
+    /*
+     * §3.9 asks for an account at the moment of contribution, and that is
+     * exactly why it must not fire here: a page only exists for somebody who
+     * exists, so a visitor with no name is never on their own wall. Asking
+     * would take a name in exchange for a sentence the wall then refuses.
+     */
+    const { run, posted } = harness(null)
+    const out = text((await run('say my first thing', { person: 'ren' })).lines)
+
+    expect(out).not.toMatch(/what should i call you/i)
+    expect(out).toContain("only they can put things on it")
+    expect(posted).toHaveLength(0)
+  })
+
+  it('offers say on your own page and nowhere else', () => {
+    // The set for somebody else's page has no `say`: a palette that names a
+    // verb which always fails teaches the wrong thing.
+    expect(CHIP_SETS.person).not.toContain('say')
+    expect(chipsForContext('person').map((chip) => chip.verb)).not.toContain('say')
+
+    const mine = createChipsFor(['commons'])({ person: 'marisol' }, 'marisol')
+    expect(mine.map((chip) => chip.verb)).toContain('say')
+    expect(mine[0].verb).toBe('say')
+
+    const theirs = createChipsFor(['commons'])({ person: 'marisol' }, 'jameson')
+    expect(theirs.map((chip) => chip.verb)).not.toContain('say')
+
+    // And a guest sees somebody else's page, not an invitation to post on it.
+    expect(
+      createChipsFor(['commons'])({ person: 'marisol' }, null).map((chip) => chip.verb),
+    ).not.toContain('say')
+  })
+
+  it('opens a wall post by its number, from the page it is on', async () => {
+    const { run } = harness()
+    const result = await run('go 2', AT.person)
+
+    expect(result.location).toEqual({ room: '~marisol', postId: 2 })
+    expect(text(result.lines)).toContain('neighbours')
+  })
+
+  it('says so when the number is not on their wall', async () => {
     const { run } = harness()
     const out = text((await run('go 12', AT.person)).lines)
-    expect(out).toContain('post numbers only work inside a room')
+    expect(out).toContain('marisol')
+    expect(out).toContain('try: look')
+  })
+
+  it('lets anybody answer what is on it', async () => {
+    const { run, replied } = harness()
+    // Inside a wall post you are inside a post, exactly as in any other room —
+    // which is the whole reason a wall was built as a room and not a new thing.
+    await run('reply the fan people are correct', { room: '~marisol', postId: 2 })
+    expect(replied).toEqual([
+      { room: '~marisol', postId: 2, body: 'the fan people are correct' },
+    ])
+  })
+
+  it('backs out of a wall post to the person, not to a room of the same name', async () => {
+    // `{room:'~marisol'}` and `{person:'marisol'}` would print the same prompt
+    // and the same URL, and a reload resolves that path to the person — so
+    // leaving must not invent the other one.
+    const { run } = harness()
+    const result = await run('leave', { room: '~marisol', postId: 2 })
+
+    expect(result.location).toEqual({ person: 'marisol' })
+    expect(text(result.lines)).toContain('arrived')
+  })
+
+  it('goes to a whole address, which is what every listing prints', async () => {
+    const { run } = harness()
+
+    // The shape `find`, `mail` and a profile all print, typed straight back.
+    const wall = await run('go ~marisol/2', AT.lobby)
+    expect(wall.location).toEqual({ room: '~marisol', postId: 2 })
+
+    const room = await run('go music/12', AT.lobby)
+    expect(room.location).toEqual({ room: 'music', postId: 12 })
+
+    // And a miss names the room rather than reporting the wrong thing — the
+    // tilde branch used to answer "there's no one called marisol/9".
+    const gone = text((await run('go ~marisol/9', AT.lobby)).lines)
+    expect(gone).toContain('nothing at ~marisol/9')
+    expect(gone).not.toContain('no one called')
+  })
+
+  it('never puts a wall in the lobby (§4.2)', async () => {
+    const { run } = harness()
+    const lobby = text((await run('look', AT.lobby)).lines)
+    expect(lobby).not.toContain('~')
   })
 })
 
@@ -147,7 +244,7 @@ describe('a profile is a filter, not a container', () => {
 describe('the palette can never name a command you cannot run', () => {
   it('holds for every context, including the new one', () => {
     for (const context of Object.keys(CHIP_SETS) as Context[]) {
-      for (const verb of CHIP_SETS[context]) {
+      for (const verb of [...CHIP_SETS[context], ...(context === 'person' ? OWN_WALL_CHIPS : [])]) {
         const command = findCommand(verb)
         expect(command, `${context}/${verb}`).toBeDefined()
         expect(command!.contexts, `${context}/${verb}`).toContain(context)
@@ -158,7 +255,10 @@ describe('the palette can never name a command you cannot run', () => {
 
   it('leaves say valid exactly where contributing is (§3.3)', () => {
     const say = COMMANDS.find((c) => c.verb === 'say')!
-    expect([...say.contexts].sort()).toEqual(['commons', 'post', 'room'])
+    // `person` is in here because a wall is somewhere you contribute. Whether
+    // *this* person may is the handler's business, not the context's — the
+    // same distinction that lets `say` be valid in a room you have no name in.
+    expect([...say.contexts].sort()).toEqual(['commons', 'person', 'post', 'room'])
   })
 })
 

@@ -85,11 +85,11 @@ export function renderPost(post: Post, now = new Date()): Line[] {
 }
 
 /**
- * §3.10 — a person, drawn as a set of doors rather than a wall.
+ * A person: what they have said, wherever they said it.
  *
- * Every post keeps the `room/id` it actually lives at, and the closing line is
- * a route into a room, because the one thing this view must never become is
- * somewhere to stand. Commons is absent by construction: `searchPosts` skips
+ * Every post keeps the `room/id` it actually lives at, so the page stays a set
+ * of doors — some opening back into rooms, some onto their own wall, which is
+ * a room they own. Commons is absent by construction: `searchPosts` skips
  * ephemeral rooms, so nothing without a permanent address can appear here.
  */
 export function renderProfile(profile: Profile, now = new Date()): Line[] {
@@ -131,7 +131,13 @@ export function renderProfile(profile: Profile, now = new Date()): Line[] {
   const newest = profile.posts[0]
   lines.push({ text: '' })
   lines.push({
-    text: `these live in rooms — go ${newest.room}, then go ${newest.id}.`,
+    // Two closing lines because there are now two kinds of address on this
+    // page, and the old one — "go to the room first" — is a wrong instruction
+    // for a post on their wall: you are already standing where that opens.
+    text:
+      newest.room === `~${profile.name}`
+        ? `the ~${profile.name} ones are here — go ${newest.id} opens that one.`
+        : `these live in rooms — go ${newest.room}, then go ${newest.id}.`,
     tone: 'faint',
   })
   return lines

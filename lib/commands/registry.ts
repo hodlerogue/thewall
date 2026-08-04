@@ -19,6 +19,7 @@ import { renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/she
 import type { Session } from '@/lib/shell/session'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
 import { DEFAULT_THEME, THEMES, findTheme } from '@/lib/shell/themes'
+import { pathToLocation } from '@/lib/shell/types'
 import type { Context, Line, Location, RunResult } from '@/lib/shell/types'
 
 export interface HandlerArgs {
@@ -155,7 +156,7 @@ export const COMMANDS: readonly Command[] = [
     contexts: ALL,
     gloss: (c) => (c === 'lobby' || c === 'person' ? 'enter a room' : 'open a post'),
     detail: () =>
-      'moves you. at the lobby, go music. inside a room, go 12 opens that post. a room name works from anywhere, and go ~marisol shows you somebody.',
+      'moves you. at the lobby, go music. inside a room, go 12 opens that post. a whole address works from anywhere — go music/12 — and so does go ~marisol, which shows you somebody: their page, and their wall.',
     insert: () => 'go ',
     wrongContext: () => '',
     async run({ arg, context, location, env, hint }) {
@@ -167,6 +168,24 @@ export const COMMANDS: readonly Command[] = [
               ? `go where? try: go ${await hint()}`
               : 'go where? try: go 12, or the name of a room.',
         )
+      }
+
+      /*
+       * `music/12` and `~marisol/2` — a whole address, typed in one go.
+       *
+       * This is what `find`, `mail` and a profile all print, so it was always
+       * the obvious thing to type back and it always failed. Walls made the
+       * failure worse rather than new: `go ~marisol/2` fell into the tilde
+       * branch below and answered "there's no one called marisol/2", which is
+       * an error about the wrong thing entirely.
+       */
+      if (arg.includes('/')) {
+        const target = pathToLocation(`/${arg}`)
+        if (target.room !== undefined && target.postId !== undefined) {
+          const post = await env.getPost(target.room, target.postId)
+          if (!post) return error(`there’s nothing at ${arg}. try: go ${target.room}`)
+          return { lines: renderPost(post), location: target }
+        }
       }
 
       // `~marisol` is somebody, not somewhere. §3.10 warns that a space which
@@ -194,9 +213,19 @@ export const COMMANDS: readonly Command[] = [
       // rooms that keep things (§3.4, §3.10).
       if (/^\d+$/.test(arg)) {
         const id = Number(arg)
-        // A profile has no post numbers of its own for the same reason it has
-        // no `say`: the posts on it belong to rooms, and their addresses say so.
-        if (context === 'lobby' || context === 'person') {
+        // On a profile a bare number is their wall — the one place a person
+        // does have addresses of their own now.
+        if (context === 'person') {
+          const post = await env.getPost(`~${location.person}`, id)
+          if (!post) {
+            return error(`there's nothing at ${id} on ${location.person}'s wall. try: look`)
+          }
+          return {
+            lines: renderPost(post),
+            location: { room: `~${location.person}`, postId: id },
+          }
+        }
+        if (context === 'lobby') {
           return error(`post numbers only work inside a room. try: go ${await hint()} first.`)
         }
         if (context === 'commons') {
@@ -243,19 +272,57 @@ export const COMMANDS: readonly Command[] = [
      * brand new post, which is the opposite of what somebody typing "reply"
      * wants. It is a command of its own below, and does nothing this cannot.
      */
-    contexts: ['room', 'commons', 'post'],
+    contexts: ['room', 'commons', 'post', 'person'],
     gloss: (c) =>
-      c === 'post' ? 'reply here' : c === 'commons' ? 'say something' : 'post something here',
+      c === 'post'
+        ? 'reply here'
+        : c === 'commons'
+          ? 'say something'
+          : c === 'person'
+            // "your own" rather than "your", because `help` prints this from
+            // somebody else's page too, where only they may start something.
+            ? 'post on your own wall'
+            : 'post something here',
     detail: () =>
-      'contributes wherever you’re standing. in a room it starts a new post; inside a post it adds a reply.',
+      'contributes wherever you’re standing. in a room it starts a new post; inside a post it adds a reply; on your own page it goes on your wall, where anybody can answer it.',
     insert: () => 'say ',
     // §3.7 — the canonical example: name the fix, don't report a failure.
     wrongContext: (_c, hint) => `you have to be in a room first. try: go ${hint}`,
-    async run({ arg, context, location, session }) {
+    async run({ arg, context, location, env, session }) {
       if (arg === '') {
         return error(
           context === 'post' ? 'say what? try: say i agree' : 'say what? type say and then your sentence.',
         )
+      }
+
+      /*
+       * A wall is a room, so this is the ordinary write path with the room
+       * named for you — which is the whole reason walls were built that way.
+       * Somebody else's wall is theirs to start things on; you can answer what
+       * is already there, which is what makes it a wall and not a diary.
+       */
+      if (context === 'person') {
+        /*
+         * Ownership is checked before the name is, and that order is the whole
+         * of it. A page only exists for somebody who exists, so a visitor with
+         * no name is never standing on their own wall — asking them to sign up
+         * here would collect a name in exchange for a sentence the wall is then
+         * going to refuse, which is §3.9's promise turned into a trap.
+         */
+        if (location.person !== session.name()) {
+          // Named against the wall itself, so "go 2" is a post that is really
+          // there. An empty wall has nothing to point at, and inventing a
+          // number would be an instruction that fails when followed (§3.7).
+          const wall = await env.getRoom(`~${location.person}`).catch(() => undefined)
+          const example = wall?.posts[0]?.id
+          return error(
+            example === undefined
+              ? `this is ${location.person}'s wall — only they can put things on it, and there's nothing here to answer yet.`
+              : `this is ${location.person}'s wall — only they can put things on it. you can answer what's here: go ${example}`,
+          )
+        }
+        const onWall = await session.write({ room: `~${location.person}` }, arg)
+        return { lines: onWall.lines, retry: onWall.failed ? arg : undefined }
       }
 
       // §3.9 — the sentence is captured first, then the account is asked for.
@@ -303,8 +370,10 @@ export const COMMANDS: readonly Command[] = [
       // instruction somebody can follow and one they have to decode.
       const example = await newestPostIn(env, location.room)
       return error(
-        context === 'lobby' || context === 'person'
-          ? 'replies live inside a post. go to a room first, then open one.'
+        context === 'person'
+          ? `replies live inside a post. open one of ${location.person}'s first — try: go 1`
+          : context === 'lobby'
+            ? 'replies live inside a post. go to a room first, then open one.'
           : context === 'commons'
             ? 'commons doesn’t keep replies — say it as its own thing instead.'
             : `replies live inside a post. open one first — try: go ${example}`,
@@ -363,6 +432,18 @@ export const COMMANDS: readonly Command[] = [
       if (context === 'post') {
         const room = await env.getRoom(location.room!)
         if (!room) return { lines: renderRoomList(await env.listRooms()), location: {} }
+
+        /*
+         * Backing out of a wall post lands on the person, not on `{room:
+         * '~marisol'}`. Both would print `~marisol` in the prompt and both
+         * would be `/~marisol` in the URL — and a reload would come back as
+         * the person, because that is what the path parses to. One address
+         * cannot mean two contexts, so the wall has exactly one of them.
+         */
+        if (room.owner !== undefined) {
+          const profile = await env.getProfile(room.owner)
+          if (profile) return { lines: renderProfile(profile), location: { person: profile.name } }
+        }
         return { lines: renderRoom(room), location: { room: room.slug } }
       }
       return { lines: renderRoomList(await env.listRooms()), location: {} }
@@ -819,11 +900,22 @@ export const CHIP_SETS: Record<Context, readonly string[]> = {
   room: ['say', 'help', 'look', 'go', 'who', 'leave'],
   commons: ['say', 'help', 'look', 'who', 'leave'],
   post: ['say', 'help', 'look', 'who', 'leave'],
-  // No `say`. The palette is the fastest way anyone learns what a place is for,
-  // and a profile is for reading and walking away from (§3.10). `go` leads
-  // because every line on the page is an address in a room.
+  // Somebody else's page. No `say`: only they can start things on their wall,
+  // and a palette that offers a verb which always fails teaches the wrong thing.
+  // `go` leads because every line on the page is an address you can open.
   person: ['go', 'help', 'look', 'find', 'leave'],
 }
+
+/**
+ * Your own page, which is the only place `say` means "put it on your wall".
+ *
+ * A separate set rather than a sixth Context: standing on your own profile is
+ * the same *place* as standing on somebody else's — same prompt, same URL
+ * shape, same valid commands — and the only difference is whether the write
+ * will be allowed. Context decides what is possible; this decides what to
+ * offer. `say` still leads, for the same reason it does in a room.
+ */
+export const OWN_WALL_CHIPS: readonly string[] = ['say', 'help', 'look', 'go', 'find', 'leave']
 
 const BY_NAME = new Map<string, Command>()
 for (const command of COMMANDS) {

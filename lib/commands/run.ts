@@ -1,5 +1,11 @@
 import { parse } from '@/lib/commands/parse'
-import { CHIP_SETS, COMMANDS, findCommand, nearestCommand } from '@/lib/commands/registry'
+import {
+  CHIP_SETS,
+  COMMANDS,
+  findCommand,
+  nearestCommand,
+  OWN_WALL_CHIPS,
+} from '@/lib/commands/registry'
 import type { Env } from '@/lib/shell/env'
 import type { Session } from '@/lib/shell/session'
 import type { Chip, Context, Location, RunOptions, RunResult, Runner } from '@/lib/shell/types'
@@ -74,11 +80,18 @@ async function roomHint(env: Env): Promise<string> {
 
 /** §3.6 — the palette, derived from the registry so it can never drift from it. */
 export function createChipsFor(ephemeralRooms: readonly string[]) {
-  return (location: Location): readonly Chip[] => chipsForContext(contextOf(location, ephemeralRooms))
+  return (location: Location, name: string | null = null): readonly Chip[] =>
+    chipsForContext(
+      contextOf(location, ephemeralRooms),
+      // Your own page is the one profile with a `say` on it, because it is the
+      // one wall you may start something on.
+      location.person !== undefined && location.person === name,
+    )
 }
 
-export function chipsForContext(context: Context): readonly Chip[] {
-  return CHIP_SETS[context].map((verb) => {
+export function chipsForContext(context: Context, ownWall = false): readonly Chip[] {
+  const verbs = context === 'person' && ownWall ? OWN_WALL_CHIPS : CHIP_SETS[context]
+  return verbs.map((verb) => {
     const command = findCommand(verb)
     if (!command) throw new Error(`palette names an unknown command: ${verb}`)
     return { verb: command.verb, gloss: command.gloss(context), insert: command.insert(context) }

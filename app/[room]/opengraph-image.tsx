@@ -9,10 +9,11 @@ import { renderRoom } from '@/lib/shell/render'
  * ask somebody to come. So it shows what is being said in there, which is the
  * only argument for turning up (§3.11).
  *
- * `~marisol` arrives through this same route and is a person, not a room. It
- * falls through to the generic card rather than pretending: a profile is a view
- * of posts that live elsewhere (§3.10), and previewing it as a place would be
- * the one claim the whole design says not to make.
+ * `~marisol` arrives through this same route and gets the same card, because a
+ * wall is a room with an owner — the gloss it was created with says whose it is
+ * ("what marisol is saying"), so the preview reads correctly with no special
+ * case. Anything that is not a room at all still falls through to the generic
+ * card rather than pretending.
  */
 
 export const alt = 'a room on thewall.social'
@@ -21,7 +22,7 @@ export const contentType = OG_CONTENT_TYPE
 
 export default async function Image({ params }: { params: Promise<{ room: string }> }) {
   const { room: slug } = await params
-  const room = slug.startsWith('~') ? undefined : await readRoom(slug)
+  const room = await readRoom(slug)
 
   if (!room) {
     return ogCard({

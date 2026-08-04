@@ -164,7 +164,14 @@ commit;
 
 begin;
   set local role anon;
-  select tests.ok((select count(*) from public.rooms) = 6, 'anonymous readers see every room');
+  select tests.ok(
+    (select count(*) from public.rooms where owner_id is null) = 6,
+    'anonymous readers see every room');
+  -- Including the ones that are somebody's wall: a wall is not private, it is
+  -- just not in the lobby.
+  select tests.ok(
+    (select count(*) from public.rooms where owner_id is not null) > 0,
+    'and every wall, which is public like everything else here');
   select tests.ok((select count(*) from public.posts) > 0, 'anonymous readers see posts');
   select tests.ok((select count(*) from public.replies) > 0, 'anonymous readers see replies');
   select tests.ok((select count(*) from public.profiles) > 0, 'anonymous readers see who people are');
@@ -923,6 +930,141 @@ begin;
   set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
   select tests.raises($sql$select public.forget('tester')$sql$, 'erasure is not a lever users hold');
 commit;
+
+\echo ''
+\echo 'walls — §3.10 reversed, and the geography kept anyway'
+
+insert into auth.users (id, aud, role, email)
+values ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'authenticated', 'authenticated', 'waller@seed.invalid')
+on conflict (id) do nothing;
+insert into public.profiles (id, name, verified_at)
+values ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'waller', now())
+on conflict (id) do nothing;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+
+  -- Made on first use, not at signup: everybody starting with an empty room
+  -- they never asked for is the §5 failure mode, once per account.
+  select tests.ok(
+    (public.create_post('~waller', 'the first thing on my wall')).post_no = 1,
+    'a wall is created by putting something on it'
+  );
+  select tests.ok(
+    (public.create_post('~waller', 'and a second')).post_no = 2,
+    'and it allocates addresses like any other room (§3.4)'
+  );
+commit;
+
+select tests.ok(
+  (select owner_id from public.rooms where slug = '~waller')
+    = 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+  'the wall belongs to them'
+);
+
+-- §4.2 — forty rooms with three people each kills the feeling, and a room per
+-- person is exactly that. A wall is reached through its owner, never browsed.
+begin;
+  set local role anon;
+  select tests.ok(
+    (select count(*) from public.room_overview where slug = '~waller') = 0,
+    'and it is not in the lobby'
+  );
+  select tests.ok(
+    (select count(*) from public.posts where room_slug = '~waller') = 2,
+    'but everything on it is public, like everything else here'
+  );
+commit;
+
+\echo ''
+\echo 'a wall is yours to start things on, and everyone else’s to answer'
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+
+  select tests.raises(
+    $sql$select public.create_post('~waller', 'posting on your wall as if it were mine')$sql$,
+    'somebody else cannot post to your wall'
+  );
+
+  -- The whole point of it being a wall rather than a diary.
+  insert into public.replies (post_id, author_id, body)
+  select id, '99999999-9999-4999-8999-999999999999', 'answering on somebody''s wall'
+    from public.posts where room_slug = '~waller' and post_no = 1;
+commit;
+
+select tests.ok(
+  (select count(*) from public.replies where body = 'answering on somebody''s wall') = 1,
+  'but anybody may reply to what is on it'
+);
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+  select tests.raises(
+    $sql$select public.create_post('~nobodyatall', 'a wall for somebody who is not me')$sql$,
+    'and nobody can make a wall in another name'
+  );
+commit;
+
+\echo ''
+\echo 'a wall follows its owner’s name (§4.6)'
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+  select public.change_name('walled');
+commit;
+
+select tests.ok(
+  (select count(*) from public.rooms where slug = '~walled') = 1,
+  'renaming moves the wall to the new address'
+);
+select tests.ok(
+  (select count(*) from public.posts where room_slug = '~walled') = 2,
+  'and every post on it comes along — the address is a name, and names move'
+);
+select tests.ok(
+  (select count(*) from public.rooms where slug = '~waller') = 0,
+  'nothing is left at the old one'
+);
+
+-- One each, and it has to look like what it is.
+select tests.raises(
+  $sql$insert into public.rooms (slug, gloss, ephemeral, owner_id)
+       values ('~walled2', 'a second wall', false, 'ffffffff-ffff-4fff-8fff-ffffffffffff')$sql$,
+  'nobody gets two walls'
+);
+select tests.raises(
+  $sql$insert into public.rooms (slug, gloss, ephemeral, owner_id)
+       values ('sneaky', 'a wall pretending to be a room', false, '99999999-9999-4999-8999-999999999999')$sql$,
+  'a wall cannot be disguised as a room'
+);
+select tests.raises(
+  $sql$insert into public.rooms (slug, gloss, ephemeral) values ('~orphan', 'a wall with no owner', false)$sql$,
+  'and a room cannot be disguised as a wall'
+);
+
+-- Decay is about rooms going cold. A quiet wall is a person who has not posted
+-- lately, which is not a problem and not anybody's to tidy up.
+select public.archive_quiet_rooms(interval '1 second');
+select tests.ok(
+  (select archived_at from public.rooms where slug = '~walled') is null,
+  'a quiet wall is never archived'
+);
+
+-- Every lever in §7 still reaches it, because a wall is a room.
+select tests.ok(public.hide_post('~walled', 1) = 1, 'the kill switch reaches a wall');
+begin;
+  set local role anon;
+  select tests.ok(
+    (select count(*) from public.posts where room_slug = '~walled' and post_no = 1) = 0,
+    'and hiding works there exactly as it does anywhere'
+  );
+commit;
+select public.hide_post('~walled', 1, false);
 
 \echo ''
 \echo 'all schema tests passed'

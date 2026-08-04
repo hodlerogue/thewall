@@ -22,7 +22,9 @@ const CARDS = [
   // to answer with an image rather than an error.
   ['a post that is gone', '/music/999/opengraph-image'],
   ['a room that never was', '/nowhere/opengraph-image'],
-  ['somebody, which is not a place (§3.10)', '/~marisol/opengraph-image'],
+  ['somebody’s wall, which is a room with an owner', '/~marisol/opengraph-image'],
+  ['a post on a wall', '/~marisol/2/opengraph-image'],
+  ['a name nobody has', '/~nobodyatall/opengraph-image'],
   ['a post id that is not a number', '/music/abc/opengraph-image'],
 ] as const
 

@@ -6,7 +6,8 @@ import { createChipsFor, createRunner } from '@/lib/commands/run'
 import { createLive, type Live } from '@/lib/data/live'
 import { supabaseEnv } from '@/lib/data/supabaseEnv'
 import { httpSignupApi, supabaseWriter } from '@/lib/data/writer'
-import { fixtureEnv, type Env } from '@/lib/shell/env'
+import { fixtureEnv, type Env, type FixturePerson } from '@/lib/shell/env'
+import { PEOPLE } from '@/lib/shell/fixtures'
 import { describeError } from '@/lib/shell/errors'
 import { renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
@@ -31,7 +32,7 @@ interface Boot {
   run: Runner
   mailCount: (() => Promise<number>) | undefined
   initialMail: number
-  chipsFor: (location: Location) => readonly Chip[]
+  chipsFor: (location: Location, name: string | null) => readonly Chip[]
   lines: Line[]
   location: Location
   name: string | null
@@ -89,9 +90,14 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
       const ephemeralNames: string[] = []
 
       if (useFixtures) {
-        env = fixtureEnv()
+        // Whoever signs up in the demo gets a page, because their own page is
+        // the only place a wall can be tried. The real Env gets this from the
+        // profiles table; here it is an array the fake signup pushes to and
+        // fixtureEnv reads at call time.
+        const demoPeople: FixturePerson[] = [...PEOPLE]
+        env = fixtureEnv(undefined, demoPeople)
         writer = fixtureWriter()
-        signup = fixtureSignup()
+        signup = fixtureSignup(demoPeople)
       } else {
         const client = createClient()
         // The Env needs the channel to answer `who`, and the channel is opened
@@ -357,7 +363,7 @@ function fixtureWriter(): Writer {
   }
 }
 
-function fixtureSignup(): SignupApi {
+function fixtureSignup(people: FixturePerson[]): SignupApi {
   const taken = new Set(['jameson', 'marisol', 'tuck', 'ren', 'dev'])
   return {
     async checkName(name: string) {
@@ -371,6 +377,10 @@ function fixtureSignup(): SignupApi {
       return { note: 'nothing to send — this is a demo.' }
     },
     async create(name: string) {
+      // Nothing is stored anywhere, but the demo does have to be able to show
+      // you `~yourname` a second later, or `say` on your own wall has nowhere
+      // to land and the feature cannot be tried at all.
+      people.push({ name, joinedAt: new Date(), verified: false })
       // No account was made and no mail was sent. Say so — this build gets
       // deployed to public URLs, and people type real addresses into it.
       return {

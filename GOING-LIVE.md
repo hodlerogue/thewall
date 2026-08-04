@@ -11,7 +11,7 @@ these fail silently — the site keeps loading and one feature is quietly dead.
 
 ## 1. The database
 
-Your project was set up when there were three migrations. There are now eight.
+Your project was set up when there were three migrations. There are now nine.
 The five that came after add: the column-scoped grants that close two console
 bypasses, mail, the kill switch, rename, and erasure. **None of their features
 work until they are applied**, and none of them fail at build time — they fail
@@ -231,4 +231,9 @@ arguments lists them.
 - **Backups.** Supabase's own are whatever your plan includes. Nothing here adds
   to them, and the terms say so rather than implying otherwise.
 - **Anything §4.2, §4.3 and §6 argue for leaving out** — user-created rooms,
-  threading, private messages, personal walls.
+  threading, private messages.
+
+Walls used to be on that list. They are built now, as rooms with owners
+(`~name`), and the one thing they do not get is a line in the lobby — which is
+where §4.2's "forty rooms with three people each kills the entire feeling"
+actually applies. `scripts/moderate.sh` reaches them like any other room.

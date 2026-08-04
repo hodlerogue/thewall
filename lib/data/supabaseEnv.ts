@@ -43,7 +43,11 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
     async getRoom(slug: string): Promise<Room | undefined> {
       const { data: room, error: roomError } = await client
         .from('rooms')
-        .select('slug, gloss, ephemeral')
+        // The owner is joined rather than read off the `~name` slug. The two
+        // agree today — `change_name` renames the wall with the person — but
+        // the slug is a string anyone could come to write and the column is the
+        // thing the write policy actually checks.
+        .select('slug, gloss, ephemeral, owner:profiles(name)')
         .eq('slug', slug)
         .maybeSingle()
 
@@ -63,6 +67,7 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         slug: room.slug,
         gloss: room.gloss,
         ephemeral: room.ephemeral,
+        owner: ownerName(room.owner),
         posts: (posts ?? []).map((row) => ({
           id: row.post_no,
           author: authorName(row.author),
@@ -215,13 +220,14 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
        * `mark_verified` would mark you verified as a side effect of asking
        * whether it exists.
        */
-      for (const [column, migration] of [
-        ['verified_at', '20260803020000_verify_to_continue'],
-        ['mail_seen_at', '20260804010000_mail'],
-        ['banned_at', '20260804020000_moderation'],
-        ['name_since', '20260804030000_rename'],
+      for (const [table, column, migration] of [
+        ['profiles', 'verified_at', '20260803020000_verify_to_continue'],
+        ['profiles', 'mail_seen_at', '20260804010000_mail'],
+        ['profiles', 'banned_at', '20260804020000_moderation'],
+        ['profiles', 'name_since', '20260804030000_rename'],
+        ['rooms', 'owner_id', '20260804050000_walls'],
       ] as const) {
-        const { error } = await client.from('profiles').select(column).limit(1)
+        const { error } = await client.from(table).select(column).limit(1)
         checks.push({
           label: migration,
           ok: !error,
@@ -273,6 +279,13 @@ function authorName(author: { name: string } | { name: string }[] | null): strin
   if (!author) return 'someone'
   const one = Array.isArray(author) ? author[0] : author
   return one?.name ?? 'someone'
+}
+
+/** Same embed, but absent is the ordinary case: most rooms belong to nobody. */
+function ownerName(owner: unknown): string | undefined {
+  if (!owner) return undefined
+  const one = (Array.isArray(owner) ? owner[0] : owner) as { name?: string } | undefined
+  return one?.name ?? undefined
 }
 
 function replyCount(replies: unknown): number {
