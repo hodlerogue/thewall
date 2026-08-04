@@ -65,6 +65,10 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
     async function load() {
       const useFixtures = process.env.NEXT_PUBLIC_USE_FIXTURES === '1'
 
+      // Read before anything can branch, because reading it also strips it
+      // from the address — so it has to happen exactly once, on every path.
+      const keyLines = takeKeyOutcome()
+
       if (!useFixtures && !isConfigured()) {
         setFailure([
           { text: 'thewall needs a supabase project.', tone: 'error' },
@@ -156,6 +160,7 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
             : []),
           { text: 'type look to see what’s around you, or tap a command below.', tone: 'faint' },
           { text: '' },
+          ...keyLines,
           ...lines,
         ],
       })
@@ -211,6 +216,45 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
       initialMail={boot.initialMail}
     />
   )
+}
+
+/**
+ * What happened to the magic link, said out loud.
+ *
+ * Following a key used to produce no feedback whatsoever — you clicked, you
+ * landed, and nothing on the page acknowledged it. When the marking also failed
+ * that became unrecoverable: the gate stayed shut, the message still said to
+ * click the link, and clicking it again did exactly the same nothing.
+ *
+ * Read once and stripped from the address, because §3.4 makes the path the
+ * prompt's location and a query string is not part of that.
+ */
+function takeKeyOutcome(): Line[] {
+  if (typeof window === 'undefined') return []
+
+  const params = new URLSearchParams(window.location.search)
+  const outcome = params.get('key')
+  if (outcome !== 'ok' && outcome !== 'failed') return []
+
+  params.delete('key')
+  const query = params.toString()
+  window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`)
+
+  if (outcome === 'ok') {
+    return [
+      { text: 'your key worked — you’re verified.', tone: 'accent' },
+      { text: 'say what you like, as often as you like.', tone: 'faint' },
+      { text: '' },
+    ]
+  }
+
+  return [
+    { text: 'you followed the link, but i couldn’t finish marking you verified.', tone: 'error' },
+    // The person's move first, the operator's second. Somebody stuck here can
+    // do something about it, and whoever runs this can tell what to look at.
+    { text: 'type resend and try once more. if it happens again the database is behind.', tone: 'faint' },
+    { text: '' },
+  ]
 }
 
 /**

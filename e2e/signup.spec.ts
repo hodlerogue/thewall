@@ -155,3 +155,38 @@ test('the signup questions are usable with the keyboard open', async ({ page }) 
   // The question is still readable above the prompt, not scrolled off.
   await expect(scrollback(page)).toContainText('what do you want to be called?')
 })
+
+test('following the key says so, and cleans up after itself', async ({ page }) => {
+  // Until this existed, clicking the link produced no feedback of any kind:
+  // you landed on the site and nothing on the page had changed, so there was
+  // no way to tell a key that worked from one that had not.
+  await page.goto('/?key=ok')
+  await expect(page.getByTestId('prompt-label')).toBeVisible()
+  await expect(scrollback(page)).toContainText('your key worked')
+
+  // §3.4 — the path is the prompt's location, and a query string is not part
+  // of it. Read once, then gone, so a reload does not repeat the message.
+  await expect(page).toHaveURL(/\/commons$/)
+  expect(page.url()).not.toContain('key=')
+})
+
+test('a key that could not be recorded says that, instead of nothing', async ({ page }) => {
+  // The failure that made this necessary: mark_verified() did not exist on the
+  // project, so the callback logged to a console nobody reads and redirected
+  // as though it had worked. The gate stayed shut, the message still said to
+  // click the link, and clicking it again did exactly the same nothing.
+  await page.goto('/?key=failed')
+  await expect(page.getByTestId('prompt-label')).toBeVisible()
+
+  await expect(scrollback(page)).toContainText('couldn’t finish marking you verified')
+  // Something the person can actually do, before anything about the database.
+  await expect(scrollback(page)).toContainText('type resend')
+  expect(page.url()).not.toContain('key=')
+})
+
+test('an ordinary arrival says nothing about keys', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByTestId('prompt-label')).toBeVisible()
+  await expect(scrollback(page)).not.toContainText('your key')
+  await expect(scrollback(page)).not.toContainText('verified')
+})

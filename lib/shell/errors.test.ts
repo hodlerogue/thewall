@@ -98,3 +98,24 @@ describe('the failures worth naming get named (§3.7)', () => {
     }
   })
 })
+
+describe('a migration that never landed', () => {
+  it('names the fix when a function is missing, not just the table case', () => {
+    // PGRST202 is what PostgREST answers for a function that is not there,
+    // which means one migration was applied and a later one was not. It used
+    // to fall through to the raw message, which is how a missing
+    // mark_verified() presented as a magic link that simply did not work.
+    const lines = describeError({
+      code: 'PGRST202',
+      message: 'Could not find the function public.mark_verified without parameters',
+    })
+    const text = lines.map((line) => line.text).join('\n')
+    expect(text).toMatch(/db-deploy/)
+    expect(text).toMatch(/missing a database update/)
+  })
+
+  it('still tells the table case apart from it', () => {
+    const table = describeError({ code: 'PGRST205', message: 'Could not find the table' })
+    expect(table.map((l) => l.text).join('\n')).toMatch(/schema hasn’t been applied/)
+  })
+})
