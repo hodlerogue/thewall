@@ -29,7 +29,7 @@ export default async function Image({ params }: { params: Promise<{ room: string
       lines: [
         { text: 'guest:lobby$ look', tone: 'echo' },
         { text: '' },
-        { text: 'five rooms, and a prompt.', tone: 'faint' },
+        { text: 'six rooms, and a prompt.', tone: 'faint' },
       ],
     })
   }

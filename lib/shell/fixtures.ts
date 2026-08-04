@@ -85,6 +85,55 @@ export const ROOMS: Room[] = [
     ],
   },
   {
+    // Sixth room, added after launch. §5 to the letter: a shelf, a bicycle, a
+    // lamp — things made with hands, by people who are not especially good at
+    // it yet. Deliberately not side projects and shipping, which is the dev
+    // in-joke §5 names as the thing that narrows the audience to people who
+    // already like terminals.
+    slug: 'builders',
+    gloss: 'what you are making',
+    ephemeral: false,
+    posts: [
+      {
+        id: 9,
+        // Whoever is newest here is a third of the share card, so it is
+        // deliberately not somebody already fronting another room on it —
+        // §3.11's argument is that the lobby has to read as a place with
+        // people in it, and that goes double for a preview.
+        author: 'tuck',
+        body: 'rewired the lamp my grandmother left me and it works. i have never been so pleased with anything.',
+        createdAt: minutes(50),
+        replies: [],
+      },
+      {
+        id: 5,
+        author: 'ren',
+        body: 'the bike is back together and there is exactly one bolt left over. i have decided it was spare.',
+        createdAt: minutes(180),
+        replies: [
+          {
+            author: 'marisol',
+            body: 'there is always one bolt. it is a law of bicycles.',
+            createdAt: minutes(120),
+          },
+        ],
+      },
+      {
+        id: 2,
+        author: 'dev',
+        body: 'spent four hours on a shelf that is still not level and i have made my peace with it',
+        createdAt: minutes(300),
+        replies: [
+          {
+            author: 'jameson',
+            body: 'level is a rumour. matchbook under the short leg and never speak of it again.',
+            createdAt: minutes(240),
+          },
+        ],
+      },
+    ],
+  },
+  {
     slug: 'poker',
     gloss: 'bad beats and good folds',
     ephemeral: false,

@@ -164,7 +164,7 @@ commit;
 
 begin;
   set local role anon;
-  select tests.ok((select count(*) from public.rooms) = 5, 'anonymous readers see every room');
+  select tests.ok((select count(*) from public.rooms) = 6, 'anonymous readers see every room');
   select tests.ok((select count(*) from public.posts) > 0, 'anonymous readers see posts');
   select tests.ok((select count(*) from public.replies) > 0, 'anonymous readers see replies');
   select tests.ok((select count(*) from public.profiles) > 0, 'anonymous readers see who people are');
@@ -291,7 +291,7 @@ commit;
 begin;
   set local role anon;
   select tests.ok(
-    (select count(*) from public.room_overview where latest_body is not null) = 5,
+    (select count(*) from public.room_overview where latest_body is not null) = 6,
     'every seeded room has something recent to show'
   );
   select tests.ok(

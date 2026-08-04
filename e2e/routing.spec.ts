@@ -40,7 +40,7 @@ test('a post url lands you inside the post, replies and all', async ({ page }) =
 test('the lobby has its own address and lists the rooms', async ({ page }) => {
   await page.goto('/lobby')
   await expect(label(page)).toHaveText('guest:lobby$')
-  for (const room of ['commons', 'music', 'poker', 'kitchen', 'latenight']) {
+  for (const room of ['commons', 'music', 'builders', 'poker', 'kitchen', 'latenight']) {
     await expect(scrollback(page)).toContainText(room)
   }
 })

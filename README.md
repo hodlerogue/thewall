@@ -59,7 +59,7 @@ working schema and no rooms:
 | File | What it makes |
 |---|---|
 | `supabase/migrations/*.sql` | the tables, policies and functions — **no rows** |
-| `supabase/seed.sql` | the five rooms and everything in them (§5) |
+| `supabase/seed.sql` | the six rooms and everything in them (§5) |
 
 ```bash
 DATABASE_URL='postgresql://postgres:...@db.<ref>.supabase.co:5432/postgres' \
@@ -165,7 +165,7 @@ find tomatoes
 find pocket kings --room=poker
 ```
 
-Matching is `ilike`, not full-text. At five curated rooms (§4.2) a scan is
+Matching is `ilike`, not full-text. At six curated rooms (§4.2) a scan is
 honest and needs no `tsvector` column; the upgrade is a good problem to have
 later. `posts`, `search` and `grep` are aliases — `posts` because it is the
 name §4.8 uses, and because it reads better as a pipe source.
@@ -208,7 +208,7 @@ whether they ever followed a key, and their recent posts, each carrying the
 **Nothing on a profile is postable**, and that is the whole design rather than a
 missing feature. §3.10 is the doc's most emphatic architectural warning — a space
 that absorbs activity "deletes the geography that makes this feel like a place" —
-and a personal wall is that trap in a different hat, competing with five rooms
+and a personal wall is that trap in a different hat, competing with six rooms
 for the one conversation a small community has. So `person` is a valid context
 for every verb except `say`, the palette there omits it, and `say` on a profile
 answers "you have to be in a room first". The read-only version is a strict
@@ -329,7 +329,7 @@ shell renders, from the same `renderRoom`, `renderPost` and `renderRoomList`,
 and paints them in the warm palette — so a preview cannot describe a site that
 does not look like this. A room shows what is being said in it; a post shows
 the post and its replies; the front door shows three rooms with proof of life
-(§3.11), because five rooms reading "quiet in here" is the §5 failure mode at
+(§3.11), because a card of rooms reading "quiet in here" is the §5 failure mode at
 1200×630.
 
 Every route that a crawler can reach answers with an image, including a deleted

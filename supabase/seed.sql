@@ -68,11 +68,28 @@ insert into public.rooms (slug, gloss, ephemeral, sort_order) values
   ('commons',   'everything, briefly',        true,  0),
   ('music',     'what you are listening to',  false, 1),
   ('poker',     'bad beats and good folds',   false, 2),
-  ('kitchen',   'what you cooked',            false, 3),
+  ('kitchen',   'what you cooked',            false, 4),
   -- §5 — one room should be a mood, not a topic. Mood rooms are what make this
   -- feel like a place rather than a forum.
-  ('latenight', 'quiet hours only',           false, 4)
+  ('latenight', 'quiet hours only',           false, 5),
+  -- Sixth, added after launch. §4.2 leans "fixed set at launch" and the number
+  -- was never the point — 40 rooms with three people each is. Six with
+  -- something recent in all of them is still a building rather than a
+  -- directory, and this is the room the earliest people here are most likely
+  -- to have something to put in.
+  ('builders',  'what you are making',        false, 2)
 on conflict (slug) do nothing;
+
+-- Ordering is set rather than left to the insert, because `on conflict do
+-- nothing` skips a room that already exists — so on a project seeded before
+-- builders was written, it would arrive with its sort_order and everything
+-- after it would keep the old one, leaving two rooms tied and the lobby order
+-- undefined.
+update public.rooms set sort_order = v.sort_order
+  from (values ('commons', 0), ('music', 1), ('builders', 2),
+               ('poker', 3), ('kitchen', 4), ('latenight', 5))
+       as v (slug, sort_order)
+ where rooms.slug = v.slug::citext;
 
 -- Posts are inserted directly here rather than through create_post(), because
 -- the seed runs without an auth context. The room counters are advanced by hand
@@ -111,7 +128,25 @@ insert into public.posts (room_slug, post_no, author_id, body, created_at) value
    now() - interval '8 hours'),
   ('latenight', 2, '33333333-3333-4333-8333-333333333333',
    'the 3am version of a problem is never the real size of the problem',
-   now() - interval '30 hours')
+   now() - interval '30 hours'),
+
+  -- §5 to the letter: a shelf, a bicycle, a lamp. Things made with hands, by
+  -- people who are not especially good at it yet. The first draft of this room
+  -- was about side projects and shipping, which is exactly the dev in-joke §5
+  -- names as the thing that narrows the audience to people who already like
+  -- terminals.
+  ('builders', 1, '55555555-5555-4555-8555-555555555555',
+   'spent four hours on a shelf that is still not level and i have made my peace with it',
+   now() - interval '5 hours'),
+  ('builders', 2, '44444444-4444-4444-8444-444444444444',
+   'the bike is back together and there is exactly one bolt left over. i have decided it was spare.',
+   now() - interval '3 hours'),
+  -- Whoever wrote the newest post here is a third of the share card, so it is
+  -- deliberately not somebody already fronting another room on it (§3.11 — the
+  -- card has to read as a place with people in it, not one person posting).
+  ('builders', 3, '33333333-3333-4333-8333-333333333333',
+   'rewired the lamp my grandmother left me and it works. i have never been so pleased with anything.',
+   now() - interval '50 minutes')
 on conflict do nothing;
 
 -- The column types come from the VALUES list, which is all text, so each one is
@@ -132,7 +167,12 @@ select p.id, v.author_id::uuid, v.body, v.created_at
     ('latenight', 1, '22222222-2222-4222-8222-222222222222',
      'the refrigerator and i are also here', now() - interval '7 hours'),
     ('kitchen', 1, '44444444-4444-4444-8444-444444444444',
-     'freeze it flat in bags, it stacks and it thaws in about a minute', now() - interval '4 hours')
+     'freeze it flat in bags, it stacks and it thaws in about a minute', now() - interval '4 hours'),
+    ('builders', 1, '11111111-1111-4111-8111-111111111111',
+     'level is a rumour. matchbook under the short leg and never speak of it again.',
+     now() - interval '4 hours'),
+    ('builders', 2, '22222222-2222-4222-8222-222222222222',
+     'there is always one bolt. it is a law of bicycles.', now() - interval '2 hours')
   ) as v (room_slug, post_no, author_id, body, created_at)
   join public.posts p
     on p.room_slug = v.room_slug::citext

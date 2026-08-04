@@ -159,7 +159,7 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         .order('created_at', { ascending: false })
         .limit(query.limit)
 
-      // ilike rather than full-text: at five curated rooms (§4.2) a scan is
+      // ilike rather than full-text: at six curated rooms (§4.2) a scan is
       // honest and needs no tsvector column. Revisit when volume makes it slow,
       // which is a good problem and not this one.
       if (query.text) request = request.ilike('body', `%${query.text}%`)
