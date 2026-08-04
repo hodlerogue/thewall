@@ -9,6 +9,8 @@
  * prompt should not send a marketing email.
  */
 
+import { CONTACT } from '@/lib/legal/documents'
+
 export interface SendResult {
   sent: boolean
   /** What to tell the person, in their own terms. Never mentions a provider. */
@@ -38,6 +40,12 @@ export async function sendMagicLink(to: string, link: string): Promise<SendResul
       body: JSON.stringify({
         from,
         to,
+        // People reply to transactional mail — usually to say "I didn't ask for
+        // this". Without this it lands at whatever MAIL_FROM is, which is a
+        // send-only address nobody reads. Both published documents name this
+        // one as the way to reach a human, so it is the honest destination and
+        // it saves MAIL_FROM ever needing to receive.
+        reply_to: CONTACT,
         subject: 'your key to thewall',
         text: [
           'this link signs you in, and keeps your name yours.',
