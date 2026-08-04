@@ -17,6 +17,15 @@ export interface Presence {
   guests: number
 }
 
+/** §4.1 — a reply to something you said, with the address to walk to. */
+export interface MailItem {
+  room: string
+  postId: number
+  author: string
+  body: string
+  createdAt: Date
+}
+
 export interface Env {
   listRooms(): Promise<RoomSummary[]>
   getRoom(slug: string): Promise<Room | undefined>
@@ -24,6 +33,10 @@ export interface Env {
   who(roomSlug: string | undefined): Promise<Presence>
   /** §4.8 — the pipe's source. Crosses rooms, so hits carry their address. */
   searchPosts(query: PostQuery): Promise<PostHit[]>
+  /** §4.1 — how many replies are waiting. Zero for anyone without a name. */
+  mailCount(): Promise<number>
+  /** §4.1 — the replies themselves. Reading them marks them read. */
+  readMail(): Promise<MailItem[]>
 }
 
 /** In-memory Env over the §5 seed content, for tests and the mobile gate. */
@@ -60,6 +73,14 @@ export function fixtureEnv(rooms: Room[] = ROOMS): Env {
     },
     async who() {
       return { names: ['jameson', 'marisol', 'tuck'], guests: 2 }
+    },
+
+    async mailCount() {
+      return 0
+    },
+
+    async readMail() {
+      return []
     },
 
     async searchPosts(query) {

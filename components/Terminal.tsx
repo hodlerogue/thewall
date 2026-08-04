@@ -13,6 +13,8 @@ export function Terminal({
   chipsFor,
   name: initialName = null,
   subscribe,
+  mailCount,
+  initialMail = 0,
 }: {
   initialLines: readonly Line[]
   initialLocation: Location
@@ -29,6 +31,9 @@ export function Terminal({
     name: string | null,
     append: (lines: Line[]) => void,
   ) => () => void
+  /** §4.1 — polled, because the lean is pull-only: no push, no email. */
+  mailCount?: () => Promise<number>
+  initialMail?: number
 }) {
   const [lines, setLines] = useState<Line[]>([...initialLines])
   const [location, setLocation] = useState<Location>(initialLocation)
@@ -36,6 +41,7 @@ export function Terminal({
   const [input, setInput] = useState('')
 
   const [pending, setPending] = useState(false)
+  const [mail, setMail] = useState(initialMail)
 
   const scrollbackRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -140,6 +146,9 @@ export function Terminal({
 
       // Words that did not send go back where they can be sent again.
       if (result.retry) setInput(result.retry)
+
+      // §4.1 — reading your mail is what clears it.
+      if (result.mail !== undefined) setMail(result.mail)
     },
     [location, name, run],
   )
@@ -161,6 +170,34 @@ export function Terminal({
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [run])
+
+  /*
+   * §4.1 — "status bar shows the count persistently… Pull-only, no push, no
+   * email." So it is polled rather than pushed, and only while you have a name
+   * to receive anything under. A minute is well inside the patience of someone
+   * who is already looking at the page, and it costs one small query.
+   */
+  useEffect(() => {
+    if (!mailCount || name === null) return
+
+    let stopped = false
+    const check = () => {
+      void mailCount()
+        .then((count) => {
+          if (!stopped) setMail(count)
+        })
+        .catch(() => {
+          // A count that will not load is not worth interrupting anyone over.
+        })
+    }
+
+    check()
+    const timer = setInterval(check, 60_000)
+    return () => {
+      stopped = true
+      clearInterval(timer)
+    }
+  }, [mailCount, name])
 
   // Where you are standing, as a subscription. Re-opened on every move and on
   // signing up: "here" changes with you, and so does who you are when you get
@@ -201,6 +238,14 @@ export function Terminal({
         {pending && (
           <p className="pending" data-testid="pending">
             …
+          </p>
+        )}
+        {/* The Unix precedent §4.1 cites is the login line. This is the same
+            idea, kept where you are already looking rather than shown once and
+            gone. */}
+        {mail > 0 && !pending && (
+          <p className="mail" data-testid="mail">
+            you have {mail} {mail === 1 ? 'reply' : 'replies'} waiting — type mail
           </p>
         )}
         <Palette chips={chipsFor(location)} onInsert={insert} />

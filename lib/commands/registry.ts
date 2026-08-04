@@ -289,6 +289,52 @@ export const COMMANDS: readonly Command[] = [
   },
 
   {
+    // §4.1 — the reason anyone comes back. Its lean: "status bar shows the
+    // count persistently; `mail` lists them with `go <id>` to jump. Pull-only,
+    // no push, no email."
+    verb: 'mail',
+    aliases: ['replies', 'inbox', 'unread'],
+    contexts: ALL,
+    gloss: () => 'replies waiting for you',
+    detail: () =>
+      'shows replies to things you said, newest first, each with the address to walk to. reading them clears the count. nothing is pushed and nothing is emailed — it waits until you ask.',
+    insert: () => 'mail',
+    wrongContext: () => '',
+    async run({ env, session }) {
+      if (session.name() === null) {
+        return {
+          lines: [
+            { text: 'no mail — you’re reading as a guest.', tone: 'faint' },
+            { text: 'say something and replies to it will land here.', tone: 'faint' },
+          ],
+        }
+      }
+
+      const items = await env.readMail()
+      if (items.length === 0) {
+        return { lines: [{ text: 'nothing waiting.', tone: 'faint' }] }
+      }
+
+      const lines: Line[] = []
+      for (const item of items) {
+        // The address first, because a notification you cannot walk to is just
+        // an alert. `go music/12` is not a thing, so both parts are shown.
+        lines.push({
+          text: `${item.room}/${item.postId}  ${item.author}, ${formatAgo(item.createdAt)}`,
+          tone: 'accent',
+        })
+        lines.push({ text: item.body, depth: 1 })
+      }
+      lines.push({ text: '' })
+      lines.push({
+        text: `go ${items[0].room} then go ${items[0].postId} to answer the newest.`,
+        tone: 'faint',
+      })
+      return { lines, mail: 0 }
+    },
+  },
+
+  {
     // §4.7 — hidden like the pipe, but for a different reason: nobody needs to
     // know it exists until the moment they do, and the message that asks them
     // to verify names it directly.

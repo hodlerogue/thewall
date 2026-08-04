@@ -378,4 +378,69 @@ select tests.ok(
 );
 
 \echo ''
+\echo '§4.1 — mail is replies to you, that you have not read'
+
+-- jameson wrote music/12. tester replies to it; jameson should have mail.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+  insert into public.replies (post_id, author_id, body)
+  select id, auth.uid(), 'a reply that should show up as mail'
+    from public.posts where room_slug = 'music' and post_no = 12;
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '11111111-1111-4111-8111-111111111111';
+
+  select tests.ok(public.mail_count() >= 1, 'a reply to your post is mail');
+
+  select tests.ok(
+    (select count(*) from public.mail() where body = 'a reply that should show up as mail') = 1,
+    'and it comes back with the words'
+  );
+
+  select tests.ok(
+    (select room || '/' || post_no from public.mail()
+      where body = 'a reply that should show up as mail') = 'music/12',
+    'carrying the address to walk to — a notification you cannot reach is an alert'
+  );
+commit;
+
+-- Reading is the only signal there is, since §4.1 is pull-only.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '11111111-1111-4111-8111-111111111111';
+  select public.mark_mail_seen();
+  select tests.ok(public.mail_count() = 0, 'reading it clears the count');
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+  -- The replier is not the recipient.
+  select tests.ok(
+    (select count(*) from public.mail() where body = 'a reply that should show up as mail') = 0,
+    'your own reply is not mail for you'
+  );
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '22222222-2222-4222-8222-222222222222';
+  select tests.ok(
+    (select count(*) from public.mail() where body = 'a reply that should show up as mail') = 0,
+    'and it is nobody else''s mail either'
+  );
+commit;
+
+begin;
+  set local role anon;
+  select tests.raises(
+    $sql$select public.mail_count()$sql$,
+    'a guest has no mail to read'
+  );
+commit;
+
+\echo ''
 \echo 'all schema tests passed'

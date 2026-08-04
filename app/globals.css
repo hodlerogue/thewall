@@ -122,6 +122,12 @@ body {
   color: var(--fg-faint);
 }
 
+.mail {
+  margin: 0;
+  padding: 6px 12px 0;
+  color: var(--accent);
+}
+
 .palette {
   display: flex;
   gap: 6px;

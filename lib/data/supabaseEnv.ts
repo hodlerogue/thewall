@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Live } from '@/lib/data/live'
-import type { Env } from '@/lib/shell/env'
+import type { Env, MailItem } from '@/lib/shell/env'
 import type { Post, PostHit, Room, RoomSummary } from '@/lib/shell/model'
 
 /**
@@ -112,6 +112,39 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
       // in — not who has an account, and not whichever room you happened to
       // land in first, which is what this used to answer.
       return live?.present() ?? { names: [], guests: 0 }
+    },
+
+    async mailCount(): Promise<number> {
+      // Zero rather than an error for a guest: reading is anonymous (§3.9),
+      // and a signed-out visitor having no mail is not a failure.
+      const { data, error } = await client.rpc('mail_count')
+      if (error) return 0
+      return typeof data === 'number' ? data : 0
+    },
+
+    async readMail(): Promise<MailItem[]> {
+      const { data, error } = await client.rpc('mail')
+      if (error) throw error
+
+      const items = (data ?? []) as {
+        room: string
+        post_no: number
+        author: string
+        body: string
+        created_at: string
+      }[]
+
+      // Reading is what marks them read — §4.1 is pull-only, so the act of
+      // looking is the only signal there is.
+      await client.rpc('mark_mail_seen')
+
+      return items.map((row) => ({
+        room: row.room,
+        postId: row.post_no,
+        author: row.author,
+        body: row.body,
+        createdAt: new Date(row.created_at),
+      }))
     },
 
     async searchPosts(query): Promise<PostHit[]> {

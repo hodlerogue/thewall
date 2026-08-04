@@ -243,6 +243,35 @@ describe('§4.7 (revised) — the key has to be gettable', () => {
   })
 })
 
+describe('§4.1 — mail is the reason to come back', () => {
+  it('tells a guest why they have none, rather than showing an empty box', async () => {
+    const { run } = harness()
+    const out = text((await run('mail', { room: 'music' })).lines)
+    expect(out).toMatch(/reading as a guest/)
+    expect(out).toMatch(/say something/)
+  })
+
+  it('is reachable by the words someone would reach for', async () => {
+    const { parse } = await import('@/lib/commands/parse')
+    for (const word of ['mail', 'replies', 'inbox', 'unread']) {
+      expect(parse(word)?.command?.verb, word).toBe('mail')
+    }
+  })
+
+  it('is in help — unlike the pipe, there is no reason to hide it', async () => {
+    const { run } = harness()
+    const out = text((await run('help', { room: 'music' })).lines)
+    expect(out).toMatch(/mail — /)
+  })
+
+  it('explains that nothing is pushed (§4.1 is pull-only)', async () => {
+    const { run } = harness()
+    const out = text((await run('what mail', { room: 'music' })).lines)
+    expect(out).toMatch(/nothing is pushed/)
+    expect(out).toMatch(/emailed/)
+  })
+})
+
 describe('name rules match the schema', () => {
   it('accepts what the profiles_name_shape check accepts', () => {
     for (const name of ['ren', 'marisol', 'dev_2', 'a1']) {

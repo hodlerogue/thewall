@@ -46,6 +46,8 @@ export interface RunResult {
    * words only in the echo line, behind a long-press.
    */
   retry?: string
+  /** §4.1 — a fresh unread count, when the command changed it. */
+  mail?: number
 }
 
 export interface RunOptions {

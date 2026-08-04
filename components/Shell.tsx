@@ -18,6 +18,7 @@ const DEFAULT_ROOM = 'commons'
 
 interface Boot {
   run: Runner
+  mailCount?: () => Promise<number>
   chipsFor: (location: Location) => readonly Chip[]
   lines: Line[]
   location: Location
@@ -181,6 +182,7 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
       chipsFor={boot.chipsFor}
       name={boot.name}
       subscribe={boot.subscribe}
+      mailCount={boot.mailCount}
     />
   )
 }
