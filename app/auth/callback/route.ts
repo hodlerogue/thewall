@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import type { EmailOtpType } from '@supabase/supabase-js'
 import { createRouteClient } from '@/lib/supabase/server'
 
 /**
@@ -15,17 +16,27 @@ export async function GET(request: Request) {
   const tokenHash = url.searchParams.get('token_hash')
   const next = url.searchParams.get('next') ?? '/'
 
+  // The type the token was minted as. It used to be hardcoded to 'email' while
+  // the links were generated as magiclink, which is the sort of mismatch that
+  // fails quietly and looks like an expired link.
+  const type = (url.searchParams.get('type') ?? 'magiclink') as EmailOtpType
+
+  // Nothing to verify. Reachable by anyone who opens the bare path, and — until
+  // the links were built by hand — by everybody, since Supabase's own
+  // action_link comes back with the session in a fragment the server cannot see.
   if (!tokenHash) {
-    return NextResponse.redirect(new URL('/', url.origin))
+    return NextResponse.redirect(withOutcome(next, url.origin, 'expired'))
   }
 
   const supabase = await createRouteClient()
-  const { data, error } = await supabase.auth.verifyOtp({ type: 'email', token_hash: tokenHash })
+  const { data, error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash })
 
-  // A spent or expired link is not worth an error page — it just means reading
-  // as a guest, which is the normal state of this site anyway.
   if (error || !data.user) {
-    return NextResponse.redirect(new URL('/', url.origin))
+    // Spent, expired, or already used. Not an error page — reading as a guest
+    // is the normal state of this site — but it has to be said, because a link
+    // that silently does nothing is indistinguishable from one that worked.
+    console.error(`could not verify a key — ${error?.message ?? 'no user returned'}`)
+    return NextResponse.redirect(withOutcome(next, url.origin, 'expired'))
   }
 
   // They can read the inbox. That is the claim §4.7 needs, and now it is true.
@@ -64,6 +75,8 @@ export async function GET(request: Request) {
   return NextResponse.redirect(withOutcome(next, url.origin, 'ok'))
 }
 
+type KeyOutcome = 'ok' | 'failed' | 'expired'
+
 /**
  * The landing path, carrying what happened to the key.
  *
@@ -72,7 +85,7 @@ export async function GET(request: Request) {
  * page of its own without inventing a place that is not a place. The shell
  * reads this once on boot and strips it, leaving the address it should have.
  */
-function withOutcome(next: string, origin: string, outcome: 'ok' | 'failed'): URL {
+function withOutcome(next: string, origin: string, outcome: KeyOutcome): URL {
   const target = new URL(next, origin)
   target.searchParams.set('key', outcome)
   return target

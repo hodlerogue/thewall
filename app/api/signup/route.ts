@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { suggestAlternates, validateName } from '@/lib/auth/names'
 import { clientHash } from '@/lib/auth/clientHash'
 import { sendMagicLink } from '@/lib/auth/mail'
+import { verifyUrl } from '@/lib/auth/links'
 import { createAdminClient, createRouteClient } from '@/lib/supabase/server'
 
 /**
@@ -106,14 +107,18 @@ export async function POST(request: Request) {
   const { data: keyLink } = await admin.auth.admin.generateLink({
     type: 'magiclink',
     email: body.email,
-    options: { redirectTo: `${siteUrl()}/auth/callback` },
   })
 
   // §4.7, as revised: this link is what turns a name into an account someone
   // can come back to. Until it is followed they get one contribution — the
   // held sentence below — and then they are asked.
-  const delivery = keyLink?.properties?.action_link
-    ? await sendMagicLink(body.email, keyLink.properties.action_link)
+  //
+  // Built from `hashed_token` rather than sent as `action_link`. See
+  // lib/auth/links.ts: the action link bounces through Supabase and comes back
+  // with the session in a URL fragment, which the server can never read, so
+  // the emailed key did nothing at all for anybody who clicked it.
+  const delivery = keyLink?.properties?.hashed_token
+    ? await sendMagicLink(body.email, verifyUrl(keyLink.properties.hashed_token))
     : { sent: false, note: 'couldn’t make you a key just now. type resend to try again.' }
 
   const { data: sessionLink, error: linkError } = await admin.auth.admin.generateLink({
@@ -138,8 +143,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ name: validated.name, note: delivery.note })
-}
-
-function siteUrl(): string {
-  return process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
 }

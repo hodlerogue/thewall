@@ -82,8 +82,8 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 228 unit tests: parser, aliases, errors, signup, search, themes, names, policy
-npm run test:e2e   # 76 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm test           # 233 unit tests: parser, aliases, errors, signup, search, themes, names, policy
+npm run test:e2e   # 77 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
 npm run test:db    # 106 assertions against the real migrations, on a throwaway database
 ```
 
@@ -143,6 +143,20 @@ nobody is coming back for. So the held sentence still posts
 instantly, and everything after it wants the link followed first — the friction
 lands after the payoff, which is also what makes the link necessary rather than
 decorative. `resend` sends another, because links expire.
+
+The link in that email is built by hand from `hashed_token`, **not** from
+`generateLink()`'s `action_link`. The action link points at Supabase's own
+verify endpoint, which bounces back with the session in a URL *fragment* — and
+a fragment is never sent to a server, so `/auth/callback` saw no token, did
+nothing, and redirected. For as long as that was true the emailed key was
+decorative: the only sessions anybody had came from signup consuming a second
+link server-side, which meant following the key on a different device — an
+email client, usually — landed you as a guest.
+
+`middleware.ts` is the other half of that. `@supabase/ssr` refreshes the access
+token by writing cookies, and without something doing it on every request the
+token expires after an hour and the server stops recognising anybody. It fails
+silently, an hour later, to somebody who is not looking at the code.
 
 `profiles.verified_at` is set only by `/auth/callback`, which is the one place
 that can honestly claim someone read the inbox. It is deliberately not
