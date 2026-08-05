@@ -93,6 +93,9 @@ function applyTheme(name: string): void {
 
 const error = (text: string): RunResult => ({ lines: [{ text, tone: 'error' }] })
 
+/** Matches the `limit` in `public.mail()`. Reaching it is said out loud. */
+const MAIL_LIMIT = 100
+
 /** A post address that exists, for an error that tells you to open one. */
 async function newestPostIn(env: Env, room: string | undefined): Promise<number | string> {
   if (room === undefined) return 12
@@ -655,9 +658,19 @@ export const COMMANDS: readonly Command[] = [
       }
 
       const lines: Line[] = []
+
+      // How many, before the list of them. The badge in the composer says
+      // "you have 12 replies waiting" and then `mail` clears it — so without
+      // this the number somebody was just told disappears at the moment they
+      // act on it, and a long list arrives with nothing to measure it against.
+      if (items.length > 1) {
+        lines.push({ text: `${items.length} replies, newest first.`, tone: 'dim' })
+        lines.push({ text: '' })
+      }
+
       for (const item of items) {
         // The address first, because a notification you cannot walk to is just
-        // an alert. `go music/12` is not a thing, so both parts are shown.
+        // an alert.
         lines.push({
           text: `${item.room}/${item.postId}  ${item.author}, ${formatAgo(item.createdAt)}`,
           tone: 'accent',
@@ -665,10 +678,27 @@ export const COMMANDS: readonly Command[] = [
         lines.push({ text: item.body, depth: 1 })
       }
       lines.push({ text: '' })
+
+      // One step, not two. This said "go music then go 12" and carried a
+      // comment claiming `go music/12` was not a thing — true when it was
+      // written, and not since `go` learned to take a whole address, which is
+      // the shape every listing on the site prints.
       lines.push({
-        text: `go ${items[0].room} then go ${items[0].postId} to answer the newest.`,
+        text: `go ${items[0].room}/${items[0].postId} to answer the newest.`,
         tone: 'faint',
       })
+
+      // No silent caps. Reading is what marks mail read (§4.1 is pull-only), and
+      // with newest-first ordering anything past the limit is older than
+      // everything here — so hitting it clears replies that were never shown.
+      // Rare, and not something to find out about by noticing a gap.
+      if (items.length >= MAIL_LIMIT) {
+        lines.push({
+          text: `that is the newest ${MAIL_LIMIT}. anything older than these is cleared too — find --by=<name> still has it.`,
+          tone: 'faint',
+        })
+      }
+
       return { lines, mail: 0 }
     },
   },

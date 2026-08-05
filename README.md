@@ -97,9 +97,9 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 307 unit tests: parser, aliases, errors, signup, search, themes, names, walls
+npm test           # 316 unit tests: parser, aliases, errors, signup, search, themes, names, walls
 npm run test:e2e   # 103 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 170 assertions against the real migrations, on a throwaway database
+npm run test:db    # 177 assertions against the real migrations, on a throwaway database
 ```
 
 To see what is actually in a deployed project — read-only, and it tells apart
@@ -331,6 +331,20 @@ exactly that is more use than listing the flags that do exist.
 
 ## Mail, and why anyone comes back
 
+```
+mail
+
+12 replies, newest first.
+
+music/12  marisol, 2h ago
+  warped ones still play, they just wobble. it grows on you.
+kitchen/8  ren, 4h ago
+  freeze it flat in bags, it stacks and it thaws in about a minute
+...
+
+go music/12 to answer the newest.
+```
+
 §4.1 is the doc's own highest-priority unsolved item — "no notification means no
 reason to return" — and its lean is specific enough to be implementation rather
 than design: a persistent count, `mail` to list them, pull-only, no push and no
@@ -338,7 +352,14 @@ email. Unread is one column: replies to posts you wrote, newer than
 `profiles.mail_seen_at`, that you did not write yourself. Reading them is what
 clears the count, because in a pull-only design looking is the only signal there
 is. Each one carries its `room/id`, since a notification you cannot walk to is
-just an alert.
+just an alert — and `go music/12` gets you there in one step.
+
+**Hiding reaches the inbox**, which it did not for a long time. Neither `mail()`
+nor `mail_count()` looked at `hidden_at` — not on the reply, not on the post it
+hangs under, not on the room both are in — so hiding abuse, or banning whoever
+wrote it, left every reply sitting in the target's inbox, still counted and
+still delivered. That is the one surface that reaches out and taps somebody on
+the shoulder, and the lever gets used at the moment somebody is being harassed.
 
 ## Somebody, and their wall
 

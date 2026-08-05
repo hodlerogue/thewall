@@ -1345,6 +1345,78 @@ select tests.ok(
 );
 
 \echo ''
+\echo '§4.1 — the kill switch reaches the inbox'
+
+-- Mail is the one surface that reaches out and taps somebody on the shoulder,
+-- and it was the one surface hiding did not reach: neither mail() nor
+-- mail_count() looked at hidden_at, on the reply, the post or the room. So
+-- hiding abuse — or banning whoever wrote it, which hides everything they said
+-- — left it sitting in the target's inbox, still counted, still delivered.
+insert into public.posts (room_slug, post_no, author_id, body)
+values ('music', 900, '99999999-9999-4999-8999-999999999999', 'something to be replied to')
+on conflict do nothing;
+
+insert into public.replies (post_id, author_id, body)
+select p.id, '22222222-2222-4222-8222-222222222222', 'a reply that will be hidden'
+  from public.posts p where p.room_slug = 'music' and p.post_no = 900;
+
+update public.profiles set mail_seen_at = now() - interval '1 day'
+ where id = '99999999-9999-4999-8999-999999999999';
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+  select tests.ok(
+    (select count(*) from public.mail() where body = 'a reply that will be hidden') = 1,
+    'a reply arrives in the inbox of whoever it answers'
+  );
+  select tests.ok(public.mail_count() >= 1, 'and is counted');
+commit;
+
+update public.replies set hidden_at = now() where body = 'a reply that will be hidden';
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+  select tests.ok(
+    not exists (select 1 from public.mail() where body = 'a reply that will be hidden'),
+    'hiding it takes it out of the inbox'
+  );
+  select tests.ok(public.mail_count() = 0, 'and out of the count, which has to agree');
+commit;
+
+-- A reply under a hidden post is a notification pointing at nothing.
+update public.replies set hidden_at = null where body = 'a reply that will be hidden';
+update public.posts set hidden_at = now() where room_slug = 'music' and post_no = 900;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+  select tests.ok(
+    not exists (select 1 from public.mail() where body = 'a reply that will be hidden'),
+    'hiding the post it hangs under takes it out too'
+  );
+commit;
+
+-- And a closed room is gone for everybody, including whoever was notified.
+update public.posts set hidden_at = null where room_slug = 'music' and post_no = 900;
+select public.hide_room('music');
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+  select tests.ok(
+    not exists (select 1 from public.mail() where body = 'a reply that will be hidden'),
+    'closing the room takes it out as well'
+  );
+  select tests.ok(public.mail_count() = 0, 'and the count still agrees');
+commit;
+
+select public.hide_room('music', false);
+delete from public.replies where body = 'a reply that will be hidden';
+delete from public.posts where room_slug = 'music' and post_no = 900;
+
+\echo ''
 \echo 'agreeing to the terms is recorded, and cannot be forged'
 
 -- The record is written by the signup route under the service role, on the same
