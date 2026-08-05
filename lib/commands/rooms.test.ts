@@ -27,6 +27,9 @@ function harness(me: string | null = 'jameson') {
     async create(name) {
       return { ok: true as const, name }
     },
+    async login(name: string) {
+      return { ok: true as const, name, note: 'sent' }
+    },
     async resend() {
       return { note: '' }
     },

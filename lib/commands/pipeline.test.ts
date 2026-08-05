@@ -17,6 +17,9 @@ const session = new Session(
     async create(name) {
       return { ok: true as const, name }
     },
+    async login(name: string) {
+      return { ok: true as const, name, note: 'sent' }
+    },
     async resend() {
       return { note: 'sent' }
     },
@@ -135,7 +138,11 @@ describe('§4.8 — the pipe is not advertised, but the search is', () => {
     for (const location of [LOBBY, { room: 'music' }, { room: 'music', postId: 12 }]) {
       const out = text((await run('help', location)).lines)
       expect(out).not.toMatch(/\|/)
-      expect(out).not.toMatch(/count|--room|--since/)
+      // Word boundaries, or this catches the "count" inside "account" — which
+      // it did, the moment `login — get back into your account` was listed. A
+      // substring match here reports a §4.8 leak for any word that happens to
+      // contain a pipe verb, and the three it names are common English.
+      expect(out).not.toMatch(/\bcount\b|--room|--since/)
     }
   })
 

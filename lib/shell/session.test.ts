@@ -25,6 +25,9 @@ function harness(
       if (options.failCreate) return { ok: false as const, reason: options.failCreate }
       return { ok: true as const, name }
     },
+    async login(name: string) {
+      return { ok: true as const, name, note: 'sent' }
+    },
     async resend() {
       resends += 1
       return { note: 'another key is on its way.' }

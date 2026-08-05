@@ -72,6 +72,24 @@ export function httpSignupApi(): SignupApi {
       return { note: payload.note ?? payload.error ?? 'couldn’t send just now.' }
     },
 
+    async login(name: string) {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        name?: string
+        note?: string
+        error?: string
+      }
+      if (!response.ok || !payload.name || !payload.note) {
+        return { ok: false as const, reason: payload.error ?? 'couldn’t send a key just now.' }
+      }
+      return { ok: true as const, name: payload.name, note: payload.note }
+    },
+
     async create(name: string, email: string) {
       const response = await fetch('/api/signup', {
         method: 'POST',

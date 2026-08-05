@@ -30,6 +30,9 @@ function harness(me: string | null = 'jameson') {
     async create(name) {
       return { ok: true as const, name }
     },
+    async login(name: string) {
+      return { ok: true as const, name, note: 'sent' }
+    },
     async resend() {
       return { note: '' }
     },
@@ -130,6 +133,7 @@ describe('the feed', () => {
     const empty = createRunner(fixtureEnv([]), ['commons'], new Session(
       { async checkName() { return { available: true, alternates: [] } },
         async create(n) { return { ok: true as const, name: n } },
+        async login(name: string) { return { ok: true as const, name, note: 'sent' } },
         async resend() { return { note: '' } } },
       { async post() { return 1 }, async reply() {}, async rename(n: string) { return { ok: true as const, name: n } } },
       'jameson',

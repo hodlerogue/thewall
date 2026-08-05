@@ -663,17 +663,44 @@ export const COMMANDS: readonly Command[] = [
        * eye somewhere to stop, and it puts a short list at the top rather than a
        * wall.
        */
-      const ELSEWHERE = ['about', 'mail', 'rename', 'theme', 'install', 'terms', 'privacy', 'what', 'help']
+      /*
+       * This is a running order, not a set — the second group prints in this
+       * sequence rather than in registry order.
+       *
+       * It used to be membership only, so the group came out in whatever order
+       * the commands happened to be declared in, which put the newest entry
+       * last every time. `login` is the newest entry and is also the one thing
+       * on the list somebody might be stuck without, so inheriting "last"
+       * from a file's edit history is the wrong way to decide that.
+       *
+       * `about` opens it because it answers the question somebody new has, and
+       * `what`/`help` close it because they are about the list itself.
+       */
+      const ELSEWHERE = [
+        'about',
+        'login',
+        'mail',
+        'rename',
+        'theme',
+        'install',
+        'terms',
+        'privacy',
+        'what',
+        'help',
+      ]
 
       const here: Line[] = []
-      const about: Line[] = []
+      const elsewhere = new Map<string, Line>()
 
       for (const command of COMMANDS) {
         // §4.8 — the pipe is not on this list. That is the point of it.
         if (command.hidden || !command.contexts.includes(context)) continue
         const line: Line = { text: `${command.verb} — ${command.gloss(context)}`, tone: 'dim' }
-        ;(ELSEWHERE.includes(command.verb) ? about : here).push(line)
+        if (ELSEWHERE.includes(command.verb)) elsewhere.set(command.verb, line)
+        else here.push(line)
       }
+
+      const about = ELSEWHERE.map((verb) => elsewhere.get(verb)).filter((line) => line !== undefined)
 
       const lines: Line[] = [{ text: 'from here you can type:', tone: 'faint' }, ...here]
       if (about.length > 0) {
@@ -681,6 +708,24 @@ export const COMMANDS: readonly Command[] = [
         lines.push({ text: 'and anywhere:', tone: 'faint' })
         lines.push(...about)
       }
+      /*
+       * Two places, because this list is verbs and they are not.
+       *
+       * `feed` and `~name` are rooms, so the only thing that ever named them
+       * was the lobby listing and the middle of `what go`. Somebody who types
+       * `help` — which is what somebody looking for a feature types — got a
+       * list of fifteen verbs with no hint that either existed. "I'm not seeing
+       * anything in help about profile, or feed" is what that looks like from
+       * outside, and it was accurate.
+       *
+       * Two lines, not a third group of six. The point is to name the two doors
+       * that no verb spells, then get out of the way.
+       */
+      lines.push({ text: '' })
+      lines.push({ text: 'and two places:', tone: 'faint' })
+      lines.push({ text: `go ${FEED} — everything anybody put on their own wall`, tone: 'dim' })
+      lines.push({ text: 'go ~name — somebody: who they are, and their wall', tone: 'dim' })
+
       lines.push({ text: '' })
       lines.push({ text: 'what <command> explains any of them.', tone: 'faint' })
       return { lines }
@@ -761,7 +806,7 @@ export const COMMANDS: readonly Command[] = [
     contexts: ALL,
     gloss: () => 'replies waiting for you',
     detail: () =>
-      'shows replies to things you said, newest first, each with the address to walk to. reading them clears the count. nothing is pushed and nothing is emailed — it waits until you ask.',
+      'shows replies to things you said, each with the address to walk to — oldest at the top, so the newest is the one nearest the prompt. reading them clears the count. nothing is pushed and nothing is emailed — it waits until you ask.',
     insert: () => 'mail',
     wrongContext: () => '',
     async run({ env, session }) {
@@ -786,11 +831,26 @@ export const COMMANDS: readonly Command[] = [
       // this the number somebody was just told disappears at the moment they
       // act on it, and a long list arrives with nothing to measure it against.
       if (items.length > 1) {
-        lines.push({ text: `${items.length} replies, newest first.`, tone: 'dim' })
+        lines.push({ text: `${items.length} replies, oldest first.`, tone: 'dim' })
         lines.push({ text: '' })
       }
 
-      for (const item of items) {
+      // No silent caps. Reading is what marks mail read (§4.1 is pull-only), so
+      // hitting the limit clears replies that were never shown. It is printed
+      // above the list rather than below it because that is now where the
+      // boundary is: everything cut off is older than the first line here.
+      if (items.length >= MAIL_LIMIT) {
+        lines.push({
+          text: `these are the newest ${MAIL_LIMIT}. anything older is cleared too — find --by=<name> still has it.`,
+          tone: 'faint',
+        })
+        lines.push({ text: '' })
+      }
+
+      // Oldest first, so the newest reply is the last thing written and the
+      // scrollback's snap-to-bottom lands on it. See `oldestFirst` in
+      // lib/shell/render.ts.
+      for (const item of [...items].reverse()) {
         // The address first, because a notification you cannot walk to is just
         // an alert.
         lines.push({
@@ -809,17 +869,6 @@ export const COMMANDS: readonly Command[] = [
         text: `go ${items[0].room}/${items[0].postId} to answer the newest.`,
         tone: 'faint',
       })
-
-      // No silent caps. Reading is what marks mail read (§4.1 is pull-only), and
-      // with newest-first ordering anything past the limit is older than
-      // everything here — so hitting it clears replies that were never shown.
-      // Rare, and not something to find out about by noticing a gap.
-      if (items.length >= MAIL_LIMIT) {
-        lines.push({
-          text: `that is the newest ${MAIL_LIMIT}. anything older than these is cleared too — find --by=<name> still has it.`,
-          tone: 'faint',
-        })
-      }
 
       return { lines, mail: 0 }
     },
@@ -975,6 +1024,54 @@ export const COMMANDS: readonly Command[] = [
       }
 
       return { lines }
+    },
+  },
+
+  {
+    /*
+     * The way back in.
+     *
+     * Not hidden, which is the opposite call from `resend` two entries down,
+     * and for the opposite reason. `resend` is reachable because the message
+     * that needs it names it. Nothing names this one: somebody arriving on a
+     * new phone has no session, so no message has fired, and the screen they
+     * are looking at is the same one a stranger sees. If it is not in `help` it
+     * does not exist for them — and what they do instead is make a second
+     * account, which is the failure this whole entry is here to stop.
+     */
+    verb: 'login',
+    aliases: ['signin', 'auth'],
+    contexts: ALL,
+    gloss: () => 'get back into your account',
+    detail: () =>
+      'sends a key to the address a name signed up with. login ryan, then click the link in the inbox and this browser is ryan again. there are no passwords — the link is the whole of it. use this on a new phone, or after clearing your browser.',
+    insert: () => 'login ',
+    wrongContext: () => '',
+    async run({ arg, session }) {
+      if (arg === '') {
+        const name = session.name()
+        // Signed in and typing `login` bare is far more likely to be "am I?"
+        // than the start of a switch, so it answers that rather than asking a
+        // question they did not have.
+        if (name !== null) {
+          return {
+            lines: [
+              { text: `you’re signed in as ${name}.`, tone: 'faint' },
+              { text: 'login <name> sends a key for a different account.', tone: 'faint' },
+            ],
+          }
+        }
+        return {
+          lines: session.askOne(
+            [
+              { text: 'what name do you go by here?' },
+              { text: 'i’ll send a key to the address it signed up with.', tone: 'faint' },
+            ],
+            async (text) => ({ lines: await session.signIn(text) }),
+          ),
+        }
+      }
+      return { lines: await session.signIn(arg) }
     },
   },
 
@@ -1155,7 +1252,10 @@ function renderHits(hits: readonly PostHit[], term?: string): Line[] {
   }
 
   const lines: Line[] = []
-  for (const hit of hits) {
+  // Oldest first, like everything else printed into the scrollback: the view
+  // snaps to the bottom, so the last line written is the one you actually see.
+  // See `oldestFirst` in lib/shell/render.ts for the whole argument.
+  for (const hit of [...hits].reverse()) {
     // The address comes first and includes the room, because a search crosses
     // rooms and the result has to remain somewhere you can go.
     // "(reply)" rather than a different address: a reply has no address of its

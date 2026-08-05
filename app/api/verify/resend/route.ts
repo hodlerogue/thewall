@@ -23,15 +23,23 @@ export async function POST(request: Request) {
      * signed in." on its own is the §3.7 failure exactly: true, useless, and
      * with nothing to do next.
      *
-     * There is no way to send without a session. The address has to come from
-     * somewhere the caller cannot choose, or this becomes a way to mail a
-     * stranger a key from our sending domain. So the fix offered is the one
-     * that actually works: say something, which starts the flow again.
+     * There is no way to send from *here* without a session: this route reads
+     * the address off `auth.getUser()`, and letting the caller supply one
+     * instead is how you mail a stranger a key from our sending domain.
+     *
+     * What it used to offer was "say something, and if the name is already
+     * yours use the same one" — advice that could not work. Saying something
+     * asks for a name, and answering with a name that exists hits the taken
+     * check and is offered `ryan2`. So the one instruction given to the person
+     * most likely to need it walked them into making a second account.
+     *
+     * `login` is the route that takes a name instead of a session, and it is
+     * the answer here.
      */
     return NextResponse.json(
       {
         error:
-          'this browser isn’t signed in, so i don’t know where to send it. say something and i’ll ask for your address again — if the name is already yours, use the same one.',
+          'this browser isn’t signed in, so i don’t know where to send it. type login <yourname> and i’ll send a key to the address it signed up with.',
       },
       { status: 401 },
     )

@@ -27,6 +27,9 @@ function harness(items: MailItem[]) {
     async create(name) {
       return { ok: true as const, name }
     },
+    async login(name: string) {
+      return { ok: true as const, name, note: 'sent' }
+    },
     async resend() {
       return { note: '' }
     },
@@ -69,7 +72,7 @@ describe('a pile of replies', () => {
     ])
 
     const out = text((await run('mail', ANYWHERE)).lines)
-    expect(out).toContain('3 replies, newest first.')
+    expect(out).toContain('3 replies, oldest first.')
   })
 
   it('does not count out loud when there is one', async () => {
@@ -110,18 +113,38 @@ describe('a pile of replies', () => {
   it('says when it has shown all it will, rather than truncating quietly', async () => {
     /*
      * Reading is what marks mail read — §4.1 is pull-only, so looking is the
-     * only signal there is. With newest-first ordering, anything past the cap
-     * is older than everything shown, so hitting it clears replies that were
-     * never displayed. That cannot be avoided without a per-reply read model,
-     * so it is said out loud instead of being found out by noticing a gap.
+     * only signal there is. The query asks for the newest 100, so anything past
+     * the cap is older than everything shown, and hitting it clears replies
+     * that were never displayed. That cannot be avoided without a per-reply
+     * read model, so it is said out loud instead of being found out by noticing
+     * a gap.
      */
     const many = Array.from({ length: 100 }, (_, i) =>
       reply('music', 12, 'marisol', `reply number ${i}`),
     )
-    const out = text((await harness(many).run('mail', ANYWHERE)).lines)
+    const lines = (await harness(many).run('mail', ANYWHERE)).lines
+    const out = text(lines)
 
-    expect(out).toContain('that is the newest 100')
+    expect(out).toContain('these are the newest 100')
     expect(out).toContain('cleared too')
+  })
+
+  it('puts the cap notice above the list, where the boundary actually is', async () => {
+    /*
+     * It used to print last, which was right when the list ran newest-first:
+     * the cut was at the bottom. Now the list runs oldest-first, so the cut is
+     * at the top, and a notice underneath would be pointing at the newest
+     * replies and calling them the ones that got dropped.
+     */
+    const many = Array.from({ length: 100 }, (_, i) =>
+      reply('music', 12, 'marisol', `reply number ${i}`),
+    )
+    const lines = (await harness(many).run('mail', ANYWHERE)).lines
+    const notice = lines.findIndex((line) => line.text.includes('newest 100'))
+    const firstReply = lines.findIndex((line) => line.text.includes('reply number'))
+
+    expect(notice).toBeGreaterThanOrEqual(0)
+    expect(notice).toBeLessThan(firstReply)
   })
 
   it('stays quiet about the cap when it was not reached', async () => {

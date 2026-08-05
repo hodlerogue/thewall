@@ -49,6 +49,14 @@ export interface SignupApi {
   ): Promise<{ ok: true; name: string; note?: string } | { ok: false; reason: string }>
   /** Another key. Links expire, so this is part of the rule, not a nicety. */
   resend(): Promise<{ note: string }>
+  /**
+   * A key for an account that already exists, addressed by name.
+   *
+   * Separate from `resend` because they solve opposite problems: `resend` needs
+   * a session and re-sends to the address on it, and this one exists precisely
+   * for the case where there is no session to read an address off.
+   */
+  login(name: string): Promise<{ ok: true; name: string; note: string } | { ok: false; reason: string }>
 }
 
 export interface Writer {
@@ -216,9 +224,24 @@ export class Session {
 
     const { available, alternates } = await this.api.checkName(validated.name)
     if (!available) {
-      const lines: Line[] = [{ text: `${validated.name} is taken.`, tone: 'error' }]
+      /*
+       * "Taken" is the right answer for a stranger and the wrong one for the
+       * person it is taken *by* — and the second is a large share of the people
+       * who ever see this line. Somebody on a new phone, told to say something
+       * to get back in, is asked for a name and gives their own; what came back
+       * was `ryan is taken. ryan2, ryan_ are free.` The site's answer to "I
+       * already have an account" was an invitation to make another one, and
+       * whoever accepted it lost their old name's history for good.
+       *
+       * So the way back is offered before the alternates, because for that
+       * reader the alternates are not options at all.
+       */
+      const lines: Line[] = [
+        { text: `${validated.name} is taken.`, tone: 'error' },
+        { text: `if it’s taken by you, type login ${validated.name}.`, tone: 'faint' },
+      ]
       if (alternates.length > 0) {
-        lines.push({ text: `${alternates.join(', ')} are free.`, tone: 'faint' })
+        lines.push({ text: `otherwise ${alternates.join(', ')} are free.`, tone: 'faint' })
       }
       return { lines }
     }
@@ -379,6 +402,45 @@ export class Session {
     }
     const { note } = await this.api.resend()
     return [{ text: note, tone: 'faint' }]
+  }
+
+  /**
+   * Ask for a key by name, for a browser that has no session to read.
+   *
+   * Nothing about the session changes here, and that is correct rather than
+   * unfinished: a key in an inbox is a claim nobody has proved yet, and the
+   * proof is following it. `/auth/callback` is the only thing that has ever
+   * made somebody signed in, and it stays that way.
+   */
+  async signIn(raw: string): Promise<Line[]> {
+    const name = raw.trim().toLowerCase()
+    if (name === '') {
+      return [{ text: 'login who? try: login ryan', tone: 'error' }]
+    }
+
+    if (this.who !== null && name === this.who.toLowerCase()) {
+      return [
+        { text: `you’re already signed in as ${this.who}.`, tone: 'faint' },
+        { text: 'say something, or look to see the rooms.', tone: 'faint' },
+      ]
+    }
+
+    const result = await this.api.login(name)
+    if (!result.ok) {
+      return [{ text: result.reason, tone: 'error' }]
+    }
+
+    const lines: Line[] = [{ text: result.note, tone: 'accent' }]
+
+    // Somebody signed in as one person asking for another's key is about to
+    // find themselves switched, which is a surprise worth spending a line on.
+    if (this.who !== null) {
+      lines.push({
+        text: `you’re ${this.who} until you follow it — clicking it makes this browser ${result.name}.`,
+        tone: 'faint',
+      })
+    }
+    return lines
   }
 
   /**
