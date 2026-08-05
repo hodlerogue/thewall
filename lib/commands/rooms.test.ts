@@ -59,12 +59,66 @@ describe('making a room', () => {
     expect(rooms.some((room) => room.slug === 'garden')).toBe(true)
   })
 
-  it('asks for the gloss by completing the line, not by describing it (§3.7)', async () => {
-    const { run } = harness()
-    const out = text((await run('make garden', LOBBY)).lines)
-    // The commonest mistake is typing only a name, so the fix is the same line
-    // finished — something to copy rather than a rule to decode.
-    expect(out).toContain('make garden what you are growing')
+  it('asks what it is for, rather than refusing the line', async () => {
+    /*
+     * `make onions` used to come back as an error telling somebody to retype
+     * what they had just typed with more on the end — which reads as a syntax
+     * error, and §3.7 says nothing here may be one.
+     *
+     * Its example was worse than the refusal. `try: make onions what you are
+     * growing` filled in a description belonging to a different room, and it
+     * was copied verbatim, because an example somebody is told to try is an
+     * instruction. A room ended up called onions and glossed "what you are
+     * growing", and the error had written it.
+     */
+    const { run, rooms } = harness()
+    const asked = text((await run('make onions', LOBBY)).lines)
+
+    expect(asked).toContain('what is onions for?')
+    expect(asked).not.toContain('what you are growing')
+    // Nothing exists yet — the question is the whole of what happened.
+    expect(rooms.some((room) => room.slug === 'onions')).toBe(false)
+  })
+
+  it('opens it on the answer, and walks you in', async () => {
+    const { run, rooms } = harness()
+    await run('make onions', LOBBY)
+    const result = await run('the allium bed, and what to do with it', LOBBY)
+
+    expect(text(result.lines)).toContain('onions is open')
+    // The prompt has to follow. Answering used to print "you are in it" while
+    // the label still said where you had been, because the answer path had no
+    // way to report a move.
+    expect(result.location).toEqual({ room: 'onions' })
+
+    const made = rooms.find((room) => room.slug === 'onions')!
+    expect(made.gloss).toBe('the allium bed, and what to do with it')
+  })
+
+  it('still takes both on one line, for anybody who prefers that', async () => {
+    const { run, rooms } = harness()
+    const result = await run('make onions the allium bed', LOBBY)
+
+    expect(result.location).toEqual({ room: 'onions' })
+    expect(rooms.find((room) => room.slug === 'onions')!.gloss).toBe('the allium bed')
+  })
+
+  it('keeps asking rather than opening a room with no gloss', async () => {
+    const { run, rooms } = harness()
+    await run('make onions', LOBBY)
+    const empty = text((await run('   ', LOBBY)).lines)
+
+    expect(empty).toContain('still waiting')
+    expect(rooms.some((room) => room.slug === 'onions')).toBe(false)
+  })
+
+  it('lets you back out of the question with nothing made', async () => {
+    const { run, rooms } = harness()
+    await run('make onions', LOBBY)
+    const out = text((await run('cancel', LOBBY)).lines)
+
+    expect(out).toContain('nothing sent')
+    expect(rooms.some((room) => room.slug === 'onions')).toBe(false)
   })
 
   it('refuses a name that is not a name, and says what one is', async () => {

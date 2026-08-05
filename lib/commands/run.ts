@@ -35,8 +35,11 @@ export function createRunner(
     // must stay a command, or navigating during signup answers the question
     // for you.
     if (session.isAsking() && options?.typed !== false) {
-      const { lines, identity, retry } = await session.answer(input)
-      return { lines, identity, retry }
+      const { lines, identity, retry, location: moved } = await session.answer(input)
+      // `location` because an answer can now move you: naming what a room is
+      // for opens it and walks you in, and dropping it here left the lines
+      // saying "you are in it" while the prompt still named the old room.
+      return { lines, identity, retry, location: moved }
     }
 
     const parsed = parse(input)

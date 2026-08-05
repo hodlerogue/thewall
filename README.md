@@ -97,8 +97,8 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 316 unit tests: parser, aliases, errors, signup, search, themes, names, walls
-npm run test:e2e   # 103 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm test           # 324 unit tests: parser, aliases, errors, signup, search, themes, names, walls
+npm run test:e2e   # 104 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
 npm run test:db    # 177 assertions against the real migrations, on a throwaway database
 ```
 
@@ -222,8 +222,19 @@ degrades to nothing if the channel cannot connect.
 ## Making a room
 
 ```
-make garden what you are growing
+make garden
+what is garden for?
+  a few words. it goes under the name in the lobby.
+> what you are growing
 ```
+
+The name and what it is for, and the second is **asked** rather than demanded
+on the same line. That refusal — "try: `make garden what you are growing`" —
+read as a syntax error, which §3.7 says nothing here may be, and its example
+was the worse half: it filled in a description belonging to a different room
+and got copied verbatim, because an example somebody is told to try is an
+instruction. `make onions what you are growing` is a real room that error
+wrote. Both on one line still works for anybody who prefers it.
 
 §4.2 closes room creation — *"a fixed, curated set at launch"* — because *"40
 rooms with three people each kills the entire feeling"*. That is decided

@@ -298,36 +298,64 @@ export const COMMANDS: readonly Command[] = [
       const gloss = rest.join(' ')
 
       if (slug === '') {
-        return error('make what? try: make garden what you are growing')
-      }
-      if (gloss === '') {
-        // §3.7 — the fix, shown rather than described. The commonest mistake
-        // here is typing only a name, so the error is the same line completed.
-        return error(`say what ${slug} is for, on the same line — try: make ${slug} what you are growing`)
+        return error('make what? try: make garden')
       }
       if (session.name() === null) {
         return error('you need a name first. say something anywhere and i’ll ask you for one.')
       }
 
-      const made = await env.makeRoom(slug, gloss)
-      if (!made.ok) return error(made.reason)
+      const open = async (line: string): Promise<RunResult> => {
+        const made = await env.makeRoom(slug, line)
+        if (!made.ok) return error(made.reason)
 
-      const room = await env.getRoom(made.slug)
-      return {
-        lines: [
-          { text: `${made.slug} is open. you are in it.`, tone: 'accent' },
-          { text: '' },
-          ...(room
-            ? renderRoom(room)
-            : [{ text: 'nothing here yet. say something and it will be the first thing.', tone: 'faint' as const }]),
-          { text: '' },
-          // Said once, at the only moment it is useful: a room with nothing in
-          // it drops out of the lobby, and §5 is blunt about an empty room
-          // being worse than no room.
-          { text: 'it stays in the lobby while people are talking in it. it is always reachable by name.', tone: 'faint' },
-        ],
-        location: { room: made.slug },
+        const room = await env.getRoom(made.slug)
+        return {
+          lines: [
+            { text: `${made.slug} is open. you are in it.`, tone: 'accent' },
+            { text: '' },
+            ...(room
+              ? renderRoom(room)
+              : [{ text: 'nothing here yet. say something and it will be the first thing.', tone: 'faint' as const }]),
+            { text: '' },
+            // Said once, at the only moment it is useful: a room with nothing
+            // in it drops out of the lobby, and §5 is blunt about an empty room
+            // being worse than no room.
+            { text: 'it stays in the lobby while people are talking in it. it is always reachable by name.', tone: 'faint' },
+          ],
+          location: { room: made.slug },
+        }
       }
+
+      /*
+       * No gloss on the line, so ask for one — rather than refusing and telling
+       * somebody to type what they just typed with more on the end.
+       *
+       * That refusal read as a syntax error, which §3.7 says nothing here may
+       * be, and its example was worse than the refusal: `make onions what you
+       * are growing` filled in a description belonging to a different room, and
+       * it was copied verbatim, because an example you are told to try is an
+       * instruction. A room ended up called onions and glossed "what you are
+       * growing" — the error wrote it.
+       *
+       * The prompt already knows how to ask; that is the whole of signup (§3.9).
+       * One line on the same line still works for anybody who prefers it.
+       */
+      if (gloss === '') {
+        return {
+          lines: session.askOne(
+            [
+              { text: `what is ${slug} for?`, tone: 'accent' },
+              { text: 'a few words. it goes under the name in the lobby, and it is how people know what to put there.', tone: 'faint' },
+            ],
+            async (answer) => {
+              const result = await open(answer)
+              return { lines: result.lines, location: result.location }
+            },
+          ),
+        }
+      }
+
+      return open(gloss)
     },
   },
 
@@ -578,12 +606,40 @@ export const COMMANDS: readonly Command[] = [
     insert: () => 'help',
     wrongContext: () => '',
     async run({ context }) {
-      const lines: Line[] = [{ text: 'from here you can type:', tone: 'faint' }]
+      /*
+       * Two groups, not one list of fifteen.
+       *
+       * §3.6's argument is that a glossary teaches — but the list had grown to
+       * fifteen lines in registry order, which at 380px means the bottom third
+       * is below the fold, and it is the bottom third that had `terms` and
+       * `privacy` in it. "I can't find how to get to the docs" is what that
+       * looks like from outside: they were listed, thirteenth and fourteenth,
+       * under a heading somebody had already stopped reading.
+       *
+       * So: what you do where you are standing, then a gap, then the ones about
+       * you and about this place. The gap is the whole mechanism — it gives the
+       * eye somewhere to stop, and it puts a short list at the top rather than a
+       * wall.
+       */
+      const ABOUT = ['mail', 'rename', 'theme', 'terms', 'privacy', 'what', 'help']
+
+      const here: Line[] = []
+      const about: Line[] = []
+
       for (const command of COMMANDS) {
         // §4.8 — the pipe is not on this list. That is the point of it.
         if (command.hidden || !command.contexts.includes(context)) continue
-        lines.push({ text: `${command.verb} — ${command.gloss(context)}`, tone: 'dim' })
+        const line: Line = { text: `${command.verb} — ${command.gloss(context)}`, tone: 'dim' }
+        ;(ABOUT.includes(command.verb) ? about : here).push(line)
       }
+
+      const lines: Line[] = [{ text: 'from here you can type:', tone: 'faint' }, ...here]
+      if (about.length > 0) {
+        lines.push({ text: '' })
+        lines.push({ text: 'and anywhere:', tone: 'faint' })
+        lines.push(...about)
+      }
+      lines.push({ text: '' })
       lines.push({ text: 'what <command> explains any of them.', tone: 'faint' })
       return { lines }
     },
