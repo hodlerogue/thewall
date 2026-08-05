@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { truncateForCard } from '@/lib/brand/og'
 import { ON_THE_CARD } from '@/lib/brand/ogRooms'
@@ -80,5 +82,32 @@ describe('the rooms on the front-door card', () => {
       expect(room.posts.length, `${slug} has posts`).toBeGreaterThan(0)
       expect(room.posts[0].body.length, `${slug} has something to quote`).toBeGreaterThan(20)
     }
+  })
+})
+
+describe('the front door card counts what the lobby has', () => {
+  it('does not count walls, which are never in the lobby', () => {
+    /*
+     * `ROOMS` holds walls too — everything that walks rooms has to find them —
+     * and a wall is the one thing never in the listing (§4.2). Counting the
+     * array made the card advertise a door that does not exist: wrong by one
+     * from the day walls landed, and by one again when `feed` arrived.
+     */
+    const inLobby = ROOMS.filter((room) => room.owner === undefined)
+    expect(inLobby.length, 'the fixtures have no walls, so this proves nothing').toBeLessThan(
+      ROOMS.length,
+    )
+
+    const source = readFileSync(join(process.cwd(), 'app/opengraph-image.tsx'), 'utf8')
+    expect(source, 'the card is counting every row in ROOMS').not.toMatch(
+      /ROOMS\.length\s*-\s*shown\.length/,
+    )
+    expect(source).toMatch(/owner === undefined/)
+  })
+
+  it('promises a number somebody could go and check', () => {
+    const shown = ON_THE_CARD.length
+    const inLobby = ROOMS.filter((room) => room.owner === undefined).length
+    expect(inLobby - shown).toBeGreaterThanOrEqual(0)
   })
 })
