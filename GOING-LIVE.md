@@ -221,6 +221,11 @@ The levers are `ban`, `hide`, `close` and `forget` — everything except `forget
 is reversible, and `forget` asks before it runs. `./scripts/moderate.sh` with no
 arguments lists them.
 
+The same script is how a room gets opened, since §4.2 closes room creation to
+everybody using the site: `new-room <slug> <gloss>`, then `post-as <room> <name>
+<body>` so it does not sit empty. A room made that way is in that database only
+— `CHANGING-IT.md` covers putting it in the seed as well.
+
 ---
 
 ## Still deliberately not done

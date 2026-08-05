@@ -394,6 +394,14 @@ enabled", exactly as the doc leans. `./scripts/moderate.sh archive` runs it by
 hand: quiet rooms drop out of the lobby, stay reachable by name, and come back
 the moment somebody posts in them.
 
+**Rooms are opened from the same script**, because §4.2 closes room creation to
+everybody using the site and that leaves the operator with hand-written SQL.
+`new-room <slug> <gloss>` puts one at the end of the lobby; `post-as <room>
+<name> <body>` puts the first thing in it, since §5's "an empty room is worse
+than no room" applies hardest to a room that is new. A room made this way lives
+in that database only — [`CHANGING-IT.md`](./CHANGING-IT.md) has the other half,
+which is adding it to the seed so a fresh deploy has it too.
+
 ## Sharing a link
 
 §3.4 calls shareable URLs something that "falls out of the design at zero
@@ -421,6 +429,7 @@ never once be shown.
 
 ## Not built, on purpose
 
-Private messages, user-created rooms (§4.2 leans fixed-set at launch),
+Private messages, user-created rooms (§4.2 leans fixed-set at launch — the
+operator opens one with `moderate.sh new-room`, nobody using the site can),
 reply-to-reply (§4.3 makes flatness a stated constraint, and the schema has no
-`parent_id` so it cannot reappear by accident), and personal walls (see above).
+`parent_id` so it cannot reappear by accident).

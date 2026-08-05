@@ -135,22 +135,69 @@ file — and to `OWN_WALL_CHIPS` if it belongs on your own page.
 
 ## Add a room
 
-Two places, because there are two sources of content:
+**Nobody creates a room from inside the site, and that is the design.** §4.2
+closes room creation: *"40 rooms with three people each kills the entire
+feeling"*. There is no verb for it, no admin surface, and no plan for one. The
+only rooms that make themselves are walls, and a wall is created lazily by
+`create_post` the first time somebody posts to their own — which is why they are
+excluded from the lobby.
+
+So there are exactly two ways, and they answer different questions.
+
+### On a live project, now
+
+```bash
+DATABASE_URL='postgresql://postgres:...@db.<ref>.supabase.co:5432/postgres' \
+  ./scripts/moderate.sh new-room garden 'what you are growing'
+```
+
+It goes to the end of the lobby — the last position is the only one that is
+right by default, since inserting into the middle silently demotes something
+else. Then put something in it, in the same breath:
+
+```bash
+./scripts/moderate.sh post-as garden ren 'four tomato plants and a lot of optimism'
+```
+
+§5 is not being decorative about this: *"an empty room is worse than no room.
+The demo cannot launch to a ghost town."* A room created and left empty reads as
+a dead site rather than a new topic, and the person who has to fix that within
+the hour is you. `post-as` writes under a real name, which is the one lever in
+`moderate.sh` that puts words in somebody's mouth — use your own account, or one
+of the `.invalid` seed accounts. It is undone with `hide <room> <number>`.
+
+This room exists **only in that database.** The demo, the e2e suite and the next
+project you deploy will not have it.
+
+### In the codebase, so every deployment has it
 
 1. `supabase/seed.sql` — the `rooms` insert, **and** the `sort_order` update
    below it. `on conflict do nothing` skips a room that already exists, so a
    project seeded earlier would keep the old ordering and end up with two rooms
    tied. The explicit update is what stops that.
-2. `lib/shell/fixtures.ts` — the same room, so `npm run dev:demo` and the e2e
-   suite show what the site shows.
+2. `lib/shell/fixtures.ts` — the same room with the same content, so
+   `npm run dev:demo` and the e2e suite show what the site shows.
 
 If it should be on the share card, add the slug to `ON_THE_CARD` in
 `lib/brand/ogRooms.ts`. `lib/brand/og.test.ts` refuses a card that advertises a
 room which does not exist.
 
-§4.2 leans hard on the fixed set: *"40 rooms with three people each kills the
-entire feeling"*. The number was never the point — the emptiness is. A new room
-wants something recent in it on day one.
+Doing both is normal: `moderate.sh` opens it tonight, the seed edit means it is
+still there after the next `db-deploy.sh` on a fresh project.
+
+### What will bite you
+
+- **A slug is 2–24 characters of `a-z`, `0-9` and `-`**, and it cannot start with
+  `~` — that spelling is reserved for walls. Both are check constraints; the
+  script refuses them in a sentence first.
+- **`sort_order` decides the lobby, and ties are undefined.** Two rooms with the
+  same number order arbitrarily and differently per query.
+- **An address is never reused** (§3.4). A post that fails to insert after the
+  room counter has been bumped leaves a permanent hole in that room's numbering,
+  which is why `post-as` checks the name exists before it touches the allocator
+  and does the bump and the insert in one statement.
+- **`new-room` is not `open`.** `open` un-hides a room `close` hid; `new-room`
+  makes one that never existed.
 
 ## Add a migration
 
