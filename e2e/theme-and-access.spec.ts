@@ -98,3 +98,55 @@ test('pinch zoom is not blocked', async ({ page }) => {
   const viewport = await page.locator('meta[name="viewport"]').getAttribute('content')
   expect(viewport ?? '').not.toContain('maximum-scale=1')
 })
+
+test('the manifest is real, and points at icons that exist', async ({ page }) => {
+  // A manifest that 404s, or one naming an icon that does, is a site that
+  // silently never offers to install — with nothing on screen to say so.
+  const manifest = await page.request.get('/manifest.webmanifest')
+  expect(manifest.status()).toBe(200)
+
+  const body = (await manifest.json()) as {
+    name: string
+    start_url: string
+    display: string
+    icons: { src: string; sizes: string; type: string }[]
+  }
+  expect(body.display).toBe('standalone')
+  expect(body.start_url).toBe('/')
+
+  for (const icon of body.icons) {
+    const response = await page.request.get(icon.src)
+    expect(response.status(), icon.src).toBe(200)
+    expect(response.headers()['content-type'], icon.src).toContain('image/png')
+
+    const bytes = await response.body()
+    expect(bytes.subarray(1, 4).toString('ascii'), icon.src).toBe('PNG')
+    // The size it claims is the size it is — a launcher picks by the manifest
+    // and then draws what it actually got.
+    const [width] = icon.sizes.split('x').map(Number)
+    expect(bytes.readUInt32BE(16), `${icon.src} width`).toBe(width)
+  }
+})
+
+test('the page links to the manifest, or nothing ever reads it', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('link[rel="manifest"]')).toHaveCount(1)
+})
+
+test('install is a command you can find, not a banner you have to dismiss', async ({ page }) => {
+  await page.goto('/music')
+
+  // Nothing interrupts. The browser's own mini-infobar is suppressed precisely
+  // so this is asked for rather than pushed.
+  await expect(page.locator('.scrollback')).not.toContainText('home screen')
+
+  await type(page, 'help')
+  await expect(scrollback(page)).toContainText('install — keep this on your home screen')
+
+  await type(page, 'what install')
+  await expect(scrollback(page)).toContainText('full screen')
+  // Chromium in the test browser has no prompt to replay, so this is the
+  // fallback path — and it must still say something useful rather than nothing.
+  await type(page, 'install')
+  await expect(scrollback(page)).toContainText(/menu|home screen/)
+})

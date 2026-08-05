@@ -52,6 +52,7 @@ Terminal.tsx ──typed text──> run.ts ──parse──> registry.ts ─�
 | `lib/shell/session.ts` | §3.9 — the held sentence, the signup questions, your name |
 | `lib/shell/errors.ts` | anything thrown → something a person can act on |
 | `lib/shell/themes.ts` | §4.5 — the four palettes and their tokens |
+| `lib/pwa/install.ts` | adding it to a home screen, and the two platforms that differ |
 
 **Commands.**
 
@@ -79,6 +80,7 @@ Terminal.tsx ──typed text──> run.ts ──parse──> registry.ts ─�
 | `components/Terminal.tsx` | the prompt, the scrollback, history, the mobile viewport maths |
 | `components/Palette.tsx` | the chip strip |
 | `app/globals.css` | every token, every theme, and the whole layout |
+| `app/manifest.ts`, `public/sw.js` | what a phone reads before offering to install |
 
 **The database.** `supabase/migrations/*.sql` in filename order, then
 `supabase/seed.sql`. `supabase/tests/schema.test.sql` runs against the real
@@ -289,6 +291,14 @@ inventing a number.
 **Mobile is the kill condition** (§8). Every e2e test runs at 380×740 and there
 is no desktop project. Measure what a thumb can reach — `.tap()` scrolls an
 element into view first, which is how an off-screen chip passed a green suite.
+
+**A source-reading test must strip comments first.** Several guards here check
+the shape of code rather than its behaviour, because the failure they catch is
+invisible to anything that runs — a PostgREST embed, a redirect origin, a
+caching service worker. Every one of those files explains the bug it used to
+have, quoting the broken expression, and a raw text scan makes that explanation
+fail the check for the thing it explains. It has happened twice. Strip
+`/* */` and `//` before matching.
 
 **`request.url` is not the address anybody typed.** Behind a proxy — Netlify,
 here — a route handler sees an internal deploy URL. Reading the query string off

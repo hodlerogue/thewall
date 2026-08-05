@@ -97,8 +97,8 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 324 unit tests: parser, aliases, errors, signup, search, themes, names, walls
-npm run test:e2e   # 104 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm test           # 341 unit tests: parser, aliases, errors, signup, search, themes, names, walls
+npm run test:e2e   # 107 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
 npm run test:db    # 177 assertions against the real migrations, on a throwaway database
 ```
 
@@ -417,6 +417,40 @@ Standing on somebody is a search filter the same way standing in a room is:
 shape `find`, `mail` and a profile all print. It was always the obvious thing to
 type back and it always failed; walls only made the failure louder, since
 `go ~marisol/2` used to answer "there's no one called marisol/2".
+
+## Keeping it on a phone
+
+```
+install
+```
+
+§8 makes the phone the kill condition, and installed is where a phone stops
+fighting this design: full screen, no browser chrome resizing under the
+keyboard, and an icon you can reach without typing an address.
+
+**A command, not a banner.** The browser's own `beforeinstallprompt` is caught
+and `preventDefault()`-ed, which suppresses Chrome's mini-infobar — a bar across
+the top of a terminal is the one interruption every other decision here has
+avoided. The event is kept and replayed when somebody types `install`: caught
+early, offered late.
+
+**iOS has no install API and never has**, so `install` there prints the two taps
+instead of silently doing nothing. That is most of why this is two functions
+rather than one — a single `install()` that calls a browser prompt would be a
+dead end on half the phones in the world, on the platform §8 names as the thing
+that decides whether this works at all.
+
+It suggests itself **once, ever, and only to somebody who already has a name** —
+which means they either came back or have just been through signup. A first-time
+reader thirty seconds in gets nothing; suggesting it then is the same banner in
+a costume. Private browsing, where the "already said this" flag cannot be
+stored, stays silent rather than repeating every load.
+
+`public/sw.js` exists because Chrome's install criteria have wanted a service
+worker with a fetch handler, and it **caches nothing on purpose**. Every screen
+here is either live or a few hundred bytes; a cache-first worker would trade a
+saving nobody would notice for the classic failure where a deploy goes out and
+people keep running last week's JavaScript against this week's database.
 
 ## Colours
 

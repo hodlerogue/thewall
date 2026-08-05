@@ -18,6 +18,7 @@ import { formatAgo, type PostHit, type PostQuery, type RoomHit } from '@/lib/she
 import { renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
 import type { Session } from '@/lib/shell/session'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
+import { offerInstall } from '@/lib/pwa/install'
 import { DEFAULT_THEME, THEMES, findTheme } from '@/lib/shell/themes'
 import { pathToLocation } from '@/lib/shell/types'
 import type { Context, Line, Location, RunResult } from '@/lib/shell/types'
@@ -621,7 +622,7 @@ export const COMMANDS: readonly Command[] = [
        * eye somewhere to stop, and it puts a short list at the top rather than a
        * wall.
        */
-      const ABOUT = ['mail', 'rename', 'theme', 'terms', 'privacy', 'what', 'help']
+      const ABOUT = ['mail', 'rename', 'theme', 'install', 'terms', 'privacy', 'what', 'help']
 
       const here: Line[] = []
       const about: Line[] = []
@@ -642,6 +643,30 @@ export const COMMANDS: readonly Command[] = [
       lines.push({ text: '' })
       lines.push({ text: 'what <command> explains any of them.', tone: 'faint' })
       return { lines }
+    },
+  },
+
+  {
+    /*
+     * §8 makes the phone the kill condition, and installed is where a phone
+     * stops fighting this design: full screen, no browser chrome resizing under
+     * the keyboard, and an icon somebody can reach without typing an address.
+     *
+     * A command rather than a banner. The browser's own mini-infobar is
+     * suppressed (see lib/pwa/install.ts) precisely so that this is asked for
+     * rather than interrupted with — a bar across the top of a terminal is the
+     * one interruption every other decision here has avoided.
+     */
+    verb: 'install',
+    aliases: ['home', 'homescreen', 'app'],
+    contexts: ALL,
+    gloss: () => 'keep this on your home screen',
+    detail: () =>
+      'adds thewall to your home screen, so it opens full screen without the browser around it. on iphone the browser will not let a page do this, so it tells you which two taps to make instead.',
+    insert: () => 'install',
+    wrongContext: () => '',
+    async run() {
+      return { lines: await offerInstall() }
     },
   },
 
