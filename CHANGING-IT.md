@@ -290,6 +290,21 @@ inventing a number.
 is no desktop project. Measure what a thumb can reach — `.tap()` scrolls an
 element into view first, which is how an off-screen chip passed a green suite.
 
+**The fixture Env must not lie.** The e2e suite runs entirely against
+`fixtureEnv`, so a fixture that disagrees with the database is a green suite
+over a broken site — not a smaller problem than a bug, a bigger one, because it
+also removes the thing that would have told you. This has bitten once already:
+`search_said` covered replies while the fixture did not, which made "find
+reaches replies" a claim proved only in `test:db` and false in the app anybody
+clicked. `lib/commands/rooms.test.ts` has a block that exists purely to pin the
+two together; add to it when you add behaviour to one side.
+
+**A derived flag is not the same as the fact it approximates.** `rooms.curated`
+started as `created_by is null`, which is identical until `created_by` is
+nulled — and it is `on delete set null`, so erasing whoever opened a room would
+have promoted it to permanent lobby furniture nobody chose. If two questions can
+ever diverge, they get two columns.
+
 **A wall is a room with an owner, and the lobby never shows one.**
 `room_overview` filters `owner_id is null`. That single filter is the whole of
 §4.2's mitigation; without it a room-per-person is exactly the forty-rooms

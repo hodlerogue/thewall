@@ -80,6 +80,12 @@ insert into public.rooms (slug, gloss, ephemeral, sort_order) values
   ('builders',  'what you are making',        false, 2)
 on conflict (slug) do nothing;
 
+-- Curated, always: these are the furniture. The column defaults to false, which
+-- is right for a room somebody makes and wrong for every room in this file — a
+-- seeded room that was not marked would fade out of the lobby after a fortnight
+-- of quiet, which is the one thing curated rooms must never do.
+update public.rooms set curated = true where owner_id is null and created_by is null;
+
 -- Ordering is set rather than left to the insert, because `on conflict do
 -- nothing` skips a room that already exists — so on a project seeded before
 -- builders was written, it would arrive with its sort_order and everything

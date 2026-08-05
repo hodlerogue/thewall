@@ -42,6 +42,23 @@ comment on column public.rooms.created_by is
 
 create index rooms_created_by on public.rooms (created_by) where created_by is not null;
 
+-- Whether it is furniture, as its own fact.
+--
+-- The lobby first read this as `created_by is null`, which is the same thing
+-- until it is not: `created_by` is `on delete set null`, so erasing the person
+-- who opened a room would silently promote their room to a curated one — a
+-- permanent fixture in the lobby that no longer fades and that nobody chose.
+-- The two questions are different and deserve two columns.
+alter table public.rooms
+  add column curated boolean not null default false;
+
+comment on column public.rooms.curated is
+  'true for the seeded rooms and anything the operator opens: always in the lobby, never faded.';
+
+-- Everything that exists at this point predates user-created rooms, so all of
+-- it is curated by definition.
+update public.rooms set curated = true where owner_id is null;
+
 -- Names nobody may take ------------------------------------------------------
 --
 -- Every one of these is a real path under app/. A room called `terms` would be
@@ -91,6 +108,7 @@ as $$
 declare
   v_id      uuid := auth.uid ();
   v_ok      boolean;
+  v_banned  boolean;
   v_reason  text;
   v_made    integer;
   v_oldest  timestamptz;
@@ -107,9 +125,17 @@ begin
   -- contribution so the held sentence lands; a room is not that. It is a
   -- permanent address in a shared space, and the cost of making one has to be
   -- an inbox somebody actually reads.
-  select p.verified_at is not null and p.banned_at is null
-    into v_ok
+  select p.verified_at is not null, p.banned_at is not null
+    into v_ok, v_banned
     from public.profiles p where p.id = v_id;
+
+  -- Banned first, and said plainly. Folding it into the verified check told a
+  -- banned account to go and check its email, which is a message that sends
+  -- somebody looking for a link that will not help them.
+  if coalesce(v_banned, false) then
+    raise exception 'this account cannot post here.'
+      using errcode = 'insufficient_privilege';
+  end if;
 
   if not coalesce(v_ok, false) then
     raise exception 'check your email first — a room is permanent, so it wants a verified account. no link? type resend.'
@@ -157,6 +183,17 @@ begin
 
   if exists (select 1 from public.rooms where slug = v_slug) then
     raise exception '% already exists. try: go %', v_slug, v_slug
+      using errcode = 'unique_violation';
+  end if;
+
+  -- Somebody's name is not available as a room.
+  --
+  -- `go marisol` and `go ~marisol` are already different addresses, so nothing
+  -- breaks — but a room called `marisol` sits in the lobby under her name, with
+  -- a gloss its maker chose, and §4.6's whole argument about impersonation is
+  -- that it is aimed at the reader. The reader is who this protects.
+  if exists (select 1 from public.profiles where name = v_slug) then
+    raise exception '% is somebody''s name. try: go ~% to see them.', v_slug, v_slug
       using errcode = 'unique_violation';
   end if;
 
@@ -209,7 +246,7 @@ select
   -- `create or replace view` may only add columns at the end, and reordering
   -- would mean dropping the view — which on a security_invoker view means
   -- dropping the thing every anonymous lobby read depends on, mid-migration.
-  r.created_by is null as curated
+  r.curated
 from public.rooms r
 left join lateral (
   select p.body, p.created_at, p.author_id
@@ -225,7 +262,7 @@ where r.hidden_at is null
   and r.archived_at is null
   and r.owner_id is null
   and (
-    r.created_by is null
+    r.curated
     or coalesce(latest.created_at, r.created_at) > now() - interval '14 days'
   );
 
@@ -255,9 +292,9 @@ as $$
   select
     r.slug,
     r.gloss,
-    r.created_by is null,
+    r.curated,
     r.archived_at is null and (
-      r.created_by is null
+      r.curated
       or coalesce(newest.at, r.created_at) > now() - interval '14 days'
     ),
     newest.at,
@@ -283,7 +320,7 @@ as $$
       or r.slug::text ilike '%' || replace(replace(replace(btrim(p_term), '\', '\\'), '%', '\%'), '_', '\_') || '%' escape '\'
       or r.gloss ilike '%' || replace(replace(replace(btrim(p_term), '\', '\\'), '%', '\%'), '_', '\_') || '%' escape '\'
     )
-  order by (r.created_by is null) desc, newest.at desc nulls last, r.slug
+  order by r.curated desc, newest.at desc nulls last, r.slug
   limit greatest(1, least(coalesce(p_limit, 20), 50));
 $$;
 

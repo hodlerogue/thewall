@@ -97,9 +97,9 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 269 unit tests: parser, aliases, errors, signup, search, themes, names, walls
+npm test           # 273 unit tests: parser, aliases, errors, signup, search, themes, names, walls
 npm run test:e2e   # 99 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 159 assertions against the real migrations, on a throwaway database
+npm run test:db    # 163 assertions against the real migrations, on a throwaway database
 ```
 
 To see what is actually in a deployed project — read-only, and it tells apart
@@ -228,7 +228,9 @@ So creation opens and the lobby is what gets defended:
 - **The six curated rooms always show, in their curated order.** They are the
   furniture. The building has to look the same each time you walk in.
 - **A user room is in the lobby while it has life in it**, and fades out after a
-  fortnight of silence. It keeps its posts, its addresses and its name forever —
+  fortnight of silence. That automatic fade never touches a curated room; the
+  manual `moderate.sh archive` lever still can, because that one is the
+  operator's hand and not a rule. It keeps its posts, its addresses and its name forever —
   it just stops taking up the shop window, and comes straight back the moment
   somebody says something in it.
 - **The list is capped at twelve**, with a line saying how to reach the rest.
@@ -236,6 +238,14 @@ So creation opens and the lobby is what gets defended:
   moderator, and the person who opened it has exactly the powers everybody else
   in it has. `created_by` is a record of who opened the door, nothing more, and
   it is `on delete set null` so a room outlives the person who made it.
+  `curated` is a separate column rather than `created_by is null`, precisely
+  because of that: otherwise erasing whoever opened a room would silently
+  promote it to furniture nobody chose.
+- **A name somebody is using is not available**, alongside the reserved routes.
+  `go marisol` and `go ~marisol` are already different addresses so nothing
+  breaks — but a room sitting in the lobby under a person's name, with a gloss
+  its maker chose, is aimed at exactly the reader §4.6 spends its mitigations
+  protecting.
 
 The fade is §4.2's own decay rule, which had been "written but not enabled"
 since it was added. It is enabled by a clause in the lobby query rather than by

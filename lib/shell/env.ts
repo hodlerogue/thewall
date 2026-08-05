@@ -103,6 +103,22 @@ export type FixturePerson = {
  * no page of their own — and their own page is the only place a wall can be
  * tried at all.
  */
+/** Mirrors `reserved_slugs` in the schema — every one a real path under app/. */
+const RESERVED_SLUGS = new Map([
+  ['lobby', 'the lobby lives there'],
+  ['api', 'that is a route'],
+  ['auth', 'that is a route'],
+  ['legal', 'that is a route'],
+  ['terms', 'that is a route'],
+  ['privacy', 'that is a route'],
+  ['icon', 'that is a route'],
+  ['apple-icon', 'that is a route'],
+  ['opengraph-image', 'that is a route'],
+])
+
+/** §4.2's fade, matching the interval in the lobby query. */
+const FADE_MS = 14 * 24 * 60 * 60 * 1000
+
 export function fixtureEnv(
   rooms: Room[] = ROOMS,
   people: readonly FixturePerson[] = PEOPLE,
@@ -152,6 +168,17 @@ export function fixtureEnv(
       if (rooms.some((room) => room.slug === clean)) {
         return { ok: false, reason: `${clean} already exists. try: go ${clean}` }
       }
+      // Mirrors `reserved_slugs`. Without it the demo would happily make a room
+      // the real site refuses, which is the direction a fixture must never lie
+      // in: somebody tries it here, it works, and then it does not.
+      const reserved = RESERVED_SLUGS.get(clean)
+      if (reserved) return { ok: false, reason: `${clean} is spoken for — ${reserved}.` }
+      // Somebody's name is not available as a room — §4.6's impersonation
+      // argument is about the reader, and a room in the lobby wearing a
+      // person's name is aimed squarely at them.
+      if (people.some((person) => person.name === clean)) {
+        return { ok: false, reason: `${clean} is somebody's name. try: go ~${clean} to see them.` }
+      }
       if (!/^[a-z0-9-]{2,24}$/.test(clean)) {
         return {
           ok: false,
@@ -186,14 +213,23 @@ export function fixtureEnv(
             room.slug.toLowerCase().includes(needle) ||
             room.gloss.toLowerCase().includes(needle),
         )
-        .map((room) => ({
-          slug: room.slug,
-          gloss: room.gloss,
-          curated: room.madeBy === undefined,
-          inLobby: true,
-          posts: visiblePosts(room).length,
-          latestAt: visiblePosts(room)[0]?.createdAt,
-        }))
+        .map((room) => {
+          const posts = visiblePosts(room)
+          const newest = posts[0]?.createdAt
+          return {
+            slug: room.slug,
+            gloss: room.gloss,
+            curated: room.madeBy === undefined,
+            // The same fortnight the lobby query uses. Hard-coded `true` here
+            // meant the "quiet, so it's not in the lobby" line could never be
+            // reached against fixtures, and therefore never seen by a test.
+            inLobby:
+              room.madeBy === undefined ||
+              (newest !== undefined && Date.now() - newest.getTime() < FADE_MS),
+            posts: posts.length,
+            latestAt: newest,
+          }
+        })
         .sort((a, b) => Number(b.curated) - Number(a.curated))
     },
 
@@ -211,13 +247,34 @@ export function fixtureEnv(
         // so a result from commons would be something you cannot `go` to.
         .filter((room) => !room.ephemeral && (query.room === undefined || room.slug === query.room))
         .flatMap((room) =>
-          room.posts.map((post) => ({
-            room: room.slug,
-            id: post.id,
-            author: post.author,
-            body: post.body,
-            createdAt: post.createdAt,
-          })),
+          room.posts.flatMap((post) => [
+            {
+              room: room.slug,
+              id: post.id,
+              author: post.author,
+              body: post.body,
+              createdAt: post.createdAt,
+              isReply: false,
+            },
+            /*
+             * Replies too, and this is not decoration. The e2e suite runs
+             * entirely against this Env, so anything it gets wrong is a green
+             * suite over a broken site — and `search_said` covering replies
+             * while this did not would have made "find reaches replies" a claim
+             * proved only in the database suite and false in the app.
+             *
+             * The address is the post's, because a reply has none of its own
+             * (§4.3), which is exactly what the real one returns.
+             */
+            ...post.replies.map((reply) => ({
+              room: room.slug,
+              id: post.id,
+              author: reply.author,
+              body: reply.body,
+              createdAt: reply.createdAt,
+              isReply: true,
+            })),
+          ]),
         )
         .filter((hit) => query.by === undefined || hit.author === query.by)
         .filter(

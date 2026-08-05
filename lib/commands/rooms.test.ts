@@ -5,7 +5,8 @@ import { fixtureEnv } from '@/lib/shell/env'
 import { ROOMS } from '@/lib/shell/fixtures'
 import { renderRoomList, LOBBY_LIMIT } from '@/lib/shell/render'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
-import type { Line, Location, RoomSummary } from '@/lib/shell/types'
+import type { RoomSummary } from '@/lib/shell/model'
+import type { Line, Location } from '@/lib/shell/types'
 
 /**
  * §4.2, reopened — and the half of it that has to keep being true.
@@ -208,5 +209,58 @@ describe('finding a room', () => {
   it('offers a way in', async () => {
     const { run } = harness()
     expect(text((await run('find --rooms kitchen', LOBBY)).lines)).toContain('go kitchen')
+  })
+})
+
+
+describe('the fixture Env cannot quietly disagree with the real one', () => {
+  /*
+   * The e2e suite runs entirely against fixtures, so a fixture that lies is not
+   * a small problem — it is a green suite over a broken site. Two of these were
+   * already true and one was not: `search_said` covered replies while the
+   * fixture did not, which made "find reaches replies" a claim proved only in
+   * the database suite and false in the app anybody actually clicked.
+   */
+  it('searches replies, because the database does', async () => {
+    const { run } = harness()
+    const out = text((await run('find law of bicycles', LOBBY)).lines)
+
+    expect(out).toContain('there is always one bolt')
+    // The address is the post's — a reply has none of its own (§4.3) — so the
+    // marker is what keeps that from being a small lie.
+    expect(out).toContain('builders/5')
+    expect(out).toContain('(reply)')
+  })
+
+  it('refuses the names the database refuses', async () => {
+    const { run } = harness()
+    for (const slug of ['terms', 'privacy', 'lobby', 'api']) {
+      const out = text((await run(`make ${slug} something`, LOBBY)).lines)
+      expect(out, slug).toContain('spoken for')
+    }
+
+    // And a person's name, which the lobby would otherwise show as theirs.
+    const person = text((await run('make marisol a room wearing her name', LOBBY)).lines)
+    expect(person).toContain("somebody's name")
+    expect(person).toContain('go ~marisol')
+  })
+
+  it('never lets commons into a search, in either Env', async () => {
+    const { run } = harness()
+    const out = text((await run('find --limit=100 super keeps saying', LOBBY)).lines)
+    expect(out).toMatch(/nothing said about/)
+  })
+
+  it('says a quiet room is quiet, rather than claiming everything is in the lobby', async () => {
+    const { run, rooms } = harness()
+    await run('make garden what you are growing', LOBBY)
+
+    const made = rooms.find((room) => room.slug === 'garden')!
+    // A fortnight of silence is the same interval the lobby query uses.
+    made.posts = []
+    ;(made as { createdAt?: Date }).createdAt = undefined
+
+    const out = text((await run('find --rooms garden', LOBBY)).lines)
+    expect(out).toContain('nothing in it yet')
   })
 })

@@ -1147,6 +1147,10 @@ begin;
     'a name already taken is refused'
   );
   select tests.raises(
+    $sql$select public.create_room('marisol'::citext, 'a room wearing a person''s name')$sql$,
+    'somebody''s name is not available as a room'
+  );
+  select tests.raises(
     $sql$select public.create_room('garden'::citext, 'x')$sql$,
     'and a room with no gloss is refused — the lobby is built out of them'
   );
@@ -1236,6 +1240,40 @@ select tests.ok(
   (select count(*) from public.room_overview where curated) = 6,
   'a curated room never fades, however quiet — it is the furniture'
 );
+
+-- `curated` is its own column and not `created_by is null`, and this is why.
+-- created_by is `on delete set null`, so erasing whoever opened a room would
+-- otherwise promote it to furniture: permanently in the lobby, never fading,
+-- chosen by nobody.
+update public.rooms set created_by = null where slug = 'cycling';
+
+select tests.ok(
+  (select curated from public.rooms where slug = 'cycling') = false,
+  'a room whose creator was erased does not become curated'
+);
+update public.rooms set created_at = now() - interval '20 days' where slug = 'cycling';
+select tests.ok(
+  not exists (select 1 from public.room_overview where slug = 'cycling'),
+  'and it still fades when it goes quiet, like the user room it is'
+);
+
+-- A banned account asking for a room gets told it is banned, rather than being
+-- sent to look for an email that would not have helped.
+--
+-- Banned as the owner, because `authenticated` has no update on profiles at all
+-- — which is itself asserted further up, and is why a first draft of this block
+-- failed with "permission denied" rather than proving anything.
+update public.profiles set banned_at = now() where id = '99999999-9999-4999-8999-999999999999';
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+  select tests.raises(
+    $sql$select public.create_room('banned'::citext, 'a room from a banned account')$sql$,
+    'a banned account is refused, and not told to check its email'
+  );
+commit;
+update public.profiles set banned_at = null where id = '99999999-9999-4999-8999-999999999999';
 
 \echo ''
 \echo 'finding a room, and finding what was said in one'

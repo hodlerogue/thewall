@@ -23,7 +23,10 @@ test.beforeEach(async ({ page }) => {
 
 test('a pipeline runs and returns something real', async ({ page }) => {
   await type(page, 'find --room=music --since=7d | count')
-  await expect(scrollback(page)).toContainText('2 posts')
+  // Four: two posts, and the two replies under post 12. This asserted 2 while
+  // `find` read only the posts table — searching what people have said and then
+  // not counting most of it was a bug in the search, not in the pipe.
+  await expect(scrollback(page)).toContainText('4 posts')
 })
 
 test('piping into go moves you, and the url follows (§3.4)', async ({ page }) => {

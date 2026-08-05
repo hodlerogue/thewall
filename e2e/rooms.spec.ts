@@ -37,7 +37,6 @@ test('make walks you into the room it just made, and the url follows', async ({ 
   await expect(scrollback(page)).toContainText('nothing here yet')
 
   // And it is a real room: you can say something in it like any other.
-  await type(page, 'four tomato plants and a lot of optimism')
   await type(page, 'say four tomato plants and a lot of optimism')
   await expect(scrollback(page)).toContainText('said')
 })

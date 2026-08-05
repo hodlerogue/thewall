@@ -167,11 +167,17 @@ case "${command}" in
     # ("INSERT 0 0") when nothing was inserted, which is a non-empty string —
     # so the "did it happen" check below read a no-op as a success and this
     # reported a room created every time it ran.
+    # curated = true, which is the whole difference between this and `make`.
+    # A room the operator opens is furniture: always in the lobby, never faded.
+    # sort_order counts over the curated block only — user rooms sit at 500 and
+    # would otherwise push every future curated room past them.
     made=$(q "
       with made as (
-        insert into public.rooms (slug, gloss, ephemeral, sort_order)
+        insert into public.rooms (slug, gloss, ephemeral, sort_order, curated)
         select $(lit "${slug}"), $(lit "${gloss}"), false,
-               coalesce((select max(sort_order) + 1 from public.rooms where owner_id is null), 0)
+               coalesce((select max(sort_order) + 1 from public.rooms
+                          where owner_id is null and curated), 0),
+               true
         on conflict (slug) do nothing
         returning slug
       )

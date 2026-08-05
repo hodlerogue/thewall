@@ -69,10 +69,18 @@ describe('§4.8 — one working pipe', () => {
     const nobody = text((await run('find --by=nobody | count', LOBBY)).lines)
     expect(nobody).toBe('0 posts')
 
-    // jameson has the music post and the poker one. His builders line is a
-    // reply, and replies are not posts — which is the distinction this counts.
+    /*
+     * Four: the music post, the poker one, and two replies — the matchbook
+     * under the short leg in builders, and "the tip is the tell" in poker.
+     *
+     * This asserted 2 for a long time, with a comment explaining that replies
+     * are not posts. That was true of the implementation and never true of the
+     * question: somebody asking what jameson has said means all of it. `find`
+     * read the posts table directly, so on a site whose §4.3 shape is a post
+     * and a flat list of answers it was silently missing most of what was said.
+     */
     const some = text((await run('find --by=jameson | count', LOBBY)).lines)
-    expect(some).toBe('2 posts')
+    expect(some).toBe('4 posts')
   })
 
   it('narrows by age', async () => {
