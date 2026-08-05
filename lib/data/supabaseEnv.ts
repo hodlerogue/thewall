@@ -82,11 +82,20 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
     async getRoom(slug: string): Promise<Room | undefined> {
       const { data: room, error: roomError } = await client
         .from('rooms')
-        // The owner is joined rather than read off the `~name` slug. The two
-        // agree today — `change_name` renames the wall with the person — but
-        // the slug is a string anyone could come to write and the column is the
-        // thing the write policy actually checks.
-        .select('slug, gloss, ephemeral, owner:profiles(name)')
+        /*
+         * The owner is joined rather than read off the `~name` slug. The two
+         * agree today — `change_name` renames the wall with the person — but
+         * the slug is a string anyone could come to write and the column is the
+         * thing the write policy actually checks.
+         *
+         * The constraint is named, and it has to be. `rooms` has two foreign
+         * keys to `profiles` now — owner_id, whose wall it is, and created_by,
+         * who opened it — and a bare `profiles(name)` is ambiguous the moment
+         * the second one exists. PostgREST refuses the whole query rather than
+         * guessing, so this failed on every page load: not a wrong answer, no
+         * lobby at all.
+         */
+        .select('slug, gloss, ephemeral, owner:profiles!rooms_owner_id_fkey(name)')
         .eq('slug', slug)
         .maybeSingle()
 
