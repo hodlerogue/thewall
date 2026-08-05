@@ -7,7 +7,9 @@ import type { Line, Location } from '@/lib/shell/types'
 
 const text = (lines: Line[]) => lines.map((l) => l.text).join('\n')
 
-function harness(options: { taken?: string[]; failCreate?: string; recycled?: Date } = {}) {
+function harness(
+  options: { taken?: string[]; failCreate?: string; recycled?: Date; me?: string } = {},
+) {
   const taken = new Set(options.taken ?? ['jameson'])
   const posted: { room: string; body: string }[] = []
   const renamed: string[] = []
@@ -44,7 +46,9 @@ function harness(options: { taken?: string[]; failCreate?: string; recycled?: Da
     },
   }
 
-  const session = new Session(api, writer)
+  // `me` skips the signup ask, for the assertions that are about what a
+  // named person sees rather than about §3.9's flow.
+  const session = new Session(api, writer, options.me)
   const run = createRunner(fixtureEnv(), ['commons'], session)
 
   return { session, run, posted, replied, renamed, resendCount: () => resends }
@@ -531,5 +535,97 @@ describe('agreeing to the terms, at the one moment there is', () => {
     // taken is the bug that once made people's accounts `look`.
     expect(validateName('terms')).toMatchObject({ ok: true })
     expect(validateName('privacy')).toMatchObject({ ok: true })
+  })
+})
+
+
+describe('what a post number is for, and where there isn’t one', () => {
+  /*
+   * A screenshot of commons, with the question that came with it: "i'm not
+   * seeing any numbers next to these posts. don't i need to type a number to
+   * open it so i can reply? but it tells me the post number when i'm the one
+   * sending it."
+   *
+   * Both halves were right. Commons shows no numbers because §3.10 gives it
+   * none to show — and the confirmation announced one anyway.
+   */
+  it('does not announce a number in commons, where a number means nothing', async () => {
+    const { run } = harness({ me: 'ryan' })
+    const out = text((await run('say good to be here', { room: 'commons' })).lines)
+
+    expect(out).toBe('said.')
+    // `go 26` in commons answers "there's nothing to open here", so naming 26
+    // was pointing at a door that is not there.
+    expect(out).not.toMatch(/post \d+/)
+  })
+
+  it('announces it in a room that keeps things, and says what it is for', async () => {
+    const { run } = harness({ me: 'ryan' })
+    const out = text((await run('say found my dad’s records', { room: 'music' })).lines)
+
+    expect(out).toMatch(/it’s post \d+/)
+    // The half that was missing. On its own the number reads as a receipt;
+    // it is an address, and this is the sentence that says so.
+    expect(out).toMatch(/go \d+ opens it/)
+    expect(out).toContain('replies land')
+  })
+
+  it('holds that fact with the sentence, across the two signup questions', async () => {
+    /*
+     * The path the e2e suite caught and this one had missed: the first thing
+     * anybody writes is posted by the signup flow, not by `say`, and usually in
+     * commons. Working it out at landing time is too late — by then the only
+     * thing that knew has been two questions ago.
+     */
+    const { run } = harness()
+    await run('say good to be here', { room: 'commons' })
+    await run('ryan', { room: 'commons' })
+    const out = text((await run('ryan@example.com', { room: 'commons' })).lines)
+
+    expect(out).toContain('said.')
+    expect(out).not.toMatch(/it’s post \d+/)
+  })
+
+  it('still gives the address when the held sentence lands in a keeping room', async () => {
+    const { run } = harness()
+    await run('say found my dad’s records', { room: 'music' })
+    await run('ryan', { room: 'music' })
+    const out = text((await run('ryan@example.com', { room: 'music' })).lines)
+
+    expect(out).toMatch(/it’s post \d+/)
+    expect(out).toMatch(/go \d+ opens it/)
+  })
+
+  it('says nothing about numbers when the thing said was a reply', async () => {
+    // A reply has no address of its own (§4.3), so there is none to give.
+    const { run } = harness({ me: 'ryan' })
+    const out = text((await run('say i agree', { room: 'music', postId: 12 })).lines)
+    expect(out).toBe('said.')
+  })
+})
+
+describe('help does not offer what commons cannot do', () => {
+  it('leaves reply out of commons, where it can never work', async () => {
+    const { run } = harness()
+    const out = text((await run('help', { room: 'commons' })).lines)
+
+    expect(out).not.toMatch(/^reply — /m)
+    // Still listed where it is one step from working.
+    expect(text((await run('help', { room: 'music' })).lines)).toMatch(/^reply — /m)
+  })
+
+  it('still explains itself when somebody types it there anyway', async () => {
+    const { run } = harness()
+    const out = text((await run('reply nice one', { room: 'commons' })).lines)
+    expect(out).toContain('commons doesn’t keep replies')
+    expect(out).toContain('say it as its own thing')
+  })
+
+  it('does not offer to open a post in a room that has none', async () => {
+    const { run } = harness()
+    const out = text((await run('help', { room: 'commons' })).lines)
+
+    expect(out).toMatch(/^go — go to another room$/m)
+    expect(out).not.toMatch(/^go — open a post$/m)
   })
 })

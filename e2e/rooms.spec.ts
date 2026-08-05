@@ -52,10 +52,36 @@ test('a new room is in the lobby, under the curated ones', async ({ page }) => {
   expect(lines.indexOf('commons')).toBeLessThan(lines.lastIndexOf('garden'))
 })
 
-test('make teaches the missing half rather than reporting a failure (§3.7)', async ({ page }) => {
+test('make asks what a room is for, and opens it on the answer', async ({ page }) => {
+  // `make onions` used to be refused with "try: make onions what you are
+  // growing" — an example carrying a different room's description, which got
+  // copied verbatim, because an example you are told to try is an instruction.
   await withName(page)
-  await type(page, 'make garden')
-  await expect(scrollback(page)).toContainText('make garden what you are growing')
+
+  await type(page, 'make onions')
+  await expect(scrollback(page)).toContainText('what is onions for?')
+  await expect(scrollback(page)).not.toContainText('what you are growing')
+
+  await type(page, 'the allium bed, and what to do with it')
+  await expect(scrollback(page)).toContainText('onions is open')
+  // The prompt follows, which is the half that is easy to leave out.
+  await expect(label(page)).toHaveText('roommaker:onions$')
+  await expect(page).toHaveURL(/\/onions$/)
+})
+
+test('the docs are somewhere you can see them in help', async ({ page }) => {
+  // "I can't find how to get to the docs in thewall." They were listed
+  // thirteenth and fourteenth of fifteen, below the fold on a phone.
+  await page.goto('/music')
+  await type(page, 'help')
+
+  await expect(scrollback(page)).toContainText('and anywhere:')
+  await expect(scrollback(page)).toContainText('terms — ')
+  await expect(scrollback(page)).toContainText('privacy — ')
+
+  // And they work from where they are named.
+  await type(page, 'terms')
+  await expect(scrollback(page)).toContainText('what you write stays yours')
 })
 
 test('a room name already taken points at the room that has it', async ({ page }) => {

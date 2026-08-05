@@ -339,3 +339,77 @@ describe('the prompt path is the url path (§3.4)', () => {
     expect(promptLabel('jameson', pathToLocation('/lobby'))).toBe('jameson:lobby$')
   })
 })
+
+
+describe('§3.6 — help is a glossary, not a wall', () => {
+  const session = new Session(
+    {
+      async checkName() {
+        return { available: true, alternates: [] }
+      },
+      async create(name) {
+        return { ok: true as const, name }
+      },
+      async resend() {
+        return { note: '' }
+      },
+    },
+    {
+      async post() {
+        return 1
+      },
+      async reply() {},
+      async rename(name: string) {
+        return { ok: true as const, name }
+      },
+    },
+    'watson',
+  )
+  const run = createRunner(fixtureEnv(), ['commons'], session)
+  const shown = async (where: Location) =>
+    (await run('help', where)).lines.map((l) => l.text).join('\n')
+
+  it('puts terms and privacy where somebody can see them', async () => {
+    /*
+     * "I can't find how to get to the docs in thewall." They were listed —
+     * thirteenth and fourteenth of fifteen, in registry order, which at 380px
+     * is below the fold under a heading somebody had already stopped reading.
+     *
+     * They are in the second group now, after a blank line, so the first thing
+     * on screen is short and the rest has somewhere for the eye to stop.
+     */
+    const out = await shown({ room: 'music' })
+    expect(out).toMatch(/^terms — /m)
+    expect(out).toMatch(/^privacy — /m)
+    expect(out).toContain('and anywhere:')
+  })
+
+  it('leads with what you can do where you are standing', async () => {
+    const out = await shown({ room: 'music' })
+    const doing = out.slice(0, out.indexOf('and anywhere:'))
+
+    expect(doing).toMatch(/^say — /m)
+    expect(doing).toMatch(/^look — /m)
+    // The meta ones are below the gap, not competing with them.
+    expect(doing).not.toMatch(/^theme — /m)
+    expect(doing).not.toMatch(/^rename — /m)
+  })
+
+  it('keeps the first group short enough to read at a glance', async () => {
+    for (const where of [{}, { room: 'music' }, { room: 'commons' }, { room: 'music', postId: 12 }]) {
+      const out = await shown(where)
+      const doing = out.slice(0, out.indexOf('and anywhere:')).split('\n').filter(Boolean)
+      // One heading plus the verbs. Longer than this and it is a wall again.
+      expect(doing.length, JSON.stringify(where)).toBeLessThanOrEqual(10)
+    }
+  })
+
+  it('still lists every verb that works here, in one group or the other', async () => {
+    const out = await shown({ room: 'music' })
+    for (const verb of ['say', 'look', 'go', 'reply', 'who', 'leave', 'find', 'mail', 'theme']) {
+      expect(out, verb).toMatch(new RegExp(`^${verb} — `, 'm'))
+    }
+    // §4.8 — the pipe is still not on it. That is the point of it.
+    expect(out).not.toContain('|')
+  })
+})

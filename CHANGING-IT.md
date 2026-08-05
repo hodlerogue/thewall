@@ -12,13 +12,26 @@ Four documents, and this is the third of them:
 The README answers "why is it like this". This answers "I want to add a verb —
 what do I edit, and what will bite me". It is a checklist, not an argument.
 
-There is deliberately **no user manual**. `help` lists what you can type from
-where you are standing, `what <command>` explains any of it in plain English,
-and the palette glosses every verb. §3.6's whole claim is that the interface
-teaches itself, so a page explaining how to use the site would be a concession
-that it does not — and would rot, because it would be the one description of the
-commands not generated from the registry. If something is unclear to a person
-using it, the fix goes in a `gloss` or a `detail`, not into a document.
+**There is a user-facing rundown, and it is not a command reference.**
+`/about` — `lib/guide/about.ts` for the prose, `app/about/page.tsx` for the
+page — says what the place is, why it is a prompt, and how the pieces fit.
+
+That was argued against here for a while, on the grounds that a hand-written
+command list drifts away from the registry and leaves two answers to one
+question with one of them wrong. The argument is right about a *reference* and
+says nothing about the rest: it answers "what can I type" and has nothing for
+somebody looking at a command prompt on a social site and wondering what they
+have found. So the objection is answered rather than overruled — **the list of
+verbs on that page is generated from `COMMANDS`**, and `lib/guide/about.test.ts`
+fails if the prose grows its own copy.
+
+Two rules for it. It renders `gloss`, never `detail`, because `find`'s detail
+carries the pipe example and §4.8 asks that the pipe stay undiscovered rather
+than published under a heading reading "everything you can type". And hidden
+commands stay off it entirely.
+
+Everything else still holds: if something is unclear *while using it*, the fix
+goes in a `gloss` or a `detail`, not into that page.
 
 ---
 
@@ -52,6 +65,7 @@ Terminal.tsx ──typed text──> run.ts ──parse──> registry.ts ─�
 | `lib/shell/session.ts` | §3.9 — the held sentence, the signup questions, your name |
 | `lib/shell/errors.ts` | anything thrown → something a person can act on |
 | `lib/shell/themes.ts` | §4.5 — the four palettes and their tokens |
+| `lib/pwa/install.ts` | adding it to a home screen, and the two platforms that differ |
 
 **Commands.**
 
@@ -79,6 +93,7 @@ Terminal.tsx ──typed text──> run.ts ──parse──> registry.ts ─�
 | `components/Terminal.tsx` | the prompt, the scrollback, history, the mobile viewport maths |
 | `components/Palette.tsx` | the chip strip |
 | `app/globals.css` | every token, every theme, and the whole layout |
+| `app/manifest.ts`, `public/sw.js` | what a phone reads before offering to install |
 
 **The database.** `supabase/migrations/*.sql` in filename order, then
 `supabase/seed.sql`. `supabase/tests/schema.test.sql` runs against the real
@@ -289,6 +304,14 @@ inventing a number.
 **Mobile is the kill condition** (§8). Every e2e test runs at 380×740 and there
 is no desktop project. Measure what a thumb can reach — `.tap()` scrolls an
 element into view first, which is how an off-screen chip passed a green suite.
+
+**A source-reading test must strip comments first.** Several guards here check
+the shape of code rather than its behaviour, because the failure they catch is
+invisible to anything that runs — a PostgREST embed, a redirect origin, a
+caching service worker. Every one of those files explains the bug it used to
+have, quoting the broken expression, and a raw text scan makes that explanation
+fail the check for the thing it explains. It has happened twice. Strip
+`/* */` and `//` before matching.
 
 **`request.url` is not the address anybody typed.** Behind a proxy — Netlify,
 here — a route handler sees an internal deploy URL. Reading the query string off

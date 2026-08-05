@@ -98,3 +98,90 @@ test('pinch zoom is not blocked', async ({ page }) => {
   const viewport = await page.locator('meta[name="viewport"]').getAttribute('content')
   expect(viewport ?? '').not.toContain('maximum-scale=1')
 })
+
+test('the manifest is real, and points at icons that exist', async ({ page }) => {
+  // A manifest that 404s, or one naming an icon that does, is a site that
+  // silently never offers to install — with nothing on screen to say so.
+  const manifest = await page.request.get('/manifest.webmanifest')
+  expect(manifest.status()).toBe(200)
+
+  const body = (await manifest.json()) as {
+    name: string
+    start_url: string
+    display: string
+    icons: { src: string; sizes: string; type: string }[]
+  }
+  expect(body.display).toBe('standalone')
+  expect(body.start_url).toBe('/')
+
+  for (const icon of body.icons) {
+    const response = await page.request.get(icon.src)
+    expect(response.status(), icon.src).toBe(200)
+    expect(response.headers()['content-type'], icon.src).toContain('image/png')
+
+    const bytes = await response.body()
+    expect(bytes.subarray(1, 4).toString('ascii'), icon.src).toBe('PNG')
+    // The size it claims is the size it is — a launcher picks by the manifest
+    // and then draws what it actually got.
+    const [width] = icon.sizes.split('x').map(Number)
+    expect(bytes.readUInt32BE(16), `${icon.src} width`).toBe(width)
+  }
+})
+
+test('the page links to the manifest, or nothing ever reads it', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('link[rel="manifest"]')).toHaveCount(1)
+})
+
+test('install is a command you can find, not a banner you have to dismiss', async ({ page }) => {
+  await page.goto('/music')
+
+  // Nothing interrupts. The browser's own mini-infobar is suppressed precisely
+  // so this is asked for rather than pushed.
+  await expect(page.locator('.scrollback')).not.toContainText('home screen')
+
+  await type(page, 'help')
+  await expect(scrollback(page)).toContainText('install — keep this on your home screen')
+
+  await type(page, 'what install')
+  await expect(scrollback(page)).toContainText('full screen')
+  // Chromium in the test browser has no prompt to replay, so this is the
+  // fallback path — and it must still say something useful rather than nothing.
+  await type(page, 'install')
+  await expect(scrollback(page)).toContainText(/menu|home screen/)
+})
+
+
+test('somebody who has just arrived is told where to find out what this is', async ({ page }) => {
+  // A command prompt on a social site raises a question that neither `help` nor
+  // `what` answers: they say what you can type, not what this is.
+  await page.goto('/')
+  await expect(scrollback(page)).toContainText('new here? type about.')
+
+  await type(page, 'about')
+  await expect(scrollback(page)).toContainText('no feed, no likes and no algorithm')
+  // And it says where the rest of it lives, rather than being a dead end.
+  await expect(scrollback(page)).toContainText('/about')
+})
+
+test('the rundown is a page, readable without typing anything', async ({ page }) => {
+  await page.goto('/about')
+
+  await expect(page.locator('h1')).toHaveText('thewall')
+  await expect(page.locator('body')).toContainText('entire interface is a command prompt')
+  await expect(page.locator('body')).toContainText('commons')
+
+  // The command list is generated from the registry, which is the whole reason
+  // this page is allowed to exist — a hand-written one would drift away from
+  // what `help` prints and leave two answers to one question.
+  for (const verb of ['say', 'go', 'look', 'make', 'find', 'mail', 'install']) {
+    await expect(page.locator('.glossary'), verb).toContainText(verb)
+  }
+  // §4.8 — the pipe is still not advertised, here or anywhere.
+  await expect(page.locator('.glossary')).not.toContainText('| count')
+
+  // And it leads back to the prompt and to the policies.
+  await expect(page.locator('a[href="/"]')).toBeVisible()
+  await expect(page.locator('a[href="/terms"]')).toBeVisible()
+  await expect(page.locator('a[href="/privacy"]')).toBeVisible()
+})

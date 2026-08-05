@@ -17,7 +17,9 @@ import type { Env } from '@/lib/shell/env'
 import { formatAgo, type PostHit, type PostQuery, type RoomHit } from '@/lib/shell/model'
 import { renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
 import type { Session } from '@/lib/shell/session'
+import { ABOUT_SUMMARY } from '@/lib/guide/about'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
+import { offerInstall } from '@/lib/pwa/install'
 import { DEFAULT_THEME, THEMES, findTheme } from '@/lib/shell/themes'
 import { pathToLocation } from '@/lib/shell/types'
 import type { Context, Line, Location, RunResult } from '@/lib/shell/types'
@@ -93,6 +95,9 @@ function applyTheme(name: string): void {
 
 const error = (text: string): RunResult => ({ lines: [{ text, tone: 'error' }] })
 
+/** Matches the `limit` in `public.mail()`. Reaching it is said out loud. */
+const MAIL_LIMIT = 100
+
 /** A post address that exists, for an error that tells you to open one. */
 async function newestPostIn(env: Env, room: string | undefined): Promise<number | string> {
   if (room === undefined) return 12
@@ -154,7 +159,15 @@ export const COMMANDS: readonly Command[] = [
     verb: 'go',
     aliases: ['cd', 'enter', 'open', 'join', 'read'],
     contexts: ALL,
-    gloss: (c) => (c === 'lobby' || c === 'person' ? 'enter a room' : 'open a post'),
+    gloss: (c) =>
+      c === 'lobby' || c === 'person'
+        ? 'enter a room'
+        : // Commons has no posts to open (§3.10), so offering to open one is
+          // the palette naming something that cannot happen. Naming a room is
+          // what `go` is actually for from here.
+          c === 'commons'
+          ? 'go to another room'
+          : 'open a post',
     detail: () =>
       'moves you. at the lobby, go music. inside a room, go 12 opens that post. a whole address works from anywhere — go music/12 — and so does go ~marisol, which shows you somebody: their page, and their wall.',
     insert: () => 'go ',
@@ -287,36 +300,64 @@ export const COMMANDS: readonly Command[] = [
       const gloss = rest.join(' ')
 
       if (slug === '') {
-        return error('make what? try: make garden what you are growing')
-      }
-      if (gloss === '') {
-        // §3.7 — the fix, shown rather than described. The commonest mistake
-        // here is typing only a name, so the error is the same line completed.
-        return error(`say what ${slug} is for, on the same line — try: make ${slug} what you are growing`)
+        return error('make what? try: make garden')
       }
       if (session.name() === null) {
         return error('you need a name first. say something anywhere and i’ll ask you for one.')
       }
 
-      const made = await env.makeRoom(slug, gloss)
-      if (!made.ok) return error(made.reason)
+      const open = async (line: string): Promise<RunResult> => {
+        const made = await env.makeRoom(slug, line)
+        if (!made.ok) return error(made.reason)
 
-      const room = await env.getRoom(made.slug)
-      return {
-        lines: [
-          { text: `${made.slug} is open. you are in it.`, tone: 'accent' },
-          { text: '' },
-          ...(room
-            ? renderRoom(room)
-            : [{ text: 'nothing here yet. say something and it will be the first thing.', tone: 'faint' as const }]),
-          { text: '' },
-          // Said once, at the only moment it is useful: a room with nothing in
-          // it drops out of the lobby, and §5 is blunt about an empty room
-          // being worse than no room.
-          { text: 'it stays in the lobby while people are talking in it. it is always reachable by name.', tone: 'faint' },
-        ],
-        location: { room: made.slug },
+        const room = await env.getRoom(made.slug)
+        return {
+          lines: [
+            { text: `${made.slug} is open. you are in it.`, tone: 'accent' },
+            { text: '' },
+            ...(room
+              ? renderRoom(room)
+              : [{ text: 'nothing here yet. say something and it will be the first thing.', tone: 'faint' as const }]),
+            { text: '' },
+            // Said once, at the only moment it is useful: a room with nothing
+            // in it drops out of the lobby, and §5 is blunt about an empty room
+            // being worse than no room.
+            { text: 'it stays in the lobby while people are talking in it. it is always reachable by name.', tone: 'faint' },
+          ],
+          location: { room: made.slug },
+        }
       }
+
+      /*
+       * No gloss on the line, so ask for one — rather than refusing and telling
+       * somebody to type what they just typed with more on the end.
+       *
+       * That refusal read as a syntax error, which §3.7 says nothing here may
+       * be, and its example was worse than the refusal: `make onions what you
+       * are growing` filled in a description belonging to a different room, and
+       * it was copied verbatim, because an example you are told to try is an
+       * instruction. A room ended up called onions and glossed "what you are
+       * growing" — the error wrote it.
+       *
+       * The prompt already knows how to ask; that is the whole of signup (§3.9).
+       * One line on the same line still works for anybody who prefers it.
+       */
+      if (gloss === '') {
+        return {
+          lines: session.askOne(
+            [
+              { text: `what is ${slug} for?`, tone: 'accent' },
+              { text: 'a few words. it goes under the name in the lobby, and it is how people know what to put there.', tone: 'faint' },
+            ],
+            async (answer) => {
+              const result = await open(answer)
+              return { lines: result.lines, location: result.location }
+            },
+          ),
+        }
+      }
+
+      return open(gloss)
     },
   },
 
@@ -387,10 +428,12 @@ export const COMMANDS: readonly Command[] = [
       // §3.9 — the sentence is captured first, then the account is asked for.
       // Friction lands at peak motivation, and nothing typed is ever lost.
       if (session.name() === null) {
-        return { lines: session.begin({ location, body: arg }) }
+        return {
+          lines: session.begin({ location, body: arg, addressed: context !== 'commons' }),
+        }
       }
 
-      const written = await session.write(location, arg)
+      const written = await session.write(location, arg, { addressed: context !== 'commons' })
       // §3.9 — nothing typed is ever lost, including to a network blip.
       return { lines: written.lines, retry: written.failed ? arg : undefined }
     },
@@ -408,14 +451,26 @@ export const COMMANDS: readonly Command[] = [
      */
     verb: 'reply',
     aliases: ['re', 'answer'],
-    contexts: ALL,
+    /*
+     * Everywhere except commons.
+     *
+     * `help` lists what you can type from where you are standing, so a verb
+     * that is listed and always fails is the same defect as a palette chip that
+     * always fails. In the lobby or on somebody's page `reply` is a step away
+     * from working — go to a room, open a post — and saying so teaches the
+     * step. In commons it can never work at all: §3.10 gives it no threads and
+     * a trigger in the schema refuses replies there. So it is not offered, and
+     * typing it still gets the sentence that explains why.
+     */
+    contexts: ['lobby', 'room', 'post', 'person'],
     // No dash inside a gloss: help renders `verb — gloss`, and a second one
     // turns the line into a puzzle.
     gloss: (c) => (c === 'post' ? 'answer this' : 'answer a post, once you open it'),
     detail: () =>
-      'answers somebody. replies live inside a post, so open one first: go 12, then reply. inside a post this and say are the same thing.',
+      'answers somebody. replies live inside a post, so open one first: go 12, then reply. inside a post this and say are the same thing. commons is the exception — nothing there keeps replies.',
     insert: (c) => (c === 'post' ? 'reply ' : 'go '),
-    wrongContext: () => '',
+    // Only ever commons, since that is the only context left out above.
+    wrongContext: () => 'commons doesn’t keep replies — say it as its own thing instead.',
     async run(args) {
       const { context, location, env } = args
 
@@ -433,8 +488,6 @@ export const COMMANDS: readonly Command[] = [
           ? `replies live inside a post. open one of ${location.person}'s first — try: go 1`
           : context === 'lobby'
             ? 'replies live inside a post. go to a room first, then open one.'
-          : context === 'commons'
-            ? 'commons doesn’t keep replies — say it as its own thing instead.'
             : `replies live inside a post. open one first — try: go ${example}`,
       )
     },
@@ -555,14 +608,66 @@ export const COMMANDS: readonly Command[] = [
     insert: () => 'help',
     wrongContext: () => '',
     async run({ context }) {
-      const lines: Line[] = [{ text: 'from here you can type:', tone: 'faint' }]
+      /*
+       * Two groups, not one list of fifteen.
+       *
+       * §3.6's argument is that a glossary teaches — but the list had grown to
+       * fifteen lines in registry order, which at 380px means the bottom third
+       * is below the fold, and it is the bottom third that had `terms` and
+       * `privacy` in it. "I can't find how to get to the docs" is what that
+       * looks like from outside: they were listed, thirteenth and fourteenth,
+       * under a heading somebody had already stopped reading.
+       *
+       * So: what you do where you are standing, then a gap, then the ones about
+       * you and about this place. The gap is the whole mechanism — it gives the
+       * eye somewhere to stop, and it puts a short list at the top rather than a
+       * wall.
+       */
+      const ELSEWHERE = ['about', 'mail', 'rename', 'theme', 'install', 'terms', 'privacy', 'what', 'help']
+
+      const here: Line[] = []
+      const about: Line[] = []
+
       for (const command of COMMANDS) {
         // §4.8 — the pipe is not on this list. That is the point of it.
         if (command.hidden || !command.contexts.includes(context)) continue
-        lines.push({ text: `${command.verb} — ${command.gloss(context)}`, tone: 'dim' })
+        const line: Line = { text: `${command.verb} — ${command.gloss(context)}`, tone: 'dim' }
+        ;(ELSEWHERE.includes(command.verb) ? about : here).push(line)
       }
+
+      const lines: Line[] = [{ text: 'from here you can type:', tone: 'faint' }, ...here]
+      if (about.length > 0) {
+        lines.push({ text: '' })
+        lines.push({ text: 'and anywhere:', tone: 'faint' })
+        lines.push(...about)
+      }
+      lines.push({ text: '' })
       lines.push({ text: 'what <command> explains any of them.', tone: 'faint' })
       return { lines }
+    },
+  },
+
+  {
+    /*
+     * §8 makes the phone the kill condition, and installed is where a phone
+     * stops fighting this design: full screen, no browser chrome resizing under
+     * the keyboard, and an icon somebody can reach without typing an address.
+     *
+     * A command rather than a banner. The browser's own mini-infobar is
+     * suppressed (see lib/pwa/install.ts) precisely so that this is asked for
+     * rather than interrupted with — a bar across the top of a terminal is the
+     * one interruption every other decision here has avoided.
+     */
+    verb: 'install',
+    aliases: ['home', 'homescreen', 'app'],
+    contexts: ALL,
+    gloss: () => 'keep this on your home screen',
+    detail: () =>
+      'adds thewall to your home screen, so it opens full screen without the browser around it. on iphone the browser will not let a page do this, so it tells you which two taps to make instead.',
+    insert: () => 'install',
+    wrongContext: () => '',
+    async run() {
+      return { lines: await offerInstall() }
     },
   },
 
@@ -635,9 +740,19 @@ export const COMMANDS: readonly Command[] = [
       }
 
       const lines: Line[] = []
+
+      // How many, before the list of them. The badge in the composer says
+      // "you have 12 replies waiting" and then `mail` clears it — so without
+      // this the number somebody was just told disappears at the moment they
+      // act on it, and a long list arrives with nothing to measure it against.
+      if (items.length > 1) {
+        lines.push({ text: `${items.length} replies, newest first.`, tone: 'dim' })
+        lines.push({ text: '' })
+      }
+
       for (const item of items) {
         // The address first, because a notification you cannot walk to is just
-        // an alert. `go music/12` is not a thing, so both parts are shown.
+        // an alert.
         lines.push({
           text: `${item.room}/${item.postId}  ${item.author}, ${formatAgo(item.createdAt)}`,
           tone: 'accent',
@@ -645,10 +760,27 @@ export const COMMANDS: readonly Command[] = [
         lines.push({ text: item.body, depth: 1 })
       }
       lines.push({ text: '' })
+
+      // One step, not two. This said "go music then go 12" and carried a
+      // comment claiming `go music/12` was not a thing — true when it was
+      // written, and not since `go` learned to take a whole address, which is
+      // the shape every listing on the site prints.
       lines.push({
-        text: `go ${items[0].room} then go ${items[0].postId} to answer the newest.`,
+        text: `go ${items[0].room}/${items[0].postId} to answer the newest.`,
         tone: 'faint',
       })
+
+      // No silent caps. Reading is what marks mail read (§4.1 is pull-only), and
+      // with newest-first ordering anything past the limit is older than
+      // everything here — so hitting it clears replies that were never shown.
+      // Rare, and not something to find out about by noticing a gap.
+      if (items.length >= MAIL_LIMIT) {
+        lines.push({
+          text: `that is the newest ${MAIL_LIMIT}. anything older than these is cleared too — find --by=<name> still has it.`,
+          tone: 'faint',
+        })
+      }
+
       return { lines, mail: 0 }
     },
   },
@@ -682,6 +814,33 @@ export const COMMANDS: readonly Command[] = [
       }
       const { lines, identity } = await session.rename(arg)
       return { lines, identity }
+    },
+  },
+
+  {
+    /*
+     * The one command whose audience is somebody who does not yet know what
+     * they are looking at.
+     *
+     * `help` answers "what can I type" and `what` answers "what does this do",
+     * and neither answers "what is this place". Somebody who lands on a command
+     * prompt on a social site has that question first, and until now the only
+     * answer was to work it out.
+     *
+     * The short version prints here; the whole rundown is a page, for the same
+     * reason the policies are — it has to be readable by somebody who has not
+     * typed anything yet, or who arrived from a link somebody sent them.
+     */
+    verb: 'about',
+    aliases: ['guide', 'intro', 'wtf', 'readme'],
+    contexts: ALL,
+    gloss: () => 'what this place is',
+    detail: () =>
+      'explains what thewall is, why the whole thing is a prompt, and how the pieces fit. the short version prints here; the whole rundown is at thewall.social/about.',
+    insert: () => 'about',
+    wrongContext: () => '',
+    async run() {
+      return { lines: ABOUT_SUMMARY.map((text) => ({ text, tone: 'faint' as const })) }
     },
   },
 

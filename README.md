@@ -22,7 +22,13 @@ Where the code makes a decision the document argued about, the comment cites the
 section. That's deliberate: the reasoning is worth more than the code, and the
 code is short.
 
-Four documents, and each answers a different question:
+`thewall.social/about` is the same thing for people **using** it — what the
+place is, why it is a prompt, and how the pieces fit. It exists against the
+argument below, and answers it rather than overruling it: the part that would
+rot, the list of verbs, is generated from the registry at render time, so the
+page cannot say anything the prompt would not.
+
+Four documents about the *code*, and each answers a different question:
 
 | | |
 |---|---|
@@ -31,10 +37,10 @@ Four documents, and each answers a different question:
 | [`CHANGING-IT.md`](./CHANGING-IT.md) | where things live, and what to do to change one |
 | [`GOING-LIVE.md`](./GOING-LIVE.md) | getting it in front of people, and turning it off |
 
-There is no user manual, on purpose. `help` lists what you can type from where
-you are standing and `what <command>` explains any of it — §3.6's claim is that
-the interface teaches itself, so anything unclear is a bug in a `gloss`, not a
-page somebody has to find.
+`help` lists what you can type from where you are standing and `what <command>`
+explains any of it — §3.6's claim is that the interface teaches itself, so
+anything unclear there is a bug in a `gloss` rather than something to document
+around it.
 
 ## Running it
 
@@ -97,9 +103,9 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 299 unit tests: parser, aliases, errors, signup, search, themes, names, walls
-npm run test:e2e   # 100 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 170 assertions against the real migrations, on a throwaway database
+npm test           # 354 unit tests: parser, aliases, errors, signup, search, themes, names, walls
+npm run test:e2e   # 109 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm run test:db    # 178 assertions against the real migrations, on a throwaway database
 ```
 
 To see what is actually in a deployed project — read-only, and it tells apart
@@ -144,6 +150,20 @@ prompt string, the palette set, the valid command set and the URL at once — wh
 is why `thewall.social/music/12` and `go 12` are the same address (§3.4). The lobby
 lives at `/lobby` so that `/` can put arrivals in commons without making `leave`
 impossible.
+
+**Commons says nothing about post numbers, because it has none.** §3.10 gives
+it no permanent addresses, so `look` there shows no numbers and `go 26` answers
+"there's nothing to open here" — and the write confirmation announced "it's post
+26" anyway, which sent people looking for a door that is not there. Everywhere
+that keeps things, the confirmation now also says what the number is *for*: it
+is the address replies arrive at, and the same number in the URL (§3.4). It
+reads as a receipt otherwise.
+
+For the same reason `reply` is not listed in `help` in commons. In the lobby or
+on somebody's page it is one step from working — go to a room, open a post — and
+saying so teaches the step. In commons it can never work at all, so offering it
+would be advertising a dead end; typed anyway, it still explains why. `go` there
+is glossed "go to another room" rather than "open a post".
 
 **`reply` is a command, against §3.3's lean.** The doc says there is no reply
 verb to learn — one verb for all contribution — and `reply` was an alias for
@@ -208,8 +228,19 @@ degrades to nothing if the channel cannot connect.
 ## Making a room
 
 ```
-make garden what you are growing
+make garden
+what is garden for?
+  a few words. it goes under the name in the lobby.
+> what you are growing
 ```
+
+The name and what it is for, and the second is **asked** rather than demanded
+on the same line. That refusal — "try: `make garden what you are growing`" —
+read as a syntax error, which §3.7 says nothing here may be, and its example
+was the worse half: it filled in a description belonging to a different room
+and got copied verbatim, because an example somebody is told to try is an
+instruction. `make onions what you are growing` is a real room that error
+wrote. Both on one line still works for anybody who prefers it.
 
 §4.2 closes room creation — *"a fixed, curated set at launch"* — because *"40
 rooms with three people each kills the entire feeling"*. That is decided
@@ -317,6 +348,20 @@ exactly that is more use than listing the flags that do exist.
 
 ## Mail, and why anyone comes back
 
+```
+mail
+
+12 replies, newest first.
+
+music/12  marisol, 2h ago
+  warped ones still play, they just wobble. it grows on you.
+kitchen/8  ren, 4h ago
+  freeze it flat in bags, it stacks and it thaws in about a minute
+...
+
+go music/12 to answer the newest.
+```
+
 §4.1 is the doc's own highest-priority unsolved item — "no notification means no
 reason to return" — and its lean is specific enough to be implementation rather
 than design: a persistent count, `mail` to list them, pull-only, no push and no
@@ -324,7 +369,14 @@ email. Unread is one column: replies to posts you wrote, newer than
 `profiles.mail_seen_at`, that you did not write yourself. Reading them is what
 clears the count, because in a pull-only design looking is the only signal there
 is. Each one carries its `room/id`, since a notification you cannot walk to is
-just an alert.
+just an alert — and `go music/12` gets you there in one step.
+
+**Hiding reaches the inbox**, which it did not for a long time. Neither `mail()`
+nor `mail_count()` looked at `hidden_at` — not on the reply, not on the post it
+hangs under, not on the room both are in — so hiding abuse, or banning whoever
+wrote it, left every reply sitting in the target's inbox, still counted and
+still delivered. That is the one surface that reaches out and taps somebody on
+the shoulder, and the lever gets used at the moment somebody is being harassed.
 
 ## Somebody, and their wall
 
@@ -371,6 +423,40 @@ Standing on somebody is a search filter the same way standing in a room is:
 shape `find`, `mail` and a profile all print. It was always the obvious thing to
 type back and it always failed; walls only made the failure louder, since
 `go ~marisol/2` used to answer "there's no one called marisol/2".
+
+## Keeping it on a phone
+
+```
+install
+```
+
+§8 makes the phone the kill condition, and installed is where a phone stops
+fighting this design: full screen, no browser chrome resizing under the
+keyboard, and an icon you can reach without typing an address.
+
+**A command, not a banner.** The browser's own `beforeinstallprompt` is caught
+and `preventDefault()`-ed, which suppresses Chrome's mini-infobar — a bar across
+the top of a terminal is the one interruption every other decision here has
+avoided. The event is kept and replayed when somebody types `install`: caught
+early, offered late.
+
+**iOS has no install API and never has**, so `install` there prints the two taps
+instead of silently doing nothing. That is most of why this is two functions
+rather than one — a single `install()` that calls a browser prompt would be a
+dead end on half the phones in the world, on the platform §8 names as the thing
+that decides whether this works at all.
+
+It suggests itself **once, ever, and only to somebody who already has a name** —
+which means they either came back or have just been through signup. A first-time
+reader thirty seconds in gets nothing; suggesting it then is the same banner in
+a costume. Private browsing, where the "already said this" flag cannot be
+stored, stays silent rather than repeating every load.
+
+`public/sw.js` exists because Chrome's install criteria have wanted a service
+worker with a fetch handler, and it **caches nothing on purpose**. Every screen
+here is either live or a few hundred bytes; a cache-first worker would trade a
+saving nobody would notice for the classic failure where a deploy goes out and
+people keep running last week's JavaScript against this week's database.
 
 ## Colours
 

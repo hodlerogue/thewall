@@ -366,3 +366,27 @@ body {
   font-family: inherit;
   color: var(--fg);
 }
+
+/*
+ * The command list on /about.
+ *
+ * A description list rather than a table: it is a glossary, which is the same
+ * argument §3.6 makes about the palette, and a two-column table at 380px turns
+ * every description into a four-word column.
+ */
+.glossary > div {
+  margin: 0 0 0.9rem;
+}
+
+.glossary dt {
+  font-weight: 600;
+}
+
+.glossary dt code {
+  color: var(--accent);
+}
+
+.glossary dd {
+  margin: 0.15rem 0 0;
+  color: var(--fg-dim);
+}

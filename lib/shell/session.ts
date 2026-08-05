@@ -20,6 +20,16 @@ import type { Line, Location } from '@/lib/shell/types'
 export interface Held {
   location: Location
   body: string
+  /**
+   * Whether the room it is going to keeps addresses.
+   *
+   * Captured with the sentence rather than worked out when it lands, because
+   * the only thing that knows is the command handler that took it — and by the
+   * time this is posted, two questions have been asked and answered. Without
+   * it the very first thing a new person ever writes, which is usually in
+   * commons, came back announcing a post number that means nothing there.
+   */
+  addressed?: boolean
 }
 
 export interface SignupApi {
@@ -48,7 +58,23 @@ export interface Writer {
   >
 }
 
-type Mode = 'command' | 'ask-name' | 'ask-email'
+type Mode = 'command' | 'ask-name' | 'ask-email' | 'ask-one'
+
+/**
+ * A single question the prompt is waiting on, and what to do with the answer.
+ *
+ * §6 rules out forms, and the prompt already knows how to ask things — that is
+ * the whole of signup. So anything that needs one more piece of information
+ * asks for it here rather than demanding it be typed on the same line as the
+ * command, which is how `make onions` came back as an error telling somebody to
+ * retype what they had just typed with more on the end.
+ *
+ * The handler keeps its own closure, so this stays ignorant of Env: it knows
+ * how to ask and how to hand the answer back, and nothing about rooms.
+ */
+interface OneQuestion {
+  answer: (text: string) => Promise<{ lines: Line[]; location?: Location }>
+}
 
 export interface AnswerResult {
   lines: Line[]
@@ -56,6 +82,15 @@ export interface AnswerResult {
   identity?: string | null
   /** Set when the held sentence could not be sent, so it is not lost. */
   retry?: string
+  /**
+   * Set when answering moved you.
+   *
+   * Answering `what is onions for?` opens the room and walks you into it, and
+   * without this the lines said "you are in it" while the prompt still said
+   * `poker` — the answer path had no way to report a move because until now no
+   * answer caused one.
+   */
+  location?: Location
 }
 
 export interface WriteResult {
@@ -70,6 +105,7 @@ export class Session {
   private mode: Mode = 'command'
   private held: Held | null = null
   private pendingName: string | null = null
+  private pending: OneQuestion | null = null
   private who: string | null = null
 
   constructor(
@@ -100,11 +136,25 @@ export class Session {
     ]
   }
 
+  /**
+   * Ask one thing, then hand the answer to whoever asked.
+   *
+   * `question` is what the prompt shows; `answer` receives what was typed and
+   * returns the lines to print. Nothing is validated here — the caller knows
+   * what a good answer looks like and this does not.
+   */
+  askOne(question: readonly Line[], answer: OneQuestion['answer']): Line[] {
+    this.mode = 'ask-one'
+    this.pending = { answer }
+    return [...question]
+  }
+
   cancel(): Line[] {
-    const hadSomething = this.held !== null
+    const hadSomething = this.held !== null || this.pending !== null
     this.mode = 'command'
     this.held = null
     this.pendingName = null
+    this.pending = null
     return [
       {
         text: hadSomething
@@ -121,6 +171,25 @@ export class Session {
     // §3.9 — cancel at any point, and it costs nothing.
     if (/^(cancel|nevermind|never mind|quit|stop)$/i.test(text)) {
       return { lines: this.cancel() }
+    }
+
+    if (this.mode === 'ask-one') {
+      const pending = this.pending
+      this.pending = null
+      this.mode = 'command'
+      if (!pending) return { lines: [] }
+      if (text === '') {
+        // An empty answer is not an answer, and dropping back to the command
+        // prompt would leave somebody wondering what happened to their room.
+        return {
+          lines: this.askOne(
+            [{ text: 'still waiting — say it in a few words.', tone: 'faint' }],
+            pending.answer,
+          ),
+        }
+      }
+      const answered = await pending.answer(text)
+      return { lines: answered.lines, location: answered.location }
     }
 
     return this.mode === 'ask-name' ? this.answerName(text) : this.answerEmail(text)
@@ -285,7 +354,7 @@ export class Session {
     }
 
     lines.push({ text: 'now — the thing you were trying to say.', tone: 'accent' })
-    const written = await this.write(held.location, held.body)
+    const written = await this.write(held.location, held.body, { addressed: held.addressed })
     lines.push(...written.lines)
 
     // Losing the sentence here would be the worst possible moment for it.
@@ -354,7 +423,18 @@ export class Session {
   }
 
   /** The write path itself, used by `say` and by the held-message commit. */
-  async write(location: Location, body: string): Promise<WriteResult> {
+  async write(
+    location: Location,
+    body: string,
+    /**
+     * Whether the room keeps what is said in it.
+     *
+     * Passed in rather than looked up: the caller is the command handler, which
+     * already knows — `commons` is its own context precisely because §3.10
+     * makes it a different kind of place.
+     */
+    options: { addressed?: boolean } = {},
+  ): Promise<WriteResult> {
     if (!location.room) {
       return {
         lines: [{ text: 'you have to be in a room to say something.', tone: 'error' }],
@@ -368,7 +448,29 @@ export class Session {
         return { lines: [{ text: 'said.', tone: 'faint' }], failed: false }
       }
       const postNo = await this.writer.post(location.room, body)
-      return { lines: [{ text: `said — it’s post ${postNo}.`, tone: 'faint' }], failed: false }
+
+      /*
+       * Commons gets a number from the allocator like everywhere else, and it
+       * means nothing there: §3.10 keeps no threads, `go 26` in commons answers
+       * "there's nothing to open here", and the post is gone in a day. Saying
+       * "it's post 26" anyway was an invitation to look for a number that is
+       * not shown next to anything and cannot be used — which is exactly the
+       * question it produced.
+       */
+      if (options.addressed === false) {
+        return { lines: [{ text: 'said.', tone: 'faint' }], failed: false }
+      }
+
+      return {
+        lines: [
+          { text: `said — it’s post ${postNo}.`, tone: 'faint' },
+          // What the number is *for*. On its own it reads as a receipt; the
+          // point of it is that it is the address replies arrive at, and that
+          // it is the same number in the URL (§3.4).
+          { text: `go ${postNo} opens it, which is where replies land.`, tone: 'faint' },
+        ],
+        failed: false,
+      }
     } catch (error) {
       return {
         lines: [

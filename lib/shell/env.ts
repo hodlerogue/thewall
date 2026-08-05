@@ -95,17 +95,10 @@ export type FixturePerson = {
   nameChangedHands?: Date
 }
 
-/**
- * In-memory Env over the §5 seed content, for tests and the mobile gate.
- *
- * `people` is read at call time rather than copied, so the demo can hand in an
- * array it pushes to. Without that, somebody who signs up in fixtures mode has
- * no page of their own — and their own page is the only place a wall can be
- * tried at all.
- */
 /** Mirrors `reserved_slugs` in the schema — every one a real path under app/. */
 const RESERVED_SLUGS = new Map([
   ['lobby', 'the lobby lives there'],
+  ['about', 'that is a route'],
   ['api', 'that is a route'],
   ['auth', 'that is a route'],
   ['legal', 'that is a route'],
@@ -119,6 +112,14 @@ const RESERVED_SLUGS = new Map([
 /** §4.2's fade, matching the interval in the lobby query. */
 const FADE_MS = 14 * 24 * 60 * 60 * 1000
 
+/**
+ * In-memory Env over the §5 seed content, for tests and the mobile gate.
+ *
+ * `people` is read at call time rather than copied, so the demo can hand in an
+ * array it pushes to. Without that, somebody who signs up in fixtures mode has
+ * no page of their own — and their own page is the only place a wall can be
+ * tried at all.
+ */
 export function fixtureEnv(
   rooms: Room[] = ROOMS,
   people: readonly FixturePerson[] = PEOPLE,

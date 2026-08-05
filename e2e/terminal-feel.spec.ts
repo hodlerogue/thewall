@@ -184,3 +184,53 @@ test('reply in a room no longer posts a brand new post', async ({ page }) => {
   await expect(scrollback(page)).not.toContainText('said — it’s post')
   await expect(scrollback(page)).not.toContainText('what do you want to be called')
 })
+
+
+test('commons never mentions a post number, because it has none to mention', async ({ page }) => {
+  /*
+   * From a screenshot of commons: "i'm not seeing any numbers next to these
+   * posts. don't i need to type a number to open it so i can reply? but it
+   * tells me the post number when i'm the one sending it."
+   *
+   * Both observations were correct. §3.10 gives commons no addresses, so the
+   * listing rightly shows none — and the confirmation announced one anyway,
+   * pointing at a door that is not there.
+   */
+  await page.goto('/commons')
+  await type(page, 'say good to be here')
+  await type(page, 'ryan')
+  await type(page, 'ryan@example.com')
+
+  await expect(scrollback(page)).toContainText('said')
+  await expect(scrollback(page)).not.toContainText('it’s post')
+
+  // And the listing agrees: no numbers anywhere in commons.
+  await type(page, 'look')
+  await expect(scrollback(page)).toContainText('commons keeps nothing')
+})
+
+test('a room that keeps things says what the number is for', async ({ page }) => {
+  await page.goto('/music')
+  await type(page, 'say found my dad’s records')
+  await type(page, 'ryan')
+  await type(page, 'ryan@example.com')
+
+  await expect(scrollback(page)).toContainText('it’s post')
+  // The half that was missing: the number is an address, not a receipt.
+  await expect(scrollback(page)).toContainText('opens it, which is where replies land')
+})
+
+test('help in commons offers nothing commons cannot do', async ({ page }) => {
+  await page.goto('/commons')
+  await type(page, 'help')
+
+  // `reply` can never work here — §3.10 gives commons no threads and the schema
+  // refuses them — so listing it would be advertising a dead end.
+  await expect(scrollback(page)).not.toContainText('reply — answer')
+  // And `go` here means another room, not a post there are none of.
+  await expect(scrollback(page)).toContainText('go — go to another room')
+
+  // Typed anyway, it still explains itself.
+  await type(page, 'reply nice one')
+  await expect(scrollback(page)).toContainText('commons doesn’t keep replies')
+})

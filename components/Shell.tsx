@@ -9,6 +9,7 @@ import { httpSignupApi, supabaseWriter } from '@/lib/data/writer'
 import { fixtureEnv, type Env, type FixturePerson } from '@/lib/shell/env'
 import { PEOPLE } from '@/lib/shell/fixtures'
 import { describeError } from '@/lib/shell/errors'
+import { shouldSuggest, suggestion, watchForInstall } from '@/lib/pwa/install'
 import { renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
 import { createClient, isConfigured } from '@/lib/supabase/client'
@@ -54,6 +55,29 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
   // A Location is a fresh object on every render, so the path is what the
   // effect depends on — otherwise arriving anywhere would reload forever.
   const targetPath = locationToPath(initialLocation)
+
+  /*
+   * Two things that have to happen once per page, not once per navigation.
+   *
+   * The worker is registered rather than bundled because it has to be served
+   * from the origin root to control the whole scope, and it caches nothing —
+   * see public/sw.js for why that is deliberate on a site whose every screen is
+   * either live or a few hundred bytes.
+   *
+   * `beforeinstallprompt` has to be listened for before the browser fires it,
+   * which is usually seconds after load and long before anybody would want to
+   * be asked. Catching it early and offering it late is the whole arrangement.
+   */
+  useEffect(() => {
+    watchForInstall()
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {
+        // Registration fails on http, in private windows, and wherever it is
+        // switched off. None of that stops the site working, so none of it is
+        // worth a line on screen.
+      })
+    }
+  }, [])
 
   useEffect(() => {
     const target = pathToLocation(targetPath)
@@ -165,8 +189,30 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
             ? [{ text: 'demo — nothing you type here is saved.', tone: 'faint' as const }]
             : []),
           { text: 'type look to see what’s around you, or tap a command below.', tone: 'faint' },
+          /*
+           * One more line, and only for somebody who has not been here before.
+           *
+           * Landing on a command prompt on a social site raises a question that
+           * neither `help` nor `what` answers — they say what you can type, not
+           * what this is. Somebody with a name has already worked it out and
+           * does not need telling every load.
+           */
+          ...(existingName === null
+            ? [{ text: 'new here? type about.', tone: 'faint' as const }]
+            : []),
           { text: '' },
           ...keyLines,
+          /*
+           * At most one line, once ever, and only to somebody who already has a
+           * name — which means they either came back, or they have just been
+           * through signup and decided this was worth an account.
+           *
+           * A first-time reader thirty seconds in gets nothing. Suggesting it
+           * then is the banner that `beforeinstallprompt` is suppressed to
+           * avoid, moved into the scrollback and no less of an interruption for
+           * being made of text.
+           */
+          ...(shouldSuggest(existingName !== null) ? [...suggestion(), { text: '' }] : []),
           ...lines,
         ],
       })
