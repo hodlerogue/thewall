@@ -17,7 +17,24 @@ export async function POST(request: Request) {
   } = await supabase.auth.getUser()
 
   if (!user?.email) {
-    return NextResponse.json({ error: 'you’re not signed in.' }, { status: 401 })
+    /*
+     * The person most likely to type `resend` is the person whose session is
+     * broken, so this is the message they will actually see — and "you're not
+     * signed in." on its own is the §3.7 failure exactly: true, useless, and
+     * with nothing to do next.
+     *
+     * There is no way to send without a session. The address has to come from
+     * somewhere the caller cannot choose, or this becomes a way to mail a
+     * stranger a key from our sending domain. So the fix offered is the one
+     * that actually works: say something, which starts the flow again.
+     */
+    return NextResponse.json(
+      {
+        error:
+          'this browser isn’t signed in, so i don’t know where to send it. say something and i’ll ask for your address again — if the name is already yours, use the same one.',
+      },
+      { status: 401 },
+    )
   }
 
   const { data: profile } = await supabase
@@ -63,6 +80,9 @@ export async function POST(request: Request) {
   }
 
   // Our own URL, not `action_link` — see lib/auth/links.ts.
-  const delivery = await sendMagicLink(user.email, verifyUrl(link.properties.hashed_token))
+  const delivery = await sendMagicLink(
+    user.email,
+    verifyUrl(link.properties.hashed_token, 'magiclink', request),
+  )
   return NextResponse.json({ note: delivery.note })
 }

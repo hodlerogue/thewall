@@ -17,12 +17,85 @@
 
 export type KeyType = 'magiclink' | 'signup' | 'recovery' | 'invite' | 'email_change' | 'email'
 
-export function siteUrl(): string {
-  return process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+/**
+ * Origins this deployment is allowed to send somebody back to.
+ *
+ * `URL` and `DEPLOY_PRIME_URL` are set by Netlify, not by the caller — that is
+ * the whole point of reading them. The alternative, trusting the request's own
+ * `Host` header, is account takeover with extra steps: post a signup for
+ * somebody else's address with a forged Host and they are emailed a working key
+ * pointing at your server.
+ */
+function trustedOrigins(): string[] {
+  const raw = [
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.URL,
+    process.env.DEPLOY_PRIME_URL,
+    process.env.DEPLOY_URL,
+  ]
+
+  const origins: string[] = []
+  for (const value of raw) {
+    if (!value) continue
+    try {
+      const origin = new URL(value).origin
+      if (!origins.includes(origin)) origins.push(origin)
+    } catch {
+      // A malformed value is worth ignoring rather than crashing signup over.
+    }
+  }
+  return origins
 }
 
-export function verifyUrl(hashedToken: string, type: KeyType = 'magiclink'): string {
-  const url = new URL('/auth/callback', siteUrl())
+/** Where the request actually came from, as the platform reported it. */
+function requestOrigin(request: Request | undefined): string | null {
+  if (!request) return null
+  try {
+    const forwarded = request.headers.get('x-forwarded-proto')
+    const host = request.headers.get('host')
+    if (host) return `${forwarded ?? 'https'}://${host}`
+    return new URL(request.url).origin
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The origin a key should point at.
+ *
+ * Takes the request, because the link's entire job is to bring somebody back to
+ * **the site they are using** — and a build-time constant cannot know that. It
+ * being a constant is what let a deploy on a custom domain email links to its
+ * `netlify.app` address: you clicked, the callback ran on the other origin, the
+ * session cookie was set there, and back on the real site you were still a
+ * stranger being asked for a name you had already chosen.
+ *
+ * The request origin wins only if the platform vouches for it. If it does not,
+ * the configured URL is used and the mismatch is logged — an emailed link to
+ * the wrong host is not something to let pass in silence.
+ */
+export function siteUrl(request?: Request): string {
+  const trusted = trustedOrigins()
+  const asked = requestOrigin(request)
+
+  if (asked && trusted.includes(asked)) return asked
+
+  const fallback = trusted[0] ?? 'http://localhost:3000'
+  if (asked && asked !== fallback) {
+    console.warn(
+      `[thewall] a key was requested from ${asked}, which is not a known origin for this deploy. ` +
+        `sending it to ${fallback} instead. set NEXT_PUBLIC_SITE_URL to the address people actually use, and redeploy.`,
+    )
+  }
+  return fallback
+}
+
+export function verifyUrl(
+  hashedToken: string,
+  type: KeyType = 'magiclink',
+  request?: Request,
+): string {
+  const url = new URL('/auth/callback', siteUrl(request))
   url.searchParams.set('token_hash', hashedToken)
   url.searchParams.set('type', type)
   return url.toString()

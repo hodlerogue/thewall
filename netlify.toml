@@ -43,7 +43,8 @@
 #   NEXT_PUBLIC_SUPABASE_URL       https://<project>.supabase.co
 #   NEXT_PUBLIC_SUPABASE_ANON_KEY  public by design — RLS decides what it reads
 #   SUPABASE_SERVICE_ROLE_KEY      server only, bypasses every policy
-#   NEXT_PUBLIC_SITE_URL           the deployed origin, for the magic link
+#   NEXT_PUBLIC_SITE_URL           the address people actually type — your
+#                                  custom domain, NOT the .netlify.app one
 #   RESEND_API_KEY                 server only — sends the key (§4.7)
 #   MAIL_FROM                      e.g. thewall <key@thewall.social>
 #
@@ -52,3 +53,12 @@
 #
 # NEXT_PUBLIC_SITE_URL must also be listed under Authentication -> URL
 # Configuration -> Redirect URLs in Supabase, or the magic link is refused.
+#
+# Get NEXT_PUBLIC_SITE_URL wrong and the failure is confusing rather than
+# obvious: keys are emailed to the other origin, following one signs you in
+# *there*, and back on the real site you are a stranger being asked for a name
+# you already chose — while `resend` answers "this browser isn't signed in".
+# The code now prefers the origin the request actually came from, as long as
+# Netlify vouches for it (`URL`, `DEPLOY_PRIME_URL`), which fixes this by itself
+# when the custom domain is the site's primary domain. Set the variable anyway:
+# it is what the fallback uses, and it is what `doctor` checks against.
