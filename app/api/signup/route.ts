@@ -176,7 +176,7 @@ export async function POST(request: Request) {
   // lib/auth/links.ts. The action link bounces through Supabase and comes back
   // with the session in a URL fragment, which a server can never read.
   const delivery = keyLink?.properties?.hashed_token
-    ? await sendMagicLink(body.email, verifyUrl(keyLink.properties.hashed_token))
+    ? await sendMagicLink(body.email, verifyUrl(keyLink.properties.hashed_token, 'magiclink', request))
     : { sent: false, note: 'couldn’t make you a key just now. type resend to try again.' }
 
   return NextResponse.json({ name: validated.name, note: delivery.note })

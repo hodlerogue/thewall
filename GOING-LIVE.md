@@ -208,6 +208,31 @@ callback ran on. If it says `thewallsocial.netlify.app` while you are reading
 `thewall.social`, following a key signs you in on the other origin and leaves
 you a guest on this one.
 
+### "I signed up, followed the link, and it still doesn't know me"
+
+All of these are the same fault, and it is `site url` above:
+
+- the link in the email points at `*.netlify.app` and not your domain
+- following it and coming back still asks what you want to be called
+- `say` keeps answering "check your email to keep saying things"
+- `resend` answers "this browser isn't signed in"
+
+One cause: the key was sent to a different origin, so the session and the
+verification both landed over there. Nothing is broken and nothing is lost —
+the account exists, the name is yours.
+
+**The fix:** set `NEXT_PUBLIC_SITE_URL` to the address people actually type,
+then **redeploy** — it is a `NEXT_PUBLIC_` value, so it is baked in at build
+time and changing it in the Netlify UI does nothing until the next build. Add
+the same URL to Supabase under Authentication → URL Configuration → Redirect
+URLs. Then `resend` from the real domain and follow that key.
+
+The code prefers the origin a request actually came from, so long as Netlify
+vouches for it (`URL`, `DEPLOY_PRIME_URL`), which fixes this on its own when
+your custom domain is the site's **primary** domain rather than an alias. Set
+the variable anyway — it is the fallback, and it is what `doctor` compares
+against.
+
 For the database side, `./scripts/db-check.sh` is the authoritative list.
 
 ---
