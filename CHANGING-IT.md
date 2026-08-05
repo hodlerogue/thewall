@@ -290,6 +290,18 @@ inventing a number.
 is no desktop project. Measure what a thumb can reach — `.tap()` scrolls an
 element into view first, which is how an off-screen chip passed a green suite.
 
+**A second foreign key to the same table breaks every PostgREST embed to it.**
+`author:profiles(name)` resolves by looking for *the* foreign key between the
+two tables. One key, one answer; two keys and PostgREST refuses the whole query
+rather than guessing — so the symptom is not a missing field, it is no data at
+all on every request that runs it. Adding `rooms.created_by` beside
+`rooms.owner_id` did exactly that and took the site down. Nothing in any suite
+could see it: e2e runs on fixtures, and `test:db` talks to Postgres directly and
+never goes near PostgREST. `lib/data/embeds.test.ts` reads the query strings out
+of the source and checks them against the migrations instead. When you add a
+foreign key, name the constraint in every embed to that table:
+`profiles!rooms_owner_id_fkey(name)`.
+
 **The fixture Env must not lie.** The e2e suite runs entirely against
 `fixtureEnv`, so a fixture that disagrees with the database is a green suite
 over a broken site — not a smaller problem than a bug, a bigger one, because it
