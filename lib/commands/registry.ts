@@ -17,6 +17,7 @@ import type { Env } from '@/lib/shell/env'
 import { formatAgo, type PostHit, type PostQuery, type RoomHit } from '@/lib/shell/model'
 import { renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
 import type { Session } from '@/lib/shell/session'
+import { ABOUT_SUMMARY } from '@/lib/guide/about'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
 import { offerInstall } from '@/lib/pwa/install'
 import { DEFAULT_THEME, THEMES, findTheme } from '@/lib/shell/themes'
@@ -622,7 +623,7 @@ export const COMMANDS: readonly Command[] = [
        * eye somewhere to stop, and it puts a short list at the top rather than a
        * wall.
        */
-      const ABOUT = ['mail', 'rename', 'theme', 'install', 'terms', 'privacy', 'what', 'help']
+      const ELSEWHERE = ['about', 'mail', 'rename', 'theme', 'install', 'terms', 'privacy', 'what', 'help']
 
       const here: Line[] = []
       const about: Line[] = []
@@ -631,7 +632,7 @@ export const COMMANDS: readonly Command[] = [
         // §4.8 — the pipe is not on this list. That is the point of it.
         if (command.hidden || !command.contexts.includes(context)) continue
         const line: Line = { text: `${command.verb} — ${command.gloss(context)}`, tone: 'dim' }
-        ;(ABOUT.includes(command.verb) ? about : here).push(line)
+        ;(ELSEWHERE.includes(command.verb) ? about : here).push(line)
       }
 
       const lines: Line[] = [{ text: 'from here you can type:', tone: 'faint' }, ...here]
@@ -813,6 +814,33 @@ export const COMMANDS: readonly Command[] = [
       }
       const { lines, identity } = await session.rename(arg)
       return { lines, identity }
+    },
+  },
+
+  {
+    /*
+     * The one command whose audience is somebody who does not yet know what
+     * they are looking at.
+     *
+     * `help` answers "what can I type" and `what` answers "what does this do",
+     * and neither answers "what is this place". Somebody who lands on a command
+     * prompt on a social site has that question first, and until now the only
+     * answer was to work it out.
+     *
+     * The short version prints here; the whole rundown is a page, for the same
+     * reason the policies are — it has to be readable by somebody who has not
+     * typed anything yet, or who arrived from a link somebody sent them.
+     */
+    verb: 'about',
+    aliases: ['guide', 'intro', 'wtf', 'readme'],
+    contexts: ALL,
+    gloss: () => 'what this place is',
+    detail: () =>
+      'explains what thewall is, why the whole thing is a prompt, and how the pieces fit. the short version prints here; the whole rundown is at thewall.social/about.',
+    insert: () => 'about',
+    wrongContext: () => '',
+    async run() {
+      return { lines: ABOUT_SUMMARY.map((text) => ({ text, tone: 'faint' as const })) }
     },
   },
 

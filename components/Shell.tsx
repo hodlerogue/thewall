@@ -189,6 +189,17 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
             ? [{ text: 'demo — nothing you type here is saved.', tone: 'faint' as const }]
             : []),
           { text: 'type look to see what’s around you, or tap a command below.', tone: 'faint' },
+          /*
+           * One more line, and only for somebody who has not been here before.
+           *
+           * Landing on a command prompt on a social site raises a question that
+           * neither `help` nor `what` answers — they say what you can type, not
+           * what this is. Somebody with a name has already worked it out and
+           * does not need telling every load.
+           */
+          ...(existingName === null
+            ? [{ text: 'new here? type about.', tone: 'faint' as const }]
+            : []),
           { text: '' },
           ...keyLines,
           /*

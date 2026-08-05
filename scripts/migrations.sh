@@ -27,6 +27,7 @@ MIGRATION_PROBES=(
   # No new object — this one re-creates two functions. Probed by behaviour
   # instead: the fixed version joins rooms, so its definition mentions it.
   "20260805020000_mail_respects_hiding.sql|select pg_get_functiondef('public.mail_count()'::regprocedure) like '%hidden_at%'"
+  "20260805030000_about_is_a_route.sql|select exists (select 1 from public.reserved_slugs where slug = 'about')"
 )
 
 probe_for() {

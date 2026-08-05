@@ -12,13 +12,26 @@ Four documents, and this is the third of them:
 The README answers "why is it like this". This answers "I want to add a verb —
 what do I edit, and what will bite me". It is a checklist, not an argument.
 
-There is deliberately **no user manual**. `help` lists what you can type from
-where you are standing, `what <command>` explains any of it in plain English,
-and the palette glosses every verb. §3.6's whole claim is that the interface
-teaches itself, so a page explaining how to use the site would be a concession
-that it does not — and would rot, because it would be the one description of the
-commands not generated from the registry. If something is unclear to a person
-using it, the fix goes in a `gloss` or a `detail`, not into a document.
+**There is a user-facing rundown, and it is not a command reference.**
+`/about` — `lib/guide/about.ts` for the prose, `app/about/page.tsx` for the
+page — says what the place is, why it is a prompt, and how the pieces fit.
+
+That was argued against here for a while, on the grounds that a hand-written
+command list drifts away from the registry and leaves two answers to one
+question with one of them wrong. The argument is right about a *reference* and
+says nothing about the rest: it answers "what can I type" and has nothing for
+somebody looking at a command prompt on a social site and wondering what they
+have found. So the objection is answered rather than overruled — **the list of
+verbs on that page is generated from `COMMANDS`**, and `lib/guide/about.test.ts`
+fails if the prose grows its own copy.
+
+Two rules for it. It renders `gloss`, never `detail`, because `find`'s detail
+carries the pipe example and §4.8 asks that the pipe stay undiscovered rather
+than published under a heading reading "everything you can type". And hidden
+commands stay off it entirely.
+
+Everything else still holds: if something is unclear *while using it*, the fix
+goes in a `gloss` or a `detail`, not into that page.
 
 ---
 

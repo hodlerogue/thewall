@@ -150,3 +150,38 @@ test('install is a command you can find, not a banner you have to dismiss', asyn
   await type(page, 'install')
   await expect(scrollback(page)).toContainText(/menu|home screen/)
 })
+
+
+test('somebody who has just arrived is told where to find out what this is', async ({ page }) => {
+  // A command prompt on a social site raises a question that neither `help` nor
+  // `what` answers: they say what you can type, not what this is.
+  await page.goto('/')
+  await expect(scrollback(page)).toContainText('new here? type about.')
+
+  await type(page, 'about')
+  await expect(scrollback(page)).toContainText('no feed, no likes and no algorithm')
+  // And it says where the rest of it lives, rather than being a dead end.
+  await expect(scrollback(page)).toContainText('/about')
+})
+
+test('the rundown is a page, readable without typing anything', async ({ page }) => {
+  await page.goto('/about')
+
+  await expect(page.locator('h1')).toHaveText('thewall')
+  await expect(page.locator('body')).toContainText('entire interface is a command prompt')
+  await expect(page.locator('body')).toContainText('commons')
+
+  // The command list is generated from the registry, which is the whole reason
+  // this page is allowed to exist — a hand-written one would drift away from
+  // what `help` prints and leave two answers to one question.
+  for (const verb of ['say', 'go', 'look', 'make', 'find', 'mail', 'install']) {
+    await expect(page.locator('.glossary'), verb).toContainText(verb)
+  }
+  // §4.8 — the pipe is still not advertised, here or anywhere.
+  await expect(page.locator('.glossary')).not.toContainText('| count')
+
+  // And it leads back to the prompt and to the policies.
+  await expect(page.locator('a[href="/"]')).toBeVisible()
+  await expect(page.locator('a[href="/terms"]')).toBeVisible()
+  await expect(page.locator('a[href="/privacy"]')).toBeVisible()
+})

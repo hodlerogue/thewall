@@ -22,7 +22,13 @@ Where the code makes a decision the document argued about, the comment cites the
 section. That's deliberate: the reasoning is worth more than the code, and the
 code is short.
 
-Four documents, and each answers a different question:
+`thewall.social/about` is the same thing for people **using** it — what the
+place is, why it is a prompt, and how the pieces fit. It exists against the
+argument below, and answers it rather than overruling it: the part that would
+rot, the list of verbs, is generated from the registry at render time, so the
+page cannot say anything the prompt would not.
+
+Four documents about the *code*, and each answers a different question:
 
 | | |
 |---|---|
@@ -31,10 +37,10 @@ Four documents, and each answers a different question:
 | [`CHANGING-IT.md`](./CHANGING-IT.md) | where things live, and what to do to change one |
 | [`GOING-LIVE.md`](./GOING-LIVE.md) | getting it in front of people, and turning it off |
 
-There is no user manual, on purpose. `help` lists what you can type from where
-you are standing and `what <command>` explains any of it — §3.6's claim is that
-the interface teaches itself, so anything unclear is a bug in a `gloss`, not a
-page somebody has to find.
+`help` lists what you can type from where you are standing and `what <command>`
+explains any of it — §3.6's claim is that the interface teaches itself, so
+anything unclear there is a bug in a `gloss` rather than something to document
+around it.
 
 ## Running it
 
@@ -97,9 +103,9 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 341 unit tests: parser, aliases, errors, signup, search, themes, names, walls
-npm run test:e2e   # 107 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 177 assertions against the real migrations, on a throwaway database
+npm test           # 354 unit tests: parser, aliases, errors, signup, search, themes, names, walls
+npm run test:e2e   # 109 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm run test:db    # 178 assertions against the real migrations, on a throwaway database
 ```
 
 To see what is actually in a deployed project — read-only, and it tells apart
