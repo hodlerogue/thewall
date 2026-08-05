@@ -103,9 +103,9 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 364 unit tests: parser, aliases, errors, signup, search, themes, names, walls
-npm run test:e2e   # 113 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 187 assertions against the real migrations, on a throwaway database
+npm test           # 372 unit tests: parser, aliases, errors, signup, search, themes, names, walls
+npm run test:e2e   # 116 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm run test:db    # 190 assertions against the real migrations, on a throwaway database
 ```
 
 To see what is actually in a deployed project — read-only, and it tells apart
@@ -378,7 +378,14 @@ nobody. `feed` is one room, in the lobby, holding what is on every wall, newest
 first. It has no posts of its own and `create_post` refuses its name; each line
 carries the real `~name/12`, because post numbers are per room and `2` on the
 feed is a different post on every wall. `say` there goes on your own wall, since
-that is the only wall you can add to and it is obviously what somebody means.
+that is the only wall you can add to and it is obviously what somebody means —
+and the confirmation names the whole address, because `go 7` only works inside
+the room the 7 belongs to and the feed is not it.
+
+A room that holds nothing renders as an empty one on every surface that draws a
+room from its posts, which caught four: the URL, the lobby line, the share card,
+and the description in `find --rooms`. Each said some version of "nothing here
+yet" about the busiest thing on the site.
 
 **Hiding reaches the inbox**, which it did not for a long time. Neither `mail()`
 nor `mail_count()` looked at `hidden_at` — not on the reply, not on the post it

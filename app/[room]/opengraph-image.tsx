@@ -1,6 +1,6 @@
 import { OG_CONTENT_TYPE, OG_SIZE, ogCard } from '@/lib/brand/og'
 import { ogEnv } from '@/lib/brand/ogData'
-import { renderRoom } from '@/lib/shell/render'
+import { renderFeed, renderRoom } from '@/lib/shell/render'
 
 /**
  * `thewall.social/music` — the link somebody sends as an invitation.
@@ -22,6 +22,28 @@ export const contentType = OG_CONTENT_TYPE
 
 export default async function Image({ params }: { params: Promise<{ room: string }> }) {
   const { room: slug } = await params
+
+  /*
+   * `feed` holds nothing of its own, so the ordinary path draws a card saying
+   * the room is empty — the same bug the URL had, on the surface where it is
+   * seen by people who have not arrived yet. It is a listing of walls, so the
+   * card is one too.
+   */
+  if (slug === 'feed') {
+    const posts = await readFeed()
+    return ogCard({
+      path: '/feed',
+      lines:
+        posts.length === 0
+          ? [{ text: 'what people are saying on their own walls', tone: 'faint' }]
+          : [
+              { text: 'what people are saying on their own walls', tone: 'faint' },
+              { text: '' },
+              ...renderFeed(posts),
+            ],
+    })
+  }
+
   const room = await readRoom(slug)
 
   if (!room) {
@@ -39,6 +61,15 @@ export default async function Image({ params }: { params: Promise<{ room: string
     path: `/${room.slug}`,
     lines: [{ text: room.gloss, tone: 'faint' }, { text: '' }, ...renderRoom(room)],
   })
+}
+
+async function readFeed() {
+  try {
+    const env = ogEnv()
+    return (await env?.readFeed()) ?? []
+  } catch {
+    return []
+  }
 }
 
 async function readRoom(slug: string) {

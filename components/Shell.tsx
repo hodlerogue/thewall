@@ -10,7 +10,7 @@ import { fixtureEnv, type Env, type FixturePerson } from '@/lib/shell/env'
 import { PEOPLE } from '@/lib/shell/fixtures'
 import { describeError } from '@/lib/shell/errors'
 import { shouldSuggest, suggestion, watchForInstall } from '@/lib/pwa/install'
-import { renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
+import { renderFeed, renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
 import { createClient, isConfigured } from '@/lib/supabase/client'
 import { locationToPath, pathToLocation } from '@/lib/shell/types'
@@ -359,6 +359,19 @@ async function arriveAt(
 
   if (target.room === undefined) {
     return { lines: renderRoomList(rooms), location: {} }
+  }
+
+  /*
+   * `feed` is a room that holds nothing, so the ordinary path renders it as an
+   * empty one — "nothing here yet, say something and it will be the first
+   * thing", which is wrong twice over: it is not empty, and saying something
+   * there does not go there.
+   *
+   * `go feed` was special-cased and this was not, so the bug lived on exactly
+   * one route: the URL, which is the one somebody arrives at from a link.
+   */
+  if (target.room === 'feed') {
+    return { lines: renderFeed(await env.readFeed()), location: { room: 'feed' } }
   }
 
   const room = await env.getRoom(target.room)

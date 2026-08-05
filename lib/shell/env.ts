@@ -146,11 +146,24 @@ export function fixtureEnv(
   // instead of restating the query that decides what a person's posts are.
   const env: Env = {
     async listRooms() {
+      /*
+       * `feed`'s line comes from the walls, because it has no posts of its own
+       * — the same thing `room_overview` does with a lateral that looks at
+       * walls for that one row. Without it the fixture reads "quiet in here"
+       * under the busiest thing on the site while the real one does not, which
+       * is the fixture lying in the direction that matters: the demo and the
+       * e2e suite would both certify a lobby the site does not have.
+       */
+      const newestOnAWall = rooms
+        .filter((room) => room.owner !== undefined)
+        .flatMap((room) => room.posts)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]
+
       // Walls are rooms everywhere except here (§4.2). The real Env gets this
       // for free — `room_overview` filters on `owner_id is null` — and this
       // mirrors it so the lobby reads the same against fixtures.
       return rooms.filter((room) => room.owner === undefined).map((room) => {
-        const latest = visiblePosts(room)[0]
+        const latest = room.slug === 'feed' ? newestOnAWall : visiblePosts(room)[0]
         return {
           slug: room.slug,
           gloss: room.gloss,

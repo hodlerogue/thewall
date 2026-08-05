@@ -1500,7 +1500,24 @@ begin;
     $sql$select public.create_post('feed', 'this should not land')$sql$,
     'nothing can be posted into the feed'
   );
+  -- Rewriting create_post to add that refusal is the sort of edit that quietly
+  -- loses a branch, so the two it must not lose are checked right here.
+  select tests.ok(
+    (public.create_post('music', 'still works after the rewrite')).post_no > 0,
+    'and an ordinary room still takes one'
+  );
+  select tests.raises(
+    $sql$select public.create_post('nosuchroom', 'nowhere')$sql$,
+    'and a room that is not there still says so'
+  );
 commit;
+
+-- The lobby line and the feed itself must agree about what they are showing.
+select tests.ok(
+  (select latest_body from public.room_overview where slug = 'feed')
+    = (select body from public.wall_feed() limit 1),
+  'the lobby line for feed is the newest thing the feed itself shows'
+);
 
 -- Moderation reaches it, like everywhere else.
 insert into public.posts (room_slug, post_no, author_id, body)

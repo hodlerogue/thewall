@@ -472,13 +472,27 @@ export class Session {
         return { lines: [{ text: 'said.', tone: 'faint' }], failed: false }
       }
 
+      /*
+       * A wall post is named in full, and that is not decoration.
+       *
+       * `go 7` only works while you are standing in the room the 7 belongs to.
+       * Saying something on your own wall can happen from two places that are
+       * not it — your page, and the feed — and on the feed a bare number is
+       * refused outright, because 7 is a different post on every wall. So the
+       * site was handing somebody an instruction that fails when followed,
+       * which is §3.7's whole prohibition.
+       *
+       * `~jameson/7` works from everywhere, including both of those.
+       */
+      const address = location.room.startsWith('~') ? `${location.room}/${postNo}` : `${postNo}`
+
       return {
         lines: [
           { text: `said — it’s post ${postNo}.`, tone: 'faint' },
           // What the number is *for*. On its own it reads as a receipt; the
           // point of it is that it is the address replies arrive at, and that
           // it is the same number in the URL (§3.4).
-          { text: `go ${postNo} opens it, which is where replies land.`, tone: 'faint' },
+          { text: `go ${address} opens it, which is where replies land.`, tone: 'faint' },
         ],
         failed: false,
       }

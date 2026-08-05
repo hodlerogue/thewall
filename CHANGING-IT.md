@@ -339,6 +339,15 @@ of the source and checks them against the migrations instead. When you add a
 foreign key, name the constraint in every embed to that table:
 `profiles!rooms_owner_id_fkey(name)`.
 
+**A room that holds nothing renders as an empty one, on every surface you
+forget.** `feed` has no posts of its own — it shows what is on the walls — so
+anything that draws a room from `room.posts` draws it empty and says "nothing
+here yet, say something and it will be the first thing", which is wrong twice
+over. `go feed` was special-cased first and four other surfaces were not: the
+URL (`arriveAt`), the lobby line (`room_overview` and `fixtureEnv.listRooms`),
+the share card, and the count in `find --rooms`. When something is a view rather
+than a container, walk all five.
+
 **The fixture Env must not lie.** The e2e suite runs entirely against
 `fixtureEnv`, so a fixture that disagrees with the database is a green suite
 over a broken site — not a smaller problem than a bug, a bigger one, because it

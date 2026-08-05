@@ -15,7 +15,7 @@
 import { parseFlags, parseSince, splitStages } from '@/lib/commands/pipeline'
 import type { Env } from '@/lib/shell/env'
 import { formatAgo, type PostHit, type PostQuery, type RoomHit } from '@/lib/shell/model'
-import { renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
+import { renderFeed, renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
 import type { Session } from '@/lib/shell/session'
 import { ABOUT_SUMMARY } from '@/lib/guide/about'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
@@ -1170,45 +1170,6 @@ function renderHits(hits: readonly PostHit[], term?: string): Line[] {
   return lines
 }
 
-/**
- * The feed: everything on everybody's walls, newest first.
- *
- * Rendered like search hits rather than like a room, because that is what it
- * is. A room listing puts a bare number in front of each post, and a bare
- * number is meaningless here — `2` is a different post on every wall. The
- * address carries the name, which is also what `go` wants back.
- */
-function renderFeed(posts: readonly PostHit[]): Line[] {
-  if (posts.length === 0) {
-    return [
-      { text: 'nothing on anybody’s wall yet.', tone: 'faint' },
-      { text: 'go ~yourname and say something, and it shows up here.', tone: 'faint' },
-    ]
-  }
-
-  const lines: Line[] = []
-  for (const post of posts) {
-    lines.push({
-      text: `${post.room}/${post.id}  ${post.author}, ${formatAgo(post.createdAt)}`,
-      tone: 'dim',
-    })
-    lines.push({ text: post.body, depth: 1 })
-    if (post.replies) {
-      lines.push({
-        text: `${post.replies} ${post.replies === 1 ? 'reply' : 'replies'} — go ${post.room}/${post.id}`,
-        tone: 'faint',
-        depth: 1,
-      })
-    }
-    lines.push({ text: '' })
-  }
-  lines.push({
-    text: 'anybody can answer any of these. say something here and it goes on your own wall.',
-    tone: 'faint',
-  })
-  return lines
-}
-
 /** Rooms as results. Says which are quiet, because that decides whether to go. */
 function renderRoomHits(hits: readonly RoomHit[], term: string): Line[] {
   if (hits.length === 0) {
@@ -1228,7 +1189,12 @@ function renderRoomHits(hits: readonly RoomHit[], term: string): Line[] {
       // A room with nothing in it and a room nobody has been in for a month are
       // different invitations, and the count is what tells them apart.
       text:
-        hit.posts === 0
+        // feed counts zero because it holds nothing — the posts it shows are on
+        // walls. Reporting that as "nothing in it yet" is the empty-room lie in
+        // a third place.
+        hit.slug === FEED
+          ? 'everything anybody has put on their own wall'
+          : hit.posts === 0
           ? 'nothing in it yet'
           : `${hit.posts} ${hit.posts === 1 ? 'post' : 'posts'}${
               hit.latestAt ? `, newest ${formatAgo(hit.latestAt)}` : ''

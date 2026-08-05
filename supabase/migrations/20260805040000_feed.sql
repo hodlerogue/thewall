@@ -166,7 +166,10 @@ left join lateral (
     from public.posts p
     join public.rooms pr on pr.slug = p.room_slug
    where (
-           (r.slug = 'feed' and pr.owner_id is not null and pr.hidden_at is null)
+           -- Same filters `wall_feed` uses, or the lobby advertises a post the
+           -- feed itself will not show.
+           (r.slug = 'feed' and pr.owner_id is not null
+              and pr.hidden_at is null and pr.archived_at is null)
            or (r.slug <> 'feed' and p.room_slug = r.slug)
          )
      and p.hidden_at is null

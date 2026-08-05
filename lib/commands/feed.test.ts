@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createRunner } from '@/lib/commands/run'
+import { renderFeed, renderRoomList } from '@/lib/shell/render'
 import { fixtureEnv } from '@/lib/shell/env'
 import { ROOMS } from '@/lib/shell/fixtures'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
@@ -151,5 +152,85 @@ describe('the feed', () => {
     const { run } = harness()
     const out = text((await run('make feed something else', LOBBY)).lines)
     expect(out).toContain('spoken for')
+  })
+})
+
+
+describe('the feed is never rendered as an empty room', () => {
+  /*
+   * It is a room that holds nothing, so every surface that draws a room from
+   * its posts draws it empty — "nothing here yet, say something and it will be
+   * the first thing", which is wrong twice: it is not empty, and saying
+   * something there does not go there.
+   *
+   * `go feed` was special-cased and three other surfaces were not, so the bug
+   * lived on the URL somebody arrives at from a link, on the lobby line, and on
+   * the share card. Each is asserted here rather than trusted.
+   */
+  it('has a lobby line, taken from the walls it shows', async () => {
+    const { run } = harness()
+    void run
+
+    const rooms = await fixtureEnv().listRooms()
+    const feed = rooms.find((room) => room.slug === 'feed')!
+
+    expect(feed.latest, 'the feed line came back empty').toBeDefined()
+    expect(feed.latest!.body).toContain('neighbours own fans')
+  })
+
+  it('never says "quiet in here" under itself', async () => {
+    const lines = renderRoomList(await fixtureEnv().listRooms()).map((l) => l.text)
+    const at = lines.indexOf('feed')
+    expect(at, 'feed is not in the lobby').toBeGreaterThan(-1)
+    expect(lines[at + 1]).not.toBe('quiet in here')
+  })
+
+  it('renders as a listing, not as a room with nothing in it', async () => {
+    const out = renderFeed(await fixtureEnv().readFeed()).map((l) => l.text).join('\n')
+    expect(out).not.toContain('nothing here yet')
+    expect(out).toContain('~marisol/2')
+  })
+
+  it('says what would fill it only when it really is empty', () => {
+    const out = renderFeed([]).map((l) => l.text).join('\n')
+    expect(out).toContain('nothing on anybody’s wall yet')
+    // And not the room version, which invites a post that would be refused.
+    expect(out).not.toContain('say something and it will be the first thing')
+  })
+
+  it('is described by what it shows when searched for, not by its own count', async () => {
+    const { run } = harness()
+    const out = text((await run('find --rooms feed', LOBBY)).lines)
+
+    expect(out).toContain('everything anybody has put on their own wall')
+    expect(out).not.toContain('nothing in it yet')
+  })
+})
+
+describe('what the feed tells you after you say something', () => {
+  it('gives an address that works from where you are standing', async () => {
+    /*
+     * `go 7` only works inside the room the 7 belongs to. Saying something from
+     * the feed puts it on your wall, and on the feed a bare number is refused
+     * outright — so the confirmation was handing somebody an instruction that
+     * fails when followed, which is the one thing §3.7 forbids.
+     */
+    const { run } = harness('jameson')
+    const out = text((await run('say a thing for my own wall', FEED)).lines)
+
+    expect(out).toContain('~jameson/7')
+    expect(out).not.toMatch(/go 7 opens it/)
+  })
+
+  it('and that address really resolves', async () => {
+    const { run } = harness('marisol')
+    const result = await run('go ~marisol/2', FEED)
+    expect(result.location).toEqual({ room: '~marisol', postId: 2 })
+  })
+
+  it('still says the bare number in a room, where the bare number is right', async () => {
+    const { run } = harness('jameson')
+    const out = text((await run('say found my dad’s records', { room: 'music' })).lines)
+    expect(out).toMatch(/go 7 opens it/)
   })
 })
