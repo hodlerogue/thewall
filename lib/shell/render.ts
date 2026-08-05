@@ -14,6 +14,34 @@ import type { Line } from '@/lib/shell/types'
  */
 
 /**
+ * Time runs down the screen, once.
+ *
+ * Every query here asks for the newest N — `order by created_at desc limit 30`
+ * — and that is right, because the newest N is what you want. It was then also
+ * *printed* in that order, and that was wrong, for a reason particular to a
+ * scrollback rather than a page.
+ *
+ * A page starts at the top, so newest-first puts the newest thing where the eye
+ * lands. This does the opposite: `Terminal` sets `scrollTop = scrollHeight`
+ * after every command, so the view lands on the **end** of what was printed.
+ * Printing newest-first therefore filled the screen with the oldest posts in
+ * the room and scrolled the newest ones off the top — the exact opposite of
+ * what asking for the newest thirty was for.
+ *
+ * It also ran time in two directions at once. Your commands and their output
+ * accumulate downward, so the scrollback is already oldest-at-top; a room whose
+ * posts ran the other way meant scrolling up moved forward in time inside one
+ * block and backward between blocks.
+ *
+ * So: fetch newest-first, print oldest-first. The newest thing ends up directly
+ * above the prompt, which is both where you are looking and what you are most
+ * likely to answer.
+ */
+function oldestFirst<T>(items: readonly T[]): T[] {
+  return [...items].reverse()
+}
+
+/**
  * §3.11 — proof of life: the difference between a busy building and a list of
  * doors. And §4.2's mitigation, now that anybody can add a door.
  *
@@ -80,7 +108,7 @@ export function renderFeed(posts: readonly PostHit[], now = new Date()): Line[] 
   }
 
   const lines: Line[] = []
-  for (const post of posts) {
+  for (const post of oldestFirst(posts)) {
     lines.push({
       text: `${post.room}/${post.id}  ${post.author}, ${formatAgo(post.createdAt, now)}`,
       tone: 'dim',
@@ -118,7 +146,7 @@ export function renderRoom(room: Room, now = new Date()): Line[] {
     return lines
   }
 
-  for (const post of room.posts) {
+  for (const post of oldestFirst(room.posts)) {
     // The number comes first because it is the address, and it is permanent.
     lines.push({
       text: room.ephemeral
@@ -197,7 +225,7 @@ export function renderProfile(profile: Profile, now = new Date()): Line[] {
     return lines
   }
 
-  for (const post of profile.posts) {
+  for (const post of oldestFirst(profile.posts)) {
     /*
      * The address, not the author: you already know whose page this is. But
      * "(reply)" is not optional, and leaving it off was a real regression.
@@ -215,6 +243,8 @@ export function renderProfile(profile: Profile, now = new Date()): Line[] {
     lines.push({ text: post.body, depth: 1 })
   }
 
+  // Still the newest — `profile.posts` arrives newest-first and only the
+  // printing was reversed, so this is the one now sitting directly above.
   const newest = profile.posts[0]
   lines.push({ text: '' })
   lines.push({

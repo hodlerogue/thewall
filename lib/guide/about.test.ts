@@ -29,7 +29,7 @@ describe('the rundown', () => {
     // The failure this catches is prose that outlives a rename: a paragraph
     // telling somebody to type a verb the registry no longer has.
     const mentioned = new Set(
-      [...prose.matchAll(/\b(go|say|look|leave|reply|make|find|mail|rename|install|theme|help|what|about|who|resend|terms|privacy) /g)].map(
+      [...prose.matchAll(/\b(go|say|look|leave|reply|make|find|mail|rename|install|theme|help|what|about|who|resend|login|terms|privacy) /g)].map(
         (m) => m[1],
       ),
     )
@@ -50,6 +50,25 @@ describe('the rundown', () => {
       const looksLikeAList = section.body.filter((line) => /^[a-z]+ — /.test(line)).length
       expect(looksLikeAList, section.heading).toBe(0)
     }
+  })
+
+  it('tells somebody on a new phone how to get back in', () => {
+    /*
+     * The one question this page did not answer, and the most expensive one to
+     * leave unanswered: somebody who cannot find the way back makes a second
+     * account under a second name, and the first one's history is gone for
+     * good. The verb has to appear, and it has to appear with a reason to use
+     * it that somebody would recognise as their situation.
+     */
+    expect(prose).toMatch(/\blogin\b/)
+    expect(prose).toMatch(/new phone|clearing your browser/i)
+  })
+
+  it('does not say which way a list runs, now that it runs the other way', () => {
+    // "newest first" was written in two places and became false when the
+    // scrollback's snap-to-bottom argument won. A doc describing the opposite
+    // of what the screen does is worse than one that does not mention it.
+    expect(prose).not.toMatch(/newest first/i)
   })
 
   it('does not promise anything the product does not do', () => {

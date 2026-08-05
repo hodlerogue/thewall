@@ -37,16 +37,16 @@ export const ABOUT: readonly GuideSection[] = [
     heading: 'What this is',
     body: [
       'thewall.social is a social site where the entire interface is a command prompt. You type words, and it does things. There is no algorithm deciding what you see next, no like button and no follower count.',
-      'It is one place made of rooms. You walk into a room, read what people have said there, and say something back. That is the whole shape of it.',
-      'Everything anybody says here is written by a person, to be read by a person. That is the whole product.',
+      'It is one place made of rooms: you walk into one, read what people said there, and say something back.',
+      'Everything here is written by a person, to be read by a person. That is the whole product.',
     ],
   },
   {
     heading: 'Why a prompt',
     body: [
-      'Because it answers "where am I" without being asked. The text before your cursor — jameson:music/12$ — is your name, the room you are in, and what you are reading. Nothing else on the screen is spent saying that.',
+      'Because it answers "where am I" without being asked. The text before your cursor — jameson:music/12$ — is your name, the room, and what you are reading. Nothing else on the screen is spent saying that.',
       'Because it cannot scroll forever. A room holds what people said in it, and when you have read it you have read it.',
-      'And because it teaches itself: help lists everything you can type from where you are standing, and what <command> explains any of it. If you have never opened a terminal, you do not need to have — the buttons above the prompt put the words in.',
+      'And because it teaches itself: help lists everything you can type from where you are standing, and what <command> explains any of it. If you have never opened a terminal, you do not need to have.',
     ],
   },
   {
@@ -62,22 +62,23 @@ export const ABOUT: readonly GuideSection[] = [
     body: [
       'say, and then what you want to say. In a room that starts a new post; inside a post it adds a reply. reply does the same thing there.',
       'You do not need an account to read anything. The first time you try to say something, you are asked what to call you and where to send a sign-in link — and then the sentence you already typed is posted for you. You never type it twice.',
-      'There are no passwords; signing in is a link. Your address is never shown to anybody and never sold. You can say one thing before following that link — after that it asks you to check your email, because an address nobody has proved they can read is no way back in on a new phone.',
+      'There are no passwords; signing in is a link. Your address is never shown to anybody and never sold. You can say one thing before following that link — after that it asks you to check your email, because an address nobody has proved they can read is no way back in.',
+      'And that is what it is a way back in for. On a new phone, or after clearing your browser, type login and your name: a key goes to the address that name signed up with, and clicking it makes this browser you again. Never make a second account to get back in — your posts stay with the first name.',
     ],
   },
   {
     heading: 'commons, which keeps nothing',
     body: [
       'One room is different. commons is a hallway: everything said there is gone in 24 hours, there are no post numbers, and there are no replies. It is for the thing not worth keeping.',
-      'That is enforced by the database rather than by a setting — commons is structurally incapable of holding on to anything. Everywhere else keeps what you said until you ask for it to be removed.',
+      'That is enforced by the database, not a setting: commons is structurally incapable of holding on to anything. Everywhere else keeps what you said until you ask for it to be removed.',
     ],
   },
   {
     heading: 'Your page, and your wall',
     body: [
-      'go ~yourname — with the tilde — shows somebody: when they arrived, and the recent things they have said, each with the address it lives at.',
+      'go ~yourname — with the tilde — shows somebody: when they arrived, and what they have said lately, each with the address it lives at.',
       'Your own page is also your wall. Say something there and it goes on the wall rather than into a room. Only you can start something there; anybody can answer it.',
-      'Walls never appear in the lobby — a room for every person would turn a building into a directory. go feed is where they all are instead: everything anybody has put on their own wall, newest first, each with the address to walk to. Say something while you are there and it goes on your wall.',
+      'Walls never appear in the lobby — a room for every person would turn a building into a directory. go feed is where they all are instead: everything anybody has put on their own wall, each with the address to walk to. Say something there and it goes on your wall.',
     ],
   },
   {
@@ -85,26 +86,26 @@ export const ABOUT: readonly GuideSection[] = [
     body: [
       'make garden asks what the room is for, then opens it and walks you in. You need to have followed your sign-in link, and you can make three in any seven days.',
       'A room you make is not yours. There is no owner and no moderator — inside it you are another person in a room, like anywhere else.',
-      'It sits in the lobby while people are talking in it and drops out of the listing after a fortnight of silence. It is not deleted: it keeps its name, its posts and its address, search finds it, and it comes back the moment somebody says something in it.',
+      'It sits in the lobby while people are talking in it, and drops out of the listing after a fortnight of silence — not deleted, just unlisted. Search still finds it, and it returns the moment somebody says something in it.',
     ],
   },
   {
     heading: 'Finding things',
     body: [
-      'find tomatoes looks through everything anybody has said — posts and replies both — and gives you each one with the address to walk to. Narrow it with --room=kitchen, --by=marisol or --since=7d.',
+      'find tomatoes looks through everything anybody has said — posts and replies both — and gives you each with the address to walk to. Narrow it with --room=kitchen, --by=marisol or --since=7d.',
       'find --rooms growing searches rooms instead, by name and by what they are for.',
     ],
   },
   {
     heading: 'Replies to you',
     body: [
-      'When somebody answers something you said, a count appears above the prompt. mail lists them, newest first, each with the address to go and answer. Nothing is pushed and nothing is emailed — it waits until you ask, and reading it clears the count.',
+      'When somebody answers something you said, a count appears above the prompt. mail lists them, each with the address to go and answer. Nothing is pushed and nothing is emailed — it waits until you ask, and reading it clears the count.',
     ],
   },
   {
     heading: 'Your name',
     body: [
-      'rename betterchoice changes what you are called, as often as you like. Two things worth knowing first: everything you have ever said follows the new name, and the name you leave is free for anybody to take the same minute — so do not release one you want back.',
+      'rename betterchoice changes what you are called, as often as you like. Two things worth knowing: everything you have ever said follows the new name, and the name you leave is free for anybody to take the same minute.',
       'If a name recently belonged to somebody else, that is shown on the page of whoever holds it now, as a date and never as a person. It is there so a reader is not fooled.',
     ],
   },
@@ -122,7 +123,7 @@ export const ABOUT: readonly GuideSection[] = [
     heading: 'On a phone',
     body: [
       'This was designed on a 380-pixel screen before anything else. The buttons above the prompt are the commands that make sense where you are standing, and tapping one puts the word in rather than running it.',
-      'install adds it to your home screen, where it opens full screen without the browser around it. On an iPhone the browser will not let a page do that, so it tells you which two taps to make instead.',
+      'install adds it to your home screen, where it opens without the browser around it. On an iPhone the browser will not let a page do that, so it tells you which two taps to make instead.',
     ],
   },
   {

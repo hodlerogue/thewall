@@ -51,7 +51,17 @@ export default async function Image() {
         // The card column is 59 characters; the attribution needs the rest.
         32,
       ),
-      { text: `…and ${ROOMS.length - shown.length} more rooms.`, tone: 'faint' },
+      {
+        /*
+         * Lobby rooms, not every row in ROOMS. Walls live in that array because
+         * everything which walks rooms has to find them, and they are the one
+         * thing never in the listing (§4.2) — so counting the array advertised a
+         * door that does not exist. Wrong by one since walls landed, and by one
+         * again when `feed` arrived, which is how it got noticed.
+         */
+        text: `…and ${ROOMS.filter((room) => room.owner === undefined).length - shown.length} more rooms.`,
+        tone: 'faint',
+      },
     ],
   })
 }

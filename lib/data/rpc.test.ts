@@ -34,6 +34,24 @@ interface Call {
   args: string[]
 }
 
+/**
+ * Comments out, before anything reads the source as code.
+ *
+ * A scanner that treats prose as syntax reports defects that are not there, and
+ * this one did: a `// The account, not the caller.` line sitting inside an
+ * argument object was split on the comma and read as two parameters named
+ * `// The account` and `not the caller.` — a failure about an RPC that was
+ * correct, naming arguments nobody wrote.
+ *
+ * This is the third source-reading test in the repo to be tripped by a comment
+ * near the thing it matches, which is why it is now a named function rather
+ * than a fix in place. Comments are where the reasoning lives here; a guard
+ * that punishes writing them is a guard that will get the comments deleted.
+ */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+}
+
 function callSites(): Call[] {
   const calls: Call[] = []
   // `.rpc('name')` or `.rpc('name', { p_a: …, p_b: … })`. The argument object is
@@ -42,7 +60,7 @@ function callSites(): Call[] {
 
   for (const dir of ['lib', 'app', 'components']) {
     for (const file of walk(join(ROOT, dir))) {
-      const source = readFileSync(file, 'utf8')
+      const source = stripComments(readFileSync(file, 'utf8'))
       for (const match of source.matchAll(pattern)) {
         const args = (match[2] ?? '')
           .split(',')

@@ -85,6 +85,22 @@ Terminal.tsx ──typed text──> run.ts ──parse──> registry.ts ─�
 | `lib/data/live.ts` | realtime: presence, and posts arriving while you stand there |
 | `lib/supabase/{client,server,reader}.ts` | the three clients: browser, route handler, and unauthenticated read |
 
+**Getting in and back in.** Four routes, and they are easy to confuse because
+three of them mint magic links for different reasons.
+
+| File | What it owns |
+|---|---|
+| `app/api/signup/route.ts` | §3.9 — makes the account, signs it in now, mails the key |
+| `app/api/verify/resend/route.ts` | another key for **this** session, when the first expired |
+| `app/api/login/route.ts` | a key for a name, for a browser with **no** session — the way back in |
+| `app/auth/callback/route.ts` | the only thing that has ever made somebody signed in |
+
+`login` and `resend` are not variants of each other. `resend` reads the address
+off `auth.getUser()`, so it cannot work without a session; `login` exists
+precisely for the case where there is none, takes a public name, and is
+therefore the one that needs two rate limits — one per caller, one per account
+aimed at, so nobody can fill a stranger's inbox with keys.
+
 **React**, of which there is deliberately very little.
 
 | File | What it owns |
@@ -147,6 +163,14 @@ file — and to `OWN_WALL_CHIPS` if it belongs on your own page.
 - **`pipeable: true`** is what opts a verb into `|` splitting. Without it a pipe
   character is just a character in your sentence, which is what keeps `say i
   like cats | dogs` from becoming a syntax error nobody asked for.
+- **`hidden: true` is only safe when something else names the verb.** `resend`
+  can hide because the message that needs it says "type resend". `login` cannot,
+  because the person who needs it has no session, so no message has fired, and
+  they are looking at exactly what a stranger sees. Ask who has to find this and
+  what they are looking at when they need it.
+- **The second `help` group prints in `ELSEWHERE` order, not registry order.**
+  It used to follow the file, which put every newly added verb last by accident.
+  If a verb belongs near the top of that list, put it near the top of the array.
 
 ## Add a room
 
@@ -300,6 +324,32 @@ refusal that identity would not lift.
 **Errors teach** (§3.7). Name the fix, name a real one, and never say "invalid
 syntax". If an error names an address, resolve one that exists rather than
 inventing a number.
+
+**An error's suggested fix has to be one the site will accept.** Stronger than
+the rule above, and learned the expensive way. Every individual message in the
+loop below was true, helpful in tone, and named a next step:
+
+```
+resend  → "this browser isn't signed in. say something and i'll ask for your
+           address again — if the name is already yours, use the same one."
+say     → "what should i call you?"
+ryan    → "ryan is taken. ryan2, ryan_ are free."
+```
+
+Followed end to end, that walked a returning person into a **second account**,
+and the first name's history stayed on the name they had abandoned. Nothing was
+wrong at any single step; the advice was wrong as a path. When you write an
+error that says "try X", type X into the thing and see what it answers.
+
+**Time runs down the screen, once.** `Terminal` sets `scrollTop = scrollHeight`
+after every command, so the view lands on the **last line printed**, not the
+first. Anything time-ordered must therefore print oldest-first, or the screen
+fills with the oldest items and the newest scroll away above — which is the
+opposite of what `order by created_at desc limit 30` was asking for. Fetch
+newest-first, print oldest-first: `oldestFirst()` in `lib/shell/render.ts`, and
+`lib/shell/order.test.ts` pins all five surfaces. This was wrong in five places
+at once for the whole of the project's life, because every renderer was checked
+for *what* it printed and none for the order.
 
 **Mobile is the kill condition** (§8). Every e2e test runs at 380×740 and there
 is no desktop project. Measure what a thumb can reach — `.tap()` scrolls an

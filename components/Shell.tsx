@@ -435,6 +435,23 @@ function fixtureSignup(people: FixturePerson[]): SignupApi {
     async resend() {
       return { note: 'nothing to send — this is a demo.' }
     },
+    async login(name: string) {
+      // Both branches, not a single cheerful one. `login` is reachable from
+      // `help` here as it is anywhere, so the fixture build is where somebody
+      // finds out what it does — and "no one is called that" is half of what
+      // it does.
+      if (!taken.has(name) && !people.some((person) => person.name === name)) {
+        return {
+          ok: false as const,
+          reason: `no one here is called ${name}. if you’ve not been here before, say something and i’ll set you up.`,
+        }
+      }
+      return {
+        ok: true as const,
+        name,
+        note: 'nothing was sent — this is a demo. on the real site a key would be in that account’s inbox.',
+      }
+    },
     async create(name: string) {
       // Nothing is stored anywhere, but the demo does have to be able to show
       // you `~yourname` a second later, or `say` on your own wall has nowhere
