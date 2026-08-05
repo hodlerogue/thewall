@@ -103,9 +103,9 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 372 unit tests: parser, aliases, errors, signup, search, themes, names, walls
+npm test           # 375 unit tests: parser, aliases, errors, signup, search, themes, names, walls
 npm run test:e2e   # 116 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 190 assertions against the real migrations, on a throwaway database
+npm run test:db    # 195 assertions against the real migrations, on a throwaway database
 ```
 
 To see what is actually in a deployed project — read-only, and it tells apart
@@ -138,9 +138,14 @@ both are correctness rather than preference:
   `posts`, and a trigger refuses replies in ephemeral rooms. Commons is
   structurally incapable of keeping anything or growing a thread.
 
-Grants are column-scoped rather than table-wide, which is the difference between
-a policy that constrains *whose row it is* and one that constrains *what may
-change in it*. Both bypasses that cost — self-verification and future-dating a
+Grants are column-scoped rather than table-wide, **on the way in as well as on
+the way out**, which is the difference between a policy that constrains *whose
+row it is* and one that constrains *what may change in it*. The UPDATE half was
+closed early; INSERT was left table-wide for a long time and was the same hole —
+a session with no profile row could create one with `verified_at` already set
+and walk through the §4.7 gate without an inbox, and could choose the
+`created_at` on its own replies, which decides both where a reply sorts in a
+thread and whether it can ever be cleared from somebody's mail. Both bypasses that cost — self-verification and future-dating a
 commons post out of its own expiry — were reachable from the browser console
 with the anon key that ships in the bundle, and each now has its own negative
 assertion aimed at the user's own row.

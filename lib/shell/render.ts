@@ -198,8 +198,20 @@ export function renderProfile(profile: Profile, now = new Date()): Line[] {
   }
 
   for (const post of profile.posts) {
-    // The address, not the author: you already know whose page this is.
-    lines.push({ text: `${post.room}/${post.id}  ${formatAgo(post.createdAt, now)}`, tone: 'dim' })
+    /*
+     * The address, not the author: you already know whose page this is. But
+     * "(reply)" is not optional, and leaving it off was a real regression.
+     *
+     * A profile lists what somebody has said, and once search learned to cover
+     * replies this started including them — rendered identically to posts. So
+     * marisol's page showed `music/12` above her answer to jameson's post, as
+     * though the post were hers; following that address lands on his. `find`
+     * grew the marker at the time and this did not.
+     */
+    lines.push({
+      text: `${post.room}/${post.id}  ${formatAgo(post.createdAt, now)}${post.isReply ? '  (reply)' : ''}`,
+      tone: 'dim',
+    })
     lines.push({ text: post.body, depth: 1 })
   }
 

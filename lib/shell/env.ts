@@ -105,8 +105,13 @@ export type FixturePerson = {
   nameChangedHands?: Date
 }
 
-/** Mirrors `reserved_slugs` in the schema — every one a real path under app/. */
-const RESERVED_SLUGS = new Map([
+/**
+ * Mirrors `reserved_slugs` in the schema — every one a real path under app/.
+ *
+ * Exported so a test can compare it against the migrations rather than against
+ * somebody remembering to.
+ */
+export const RESERVED_SLUGS = new Map([
   ['lobby', 'the lobby lives there'],
   ['about', 'that is a route'],
   ['api', 'that is a route'],

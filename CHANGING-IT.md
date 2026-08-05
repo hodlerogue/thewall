@@ -339,6 +339,13 @@ of the source and checks them against the migrations instead. When you add a
 foreign key, name the constraint in every embed to that table:
 `profiles!rooms_owner_id_fkey(name)`.
 
+**Column-scope INSERT too, not just UPDATE.** A row policy answers "whose row
+is it" and says nothing about which columns. That was fixed for UPDATE early and
+left open on INSERT for months, where it was the same hole: the row's *first*
+write is still a write. Before granting a browser INSERT on anything, ask which
+columns it actually needs — and whether it needs the grant at all, since the
+signup route uses the service role and did not need the one it had.
+
 **A room that holds nothing renders as an empty one, on every surface you
 forget.** `feed` has no posts of its own — it shows what is on the walls — so
 anything that draws a room from `room.posts` draws it empty and says "nothing

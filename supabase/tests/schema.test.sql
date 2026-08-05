@@ -1455,6 +1455,76 @@ select tests.ok(
 );
 
 \echo ''
+\echo 'columns, on the way in as well as on the way out'
+
+-- The UPDATE half of this was closed long ago; INSERT was left table-wide, and
+-- it is the same hole. A session with no profile row could create one with any
+-- column set — verified_at included — and walk through the §4.7 gate without an
+-- inbox. A session with no profile row is reachable: this app always creates it
+-- server-side, but the anon key can talk to GoTrue's own signup endpoint, which
+-- makes a user and no profile.
+insert into auth.users (
+  id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+  confirmation_token, recovery_token, email_change, email_change_token_new,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+values ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', '00000000-0000-0000-0000-000000000000',
+        'authenticated', 'authenticated', 'noprofile@seed.invalid', '', now(),
+        '', '', '', '', '{}'::jsonb, '{}'::jsonb, now(), now())
+on conflict (id) do nothing;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+
+  select tests.raises(
+    $sql$insert into public.profiles (id, name, verified_at)
+         values ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'selfmade', now())$sql$,
+    'nobody can insert themselves a profile, verified or otherwise'
+  );
+commit;
+
+select tests.ok(
+  not exists (select 1 from public.profiles where name = 'selfmade'),
+  'and none was made'
+);
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+
+  -- §4.1 counts a reply unread while created_at > mail_seen_at, so a reply
+  -- dated next year sits in an inbox permanently and reading does not clear it.
+  -- §4.3 sorts replies chronologically, so a chosen past date puts an answer
+  -- above answers written before it.
+  select tests.raises(
+    $sql$insert into public.replies (post_id, author_id, body, created_at)
+         select id, '99999999-9999-4999-8999-999999999999', 'from the future',
+                now() + interval '1 year'
+           from public.posts where room_slug = 'music' limit 1$sql$,
+    'nor choose when their own reply was written'
+  );
+  select tests.raises(
+    $sql$insert into public.replies (post_id, author_id, body, hidden_at)
+         select id, '99999999-9999-4999-8999-999999999999', 'pre-hidden', now()
+           from public.posts where room_slug = 'music' limit 1$sql$,
+    'nor set the operator''s column on the way in'
+  );
+  -- And the three columns the client actually writes still go through. A plain
+  -- statement, not wrapped in a CTE: Postgres will not have a data-modifying
+  -- WITH anywhere but the top level, so the tidier-looking version does not run.
+  insert into public.replies (post_id, author_id, body)
+  select id, '99999999-9999-4999-8999-999999999999', 'an ordinary reply'
+    from public.posts where room_slug = 'music' limit 1;
+
+  select tests.ok(
+    exists (select 1 from public.replies where body = 'an ordinary reply'),
+    'while an ordinary reply is unaffected'
+  );
+commit;
+
+delete from public.replies where body = 'an ordinary reply';
+
+\echo ''
 \echo 'feed — every wall in one place, and nothing of its own'
 
 select tests.ok(
