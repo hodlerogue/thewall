@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   // the links were built by hand — by everybody, since Supabase's own
   // action_link comes back with the session in a fragment the server cannot see.
   if (!tokenHash) {
-    return NextResponse.redirect(withOutcome(next, url.origin, 'expired'))
+    return backTo(next, 'expired')
   }
 
   const supabase = await createRouteClient()
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     // is the normal state of this site — but it has to be said, because a link
     // that silently does nothing is indistinguishable from one that worked.
     console.error(`could not verify a key — ${error?.message ?? 'no user returned'}`)
-    return NextResponse.redirect(withOutcome(next, url.origin, 'expired'))
+    return backTo(next, 'expired')
   }
 
   // They can read the inbox. That is the claim §4.7 needs, and now it is true.
@@ -67,26 +67,54 @@ export async function GET(request: Request) {
           ? '\n  mark_verified() does not exist on this project. Apply the migrations: ./scripts/db-deploy.sh'
           : ''),
     )
-    return NextResponse.redirect(withOutcome(next, url.origin, 'failed'))
+    return backTo(next, 'failed')
   }
 
   // Said out loud, because until now following the link produced no feedback of
   // any kind: you clicked, you landed, and nothing on the page had changed.
-  return NextResponse.redirect(withOutcome(next, url.origin, 'ok'))
+  return backTo(next, 'ok')
 }
 
 type KeyOutcome = 'ok' | 'failed' | 'expired'
 
 /**
- * The landing path, carrying what happened to the key.
+ * Back to where they were, carrying what happened to the key.
  *
- * A query parameter rather than a cookie or a redirect to a dedicated page:
- * §3.4 makes the path the prompt's location, so verification cannot have a
- * page of its own without inventing a place that is not a place. The shell
- * reads this once on boot and strips it, leaving the address it should have.
+ * The outcome travels as a query parameter rather than a cookie or a page of
+ * its own: §3.4 makes the path the prompt's location, so verification cannot
+ * have a page without inventing a place that is not a place. The shell reads it
+ * once on boot and strips it, leaving the address it should have.
+ *
+ * **The Location header is relative, and that is the fix for a real bug.** This
+ * used to redirect to `new URL(next, url.origin)`, where `url` came from
+ * `request.url` — and inside a route handler on Netlify that is the *internal*
+ * deploy URL, not the address the person typed. So a key that correctly said
+ * `thewall.social` in the email bounced, on being followed, to a
+ * deploy-scoped `…--site.netlify.app` host that appears in no configuration
+ * anywhere: the session cookie was set over there, and the real site still did
+ * not know them.
+ *
+ * A relative Location cannot get the host wrong because it never names one —
+ * the browser resolves it against the URL it actually requested. There is no
+ * configuration that makes this right or wrong, which is the point.
  */
-function withOutcome(next: string, origin: string, outcome: KeyOutcome): URL {
-  const target = new URL(next, origin)
+function backTo(next: string, outcome: KeyOutcome): NextResponse {
+  /*
+   * `next` arrives from the query string, so it is somebody else's input.
+   * `new URL(next, origin)` happily returns `https://evil.example` for
+   * `?next=https://evil.example` — an open redirect on the one route people
+   * reach by clicking a link in an email, which is the worst place to have one.
+   * Only a path is allowed, and `//host` is a URL wearing a path's clothes.
+   */
+  const safe = next.startsWith('/') && !next.startsWith('//') ? next : '/'
+
+  // Parsed against a base that is thrown away, purely to merge the parameter
+  // into whatever `next` already carried.
+  const target = new URL(safe, 'http://parse.invalid')
   target.searchParams.set('key', outcome)
-  return target
+
+  return new NextResponse(null, {
+    status: 303,
+    headers: { Location: `${target.pathname}${target.search}` },
+  })
 }

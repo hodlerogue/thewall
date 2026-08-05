@@ -290,6 +290,20 @@ inventing a number.
 is no desktop project. Measure what a thumb can reach — `.tap()` scrolls an
 element into view first, which is how an off-screen chip passed a green suite.
 
+**`request.url` is not the address anybody typed.** Behind a proxy — Netlify,
+here — a route handler sees an internal deploy URL. Reading the query string off
+it is fine, since parameters survive the rewrite untouched; taking `.origin` and
+redirecting somebody there is not, and that is how a magic link that said
+`thewall.social` in the email landed on a `netlify.app` host nobody had
+configured. Redirect with a **relative** `Location` and the question cannot
+arise. If you ever do need an absolute one, `siteUrl(request)` in
+`lib/auth/links.ts` resolves it against origins the platform vouches for.
+
+**A redirect target that came from the query string is an open redirect until
+you check it.** `new URL(next, origin)` returns `https://evil.example` for
+`?next=https://evil.example`, and `//evil.example` is a URL wearing a path's
+clothes. Both spellings, every time.
+
 **A second foreign key to the same table breaks every PostgREST embed to it.**
 `author:profiles(name)` resolves by looking for *the* foreign key between the
 two tables. One key, one answer; two keys and PostgREST refuses the whole query
