@@ -97,9 +97,9 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 252 unit tests: parser, aliases, errors, signup, search, themes, names, walls
-npm run test:e2e   # 90 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 131 assertions against the real migrations, on a throwaway database
+npm test           # 269 unit tests: parser, aliases, errors, signup, search, themes, names, walls
+npm run test:e2e   # 99 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm run test:db    # 159 assertions against the real migrations, on a throwaway database
 ```
 
 To see what is actually in a deployed project — read-only, and it tells apart
@@ -205,19 +205,83 @@ hallway, per §3.10 — unable to show you a word until you typed `look`. Posts
 and replies now arrive live for wherever you are standing, and the whole thing
 degrades to nothing if the channel cannot connect.
 
+## Making a room
+
+```
+make garden what you are growing
+```
+
+§4.2 closes room creation — *"a fixed, curated set at launch"* — because *"40
+rooms with three people each kills the entire feeling"*. That is decided
+differently here, and the warning is still right about the thing it is actually
+about. Read it closely and it is not a claim about how many rooms exist; it is a
+claim about the **room list**. A room nobody is in does no harm sitting in the
+database. It does harm sitting in the lobby.
+
+So creation opens and the lobby is what gets defended:
+
+- **Verified, three a week.** §4.7 lets an unverified account have one
+  contribution so the held sentence can land; a room is not that, so it wants an
+  inbox somebody actually reads. The cap is a rolling seven days, not a calendar
+  week — a week that resets on Sunday hands everybody three fresh rooms at the
+  same moment.
+- **The six curated rooms always show, in their curated order.** They are the
+  furniture. The building has to look the same each time you walk in.
+- **A user room is in the lobby while it has life in it**, and fades out after a
+  fortnight of silence. It keeps its posts, its addresses and its name forever —
+  it just stops taking up the shop window, and comes straight back the moment
+  somebody says something in it.
+- **The list is capped at twelve**, with a line saying how to reach the rest.
+- **A room has no owner.** Making one does not make it yours: there is no
+  moderator, and the person who opened it has exactly the powers everybody else
+  in it has. `created_by` is a record of who opened the door, nothing more, and
+  it is `on delete set null` so a room outlives the person who made it.
+
+The fade is §4.2's own decay rule, which had been "written but not enabled"
+since it was added. It is enabled by a clause in the lobby query rather than by
+a scheduled job — nobody is running cron for this, and a decay rule that needs a
+cron nobody set up is a decay rule that never runs. `archive_quiet_rooms` stays
+what it was, a manual lever.
+
+Names are checked against a table of reserved slugs, every one of them a real
+path under `app/`. A room called `terms` would be shadowed by `/terms` forever:
+`go terms` would work, `thewall.social/terms` would not, and §3.4's "the prompt
+path is the URL" would be quietly false for exactly one room.
+
 ## Finding things, and the pipe
 
-`find` searches what people have said:
+`find` searches what people have said, and `find --rooms` searches the rooms
+themselves:
 
 ```
 find tomatoes
 find pocket kings --room=poker
+find --rooms growing          # by name, and by what a room is for
 ```
 
-Matching is `ilike`, not full-text. At six curated rooms (§4.2) a scan is
-honest and needs no `tsvector` column; the upgrade is a good problem to have
-later. `posts`, `search` and `grep` are aliases — `posts` because it is the
-name §4.8 uses, and because it reads better as a pipe source.
+**It searches replies too**, which for a long time it did not. `find` read the
+posts table directly, so on a site whose §4.3 shape is "a post, then a flat list
+of answers" it missed most of what anybody had said — `find bolt` found the
+post about the leftover bolt and not the reply saying there is always one. Both
+searches are now one function in the database over posts and replies together. A
+reply carries the address of the post it is under, because §4.3 gives replies no
+addresses of their own, and the result says `(reply)` so that address is not a
+small lie.
+
+`find --rooms` exists because the lobby stopped being the answer to "what is
+here" the moment rooms were something people make, and a room nobody can find is
+a room that dies. It searches names *and* glosses — half the time you remember
+what a room was for rather than what it was called — and it includes rooms that
+have gone quiet, since finding one is the way back to it. And when a bare `find`
+matches nothing said but does match a room name, it says so rather than shrugging
+(§3.7).
+
+Matching is `ilike`, not full-text. At this size a scan is honest and needs no
+`tsvector` column; the upgrade is a good problem to have later. The term is
+escaped now — it was interpolated straight in, so a search for `100%` was a
+wildcard that matched everything. `posts`, `search` and `grep` are aliases —
+`posts` because it is the name §4.8 uses, and because it reads better as a pipe
+source.
 
 The pipe is the part §4.8 asks to keep quiet — "documented only inside
 `what posts`, discoverable by the curious. Don't advertise it":
@@ -429,7 +493,5 @@ never once be shown.
 
 ## Not built, on purpose
 
-Private messages, user-created rooms (§4.2 leans fixed-set at launch — the
-operator opens one with `moderate.sh new-room`, nobody using the site can),
-reply-to-reply (§4.3 makes flatness a stated constraint, and the schema has no
-`parent_id` so it cannot reappear by accident).
+Private messages, and reply-to-reply (§4.3 makes flatness a stated constraint,
+and the schema has no `parent_id` so it cannot reappear by accident).

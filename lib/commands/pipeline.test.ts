@@ -206,7 +206,7 @@ describe('§4.8 — flags that teach when they are wrong (§3.7)', () => {
   it('names the flags that exist', async () => {
     const out = text((await run('posts --author=ren', LOBBY)).lines)
     expect(out).toMatch(/i don’t know --author/)
-    expect(out).toMatch(/--room, --by, --since, --limit/)
+    expect(out).toMatch(/--room, --rooms, --by, --since, --limit/)
   })
 
   it('explains a duration that is not one', async () => {

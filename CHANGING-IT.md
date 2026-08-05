@@ -135,23 +135,23 @@ file — and to `OWN_WALL_CHIPS` if it belongs on your own page.
 
 ## Add a room
 
-**Nobody creates a room from inside the site, and that is the design.** §4.2
-closes room creation: *"40 rooms with three people each kills the entire
-feeling"*. There is no verb for it, no admin surface, and no plan for one.
+**Anybody verified may make one, three a week** — `make garden what you are
+growing`. §4.2 argued for a closed set and that is decided differently now; see
+the README for why, and for what defends the lobby instead.
 
-It is closed in the schema rather than in the client, so a console and the anon
-key do not get around it: `anon` and `authenticated` hold `select` on `rooms`
-and nothing else — no insert, no update, no delete. `schema.test.sql` asserts
-all four as a signed-in user, plus that a room's gloss cannot be rewritten and
-that nobody can claim an existing room as their wall (which would drop it out of
-the lobby).
+Still true, and still asserted: `anon` and `authenticated` hold `select` on
+`rooms` and nothing else. No insert, no update, no delete. `create_room` is a
+`security definer` function and is the only door, so every rule about who may
+and how often is unroutable-around rather than a policy somebody has to get
+right twice. Walls are the other narrow path: `create_post` makes a room only
+when the slug starts with `~` **and** matches the caller's own name.
 
-The only rooms that make themselves are walls, and that path is narrow on
-purpose: `create_post` will create a room only when the slug starts with `~`
-**and** matches the caller's own name. Every other spelling answers "no room
-called that" rather than conjuring one, which is also asserted.
+**Adding a route to `app/` means adding a row to `reserved_slugs`.** Every entry
+there is a real path. A room called `terms` would be shadowed by `/terms`
+forever — `go terms` would work, `thewall.social/terms` would not, and §3.4
+would be quietly false for exactly one room.
 
-So there are exactly two ways, and they answer different questions.
+For the operator there are still two ways, and they answer different questions.
 
 ### On a live project, now
 

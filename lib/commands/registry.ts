@@ -14,7 +14,7 @@
 
 import { parseFlags, parseSince, splitStages } from '@/lib/commands/pipeline'
 import type { Env } from '@/lib/shell/env'
-import { formatAgo, type PostHit, type PostQuery } from '@/lib/shell/model'
+import { formatAgo, type PostHit, type PostQuery, type RoomHit } from '@/lib/shell/model'
 import { renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
 import type { Session } from '@/lib/shell/session'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
@@ -258,6 +258,65 @@ export const COMMANDS: readonly Command[] = [
         )
       }
       return { lines: renderRoom(room), location: { room: room.slug } }
+    },
+  },
+
+  {
+    /*
+     * §4.2, reopened. The doc closes room creation — "a fixed, curated set at
+     * launch" — on the grounds that "40 rooms with three people each kills the
+     * entire feeling". That is a warning about the *lobby*, not about how many
+     * rooms exist, and the lobby is defended where it lives: curated rooms
+     * first, user rooms only while somebody is in them.
+     *
+     * The name and the gloss are one line, deliberately. A second question
+     * would make this the only place on the site that interrupts you to fill in
+     * a form, and §3.9's whole shape is that friction lands once, at the moment
+     * you have already decided.
+     */
+    verb: 'make',
+    aliases: ['create', 'new', 'mkdir', 'open-room'],
+    contexts: ALL,
+    gloss: () => 'start a new room',
+    detail: () =>
+      'makes a room: make garden what you are growing. the first word is its name, the rest says what it is for and shows under it in the lobby. you need a verified account, and you can make three a week. a room has no owner — once it exists it is everybody\u2019s.',
+    insert: () => 'make ',
+    wrongContext: () => '',
+    async run({ arg, env, session }) {
+      const [slug = '', ...rest] = arg.trim().split(/\s+/)
+      const gloss = rest.join(' ')
+
+      if (slug === '') {
+        return error('make what? try: make garden what you are growing')
+      }
+      if (gloss === '') {
+        // §3.7 — the fix, shown rather than described. The commonest mistake
+        // here is typing only a name, so the error is the same line completed.
+        return error(`say what ${slug} is for, on the same line — try: make ${slug} what you are growing`)
+      }
+      if (session.name() === null) {
+        return error('you need a name first. say something anywhere and i’ll ask you for one.')
+      }
+
+      const made = await env.makeRoom(slug, gloss)
+      if (!made.ok) return error(made.reason)
+
+      const room = await env.getRoom(made.slug)
+      return {
+        lines: [
+          { text: `${made.slug} is open. you are in it.`, tone: 'accent' },
+          { text: '' },
+          ...(room
+            ? renderRoom(room)
+            : [{ text: 'nothing here yet. say something and it will be the first thing.', tone: 'faint' as const }]),
+          { text: '' },
+          // Said once, at the only moment it is useful: a room with nothing in
+          // it drops out of the lobby, and §5 is blunt about an empty room
+          // being worse than no room.
+          { text: 'it stays in the lobby while people are talking in it. it is always reachable by name.', tone: 'faint' },
+        ],
+        location: { room: made.slug },
+      }
     },
   },
 
@@ -761,12 +820,44 @@ export const COMMANDS: readonly Command[] = [
       const [source = '', ...rest] = arg.split('|')
       const sinks = splitStages(rest.join('|'))
 
+      /*
+       * `find --rooms cycling` answers a different question from `find
+       * cycling`, and it became a question worth answering the moment rooms
+       * were something people make: the lobby stopped being the list of what
+       * is here. Name and gloss both, because half the time you remember what
+       * a room was *for* rather than what it was called.
+       */
+      // `--rooms`, exactly. Written `--rooms?` first, which also matched
+      // `--room=music` and quietly hijacked the filter that has always existed
+      // — every `find --room=x` became a room search returning the wrong shape.
+      if (/(^|\s)--rooms(\s|=|$)/.test(source)) {
+        if (sinks.length > 0) return error('rooms don’t pipe yet. try: find --rooms garden')
+        const term = source.replace(/(^|\s)--rooms(=\S*)?/g, ' ').trim()
+        return { lines: renderRoomHits(await env.findRooms(term), term) }
+      }
+
       const query = buildQuery(source, location)
       if ('problem' in query) return error(query.problem)
 
       const hits = await env.searchPosts(query.query)
 
-      if (sinks.length === 0) return { lines: renderHits(hits, query.query.text) }
+      if (sinks.length === 0) {
+        // Nothing was *said* about it — but it may be the name of a room, and
+        // that is the likeliest thing somebody typing one word meant (§3.7).
+        if (hits.length === 0 && query.query.text) {
+          const rooms = await env.findRooms(query.query.text).catch(() => [])
+          if (rooms.length > 0) {
+            return {
+              lines: [
+                { text: `nothing said about ${query.query.text}.`, tone: 'faint' },
+                { text: '' },
+                ...renderRoomHits(rooms, query.query.text),
+              ],
+            }
+          }
+        }
+        return { lines: renderHits(hits, query.query.text) }
+      }
       if (sinks.length > 1) {
         return error('one pipe at a time for now. try: find --since=7d | count')
       }
@@ -797,7 +888,7 @@ export const COMMANDS: readonly Command[] = [
   },
 ]
 
-const FLAG_NAMES = ['room', 'by', 'since', 'limit']
+const FLAG_NAMES = ['room', 'rooms', 'by', 'since', 'limit']
 
 function buildQuery(
   input: string,
@@ -868,9 +959,48 @@ function renderHits(hits: readonly PostHit[], term?: string): Line[] {
   for (const hit of hits) {
     // The address comes first and includes the room, because a search crosses
     // rooms and the result has to remain somewhere you can go.
-    lines.push({ text: `${hit.room}/${hit.id}  ${hit.author}, ${formatAgo(hit.createdAt)}`, tone: 'dim' })
+    // "(reply)" rather than a different address: a reply has no address of its
+    // own (§4.3), so the one shown is the post it is under — which is exactly
+    // what you type to go and read it, and would be a lie without the marker.
+    lines.push({
+      text: `${hit.room}/${hit.id}  ${hit.author}, ${formatAgo(hit.createdAt)}${hit.isReply ? '  (reply)' : ''}`,
+      tone: 'dim',
+    })
     lines.push({ text: hit.body, depth: 1 })
   }
+  return lines
+}
+
+/** Rooms as results. Says which are quiet, because that decides whether to go. */
+function renderRoomHits(hits: readonly RoomHit[], term: string): Line[] {
+  if (hits.length === 0) {
+    return [
+      {
+        text: term ? `no room called ${term}, and none about it.` : 'no rooms.',
+        tone: 'faint',
+      },
+    ]
+  }
+
+  const lines: Line[] = []
+  for (const hit of hits) {
+    lines.push({ text: hit.slug, tone: 'accent' })
+    lines.push({ text: hit.gloss, tone: 'dim', depth: 1 })
+    lines.push({
+      // A room with nothing in it and a room nobody has been in for a month are
+      // different invitations, and the count is what tells them apart.
+      text:
+        hit.posts === 0
+          ? 'nothing in it yet'
+          : `${hit.posts} ${hit.posts === 1 ? 'post' : 'posts'}${
+              hit.latestAt ? `, newest ${formatAgo(hit.latestAt)}` : ''
+            }${hit.inLobby ? '' : ' — quiet, so it’s not in the lobby'}`,
+      tone: 'faint',
+      depth: 1,
+    })
+  }
+  lines.push({ text: '' })
+  lines.push({ text: `go ${hits[0].slug} to walk in.`, tone: 'faint' })
   return lines
 }
 

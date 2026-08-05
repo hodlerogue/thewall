@@ -10,7 +10,15 @@
  */
 
 import { DEFAULT_ROOM, PEOPLE, ROOMS } from '@/lib/shell/fixtures'
-import type { Post, PostHit, PostQuery, Profile, Room, RoomSummary } from '@/lib/shell/model'
+import type {
+  Post,
+  PostHit,
+  PostQuery,
+  Profile,
+  Room,
+  RoomHit,
+  RoomSummary,
+} from '@/lib/shell/model'
 
 export interface Presence {
   names: string[]
@@ -33,8 +41,27 @@ export interface Check {
   note?: string
 }
 
+/** What `make` did, or why it could not. */
+export type MadeRoom = { ok: true; slug: string } | { ok: false; reason: string }
+
 export interface Env {
   listRooms(): Promise<RoomSummary[]>
+  /**
+   * §4.2, reopened — anybody verified may make a room, three a week.
+   *
+   * Every rule about who may and how often lives in `create_room`, not here:
+   * this reports what the database decided. A refusal is a `reason` rather than
+   * a throw because "you have made three this week" is an answer, not a fault.
+   */
+  makeRoom(slug: string, gloss: string): Promise<MadeRoom>
+  /**
+   * Rooms by name or by what they are for.
+   *
+   * Once rooms are something people make, the lobby stops being the answer to
+   * "what is here" — and a room nobody can find is a room that dies. Faded
+   * rooms are included on purpose: this is the way back to one.
+   */
+  findRooms(term: string): Promise<RoomHit[]>
   getRoom(slug: string): Promise<Room | undefined>
   getPost(slug: string, id: number): Promise<Post | undefined>
   who(roomSlug: string | undefined): Promise<Presence>
@@ -100,6 +127,7 @@ export function fixtureEnv(
           slug: room.slug,
           gloss: room.gloss,
           ephemeral: room.ephemeral,
+          curated: room.madeBy === undefined,
           latest: latest
             ? { author: latest.author, body: latest.body, createdAt: latest.createdAt }
             : undefined,
@@ -117,6 +145,56 @@ export function fixtureEnv(
     },
     async who() {
       return { names: ['jameson', 'marisol', 'tuck'], guests: 2 }
+    },
+
+    async makeRoom(slug, gloss) {
+      const clean = slug.trim().toLowerCase()
+      if (rooms.some((room) => room.slug === clean)) {
+        return { ok: false, reason: `${clean} already exists. try: go ${clean}` }
+      }
+      if (!/^[a-z0-9-]{2,24}$/.test(clean)) {
+        return {
+          ok: false,
+          reason: 'a room name is 2 to 24 characters of a-z, 0-9 and -. nothing else, and no spaces.',
+        }
+      }
+      if (gloss.trim().length < 3) {
+        return {
+          ok: false,
+          reason: 'say what it is for, in a few words — that is the line under the name in the lobby.',
+        }
+      }
+      // Pushed onto the same array the rest of this Env reads, so the demo can
+      // make a room and then walk into it. Nothing is stored anywhere.
+      rooms.push({
+        slug: clean,
+        gloss: gloss.trim(),
+        ephemeral: false,
+        madeBy: 'you',
+        posts: [],
+      })
+      return { ok: true, slug: clean }
+    },
+
+    async findRooms(term) {
+      const needle = term.trim().toLowerCase()
+      return rooms
+        .filter((room) => room.owner === undefined)
+        .filter(
+          (room) =>
+            needle === '' ||
+            room.slug.toLowerCase().includes(needle) ||
+            room.gloss.toLowerCase().includes(needle),
+        )
+        .map((room) => ({
+          slug: room.slug,
+          gloss: room.gloss,
+          curated: room.madeBy === undefined,
+          inLobby: true,
+          posts: visiblePosts(room).length,
+          latestAt: visiblePosts(room)[0]?.createdAt,
+        }))
+        .sort((a, b) => Number(b.curated) - Number(a.curated))
     },
 
     async mailCount() {

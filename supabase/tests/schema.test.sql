@@ -1100,6 +1100,183 @@ select tests.ok(
   'and music is still what it was'
 );
 
+\echo ''
+\echo '§4.2, reopened — anybody verified may make a room, three a week'
+
+-- An unverified account, because "you may post once before checking your email"
+-- (§4.7) must not extend to opening a permanent address in a shared space.
+insert into auth.users (
+  id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+  confirmation_token, recovery_token, email_change, email_change_token_new,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '00000000-0000-0000-0000-000000000000',
+        'authenticated', 'authenticated', 'unverified@seed.invalid', '', now(),
+        '', '', '', '', '{}'::jsonb, '{}'::jsonb, now(), now())
+on conflict (id) do nothing;
+insert into public.profiles (id, name) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'unverified')
+on conflict (id) do nothing;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  select tests.raises(
+    $sql$select public.create_room('mine'::citext, 'a room by somebody who never followed the key')$sql$,
+    'an unverified account cannot make a room'
+  );
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+
+  -- Every name rule, each with its own message rather than one constraint.
+  select tests.raises(
+    $sql$select public.create_room('terms'::citext, 'what the rules are')$sql$,
+    'a reserved name is refused, and says which route owns it'
+  );
+  select tests.raises(
+    $sql$select public.create_room('a'::citext, 'too short a name')$sql$,
+    'a one-character name is refused'
+  );
+  select tests.raises(
+    $sql$select public.create_room('~someone'::citext, 'a wall in disguise')$sql$,
+    'a ~ name is refused — that spelling belongs to walls'
+  );
+  select tests.raises(
+    $sql$select public.create_room('music'::citext, 'a second music')$sql$,
+    'a name already taken is refused'
+  );
+  select tests.raises(
+    $sql$select public.create_room('garden'::citext, 'x')$sql$,
+    'and a room with no gloss is refused — the lobby is built out of them'
+  );
+
+  select tests.ok(
+    public.create_room('garden'::citext, 'what you are growing') = 'garden',
+    'a verified account makes a room'
+  );
+  select tests.ok(
+    (select created_by from public.rooms where slug = 'garden')
+      = '99999999-9999-4999-8999-999999999999',
+    'and it records who opened it'
+  );
+  -- Not owner_id. That column means "this is their wall" and carries a `~`
+  -- address; making a room does not make it yours.
+  select tests.ok(
+    (select owner_id from public.rooms where slug = 'garden') is null,
+    'without making it theirs — a room has no owner'
+  );
+
+  select tests.ok(
+    public.create_room('cycling'::citext, 'two wheels and a headwind') = 'cycling',
+    'a second is fine'
+  );
+  select tests.ok(
+    public.create_room('film'::citext, 'what you watched') = 'film',
+    'and a third'
+  );
+  select tests.raises(
+    $sql$select public.create_room('books'::citext, 'what you are reading')$sql$,
+    'the fourth this week is refused'
+  );
+commit;
+
+-- The bypass that defeated the §4.7 gate, aimed at this one. A STABLE function
+-- reads the snapshot from the start of the statement, so all twenty-five calls
+-- would see "no rooms yet" and all twenty-five would be allowed.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '44444444-4444-4444-8444-444444444444';
+  select tests.raises(
+    $sql$select public.create_room(('flood' || g)::citext, 'a room number ' || g)
+           from generate_series(1, 25) g$sql$,
+    'twenty-five in one statement is still three'
+  );
+commit;
+
+select tests.ok(
+  (select count(*) from public.rooms where slug like 'flood%') = 0,
+  'and the whole statement rolled back, so none of them exist'
+);
+
+\echo ''
+\echo '§4.2 — the lobby is what the warning is about, so the lobby is what is defended'
+
+-- An earlier block ran `archive_quiet_rooms(interval '1 second')` to prove the
+-- manual decay lever works, which left most of the seeded rooms archived. These
+-- assertions are about the *automatic* fade in the lobby query, so they start
+-- from an un-archived building rather than inheriting that one.
+update public.rooms set archived_at = null;
+
+select tests.ok(
+  (select count(*) from public.room_overview where curated) = 6,
+  'the curated rooms are all in the lobby'
+);
+select tests.ok(
+  (select count(*) from public.room_overview where not curated) = 3,
+  'and so are the new ones, while they are new'
+);
+
+-- Fade: a user room with nothing said in it for a fortnight leaves the listing.
+update public.rooms set created_at = now() - interval '15 days' where slug = 'film';
+
+select tests.ok(
+  not exists (select 1 from public.room_overview where slug = 'film'),
+  'a room nobody has been in for a fortnight leaves the lobby'
+);
+select tests.ok(
+  exists (select 1 from public.rooms where slug = 'film' and hidden_at is null),
+  'but it is still there, and still answers to its name'
+);
+select tests.ok(
+  exists (select 1 from public.find_rooms('film') where slug = 'film' and not in_lobby),
+  'and search still finds it, saying it is quiet'
+);
+select tests.ok(
+  (select count(*) from public.room_overview where curated) = 6,
+  'a curated room never fades, however quiet — it is the furniture'
+);
+
+\echo ''
+\echo 'finding a room, and finding what was said in one'
+
+select tests.ok(
+  exists (select 1 from public.find_rooms('growing') where slug = 'garden'),
+  'a room is findable by what it is for, not only by its name'
+);
+select tests.ok(
+  not exists (select 1 from public.find_rooms('marisol') where slug::text like '~%'),
+  'a wall is never a room search result'
+);
+select tests.ok(
+  (select count(*) from public.find_rooms('100%')) = 0,
+  'a % in the term is a literal %, not a wildcard that matches everything'
+);
+
+-- The hole that mattered most: `find` read the posts table and therefore never
+-- returned a single reply, on a site whose shape is a post and a flat list of
+-- answers (§4.3).
+select tests.ok(
+  exists (select 1 from public.search_said('law of bicycles') where is_reply),
+  'search reaches replies'
+);
+select tests.ok(
+  (select room || '/' || post_no from public.search_said('law of bicycles') limit 1) = 'builders/2',
+  'and a reply carries the address of the post it is under, since it has none of its own'
+);
+select tests.ok(
+  not exists (select 1 from public.search_said('super keeps saying')),
+  'commons is never searchable — nothing there has an address to go to'
+);
+select tests.ok(
+  exists (select 1 from public.search_said(null, '~walled'::citext)),
+  'a wall is searchable, because it is a room'
+);
+select tests.ok(
+  (select count(*) from public.search_said('100%')) = 0,
+  'and a % in the term is a literal there too'
+);
+
 -- Decay is about rooms going cold. A quiet wall is a person who has not posted
 -- lately, which is not a problem and not anybody's to tidy up.
 select public.archive_quiet_rooms(interval '1 second');

@@ -32,6 +32,15 @@ export interface Room {
    * get is a place in the lobby (§4.2).
    */
   owner?: string
+  /**
+   * Who opened it, when somebody did. Absent for the curated rooms.
+   *
+   * Separate from `owner`, which means "this is that person's wall" and carries
+   * a `~` address with it. Making a room does not make it yours: it has no
+   * moderator, and the person who opened it has exactly the powers everybody
+   * else in it has.
+   */
+  madeBy?: string
   /** §3.10 — commons keeps nothing. Posts expire, no IDs, no threads. */
   ephemeral: boolean
   posts: Post[]
@@ -42,7 +51,28 @@ export interface RoomSummary {
   slug: string
   gloss: string
   ephemeral: boolean
+  /**
+   * False when somebody made this rather than it being seeded or opened by the
+   * operator. The lobby keeps the curated ones together and above, which is the
+   * whole of §4.2's mitigation now that anyone can open a door.
+   */
+  curated: boolean
   latest?: { author: string; body: string; createdAt: Date }
+}
+
+/**
+ * A room as a search result, which is a different question from a room in the
+ * lobby: here you already know it might not be in the lobby, and want to know
+ * whether it is worth walking to.
+ */
+export interface RoomHit {
+  slug: string
+  gloss: string
+  curated: boolean
+  /** False once it has gone quiet: still reachable, just not in the listing. */
+  inLobby: boolean
+  posts: number
+  latestAt?: Date
 }
 
 /**
@@ -56,6 +86,12 @@ export interface PostHit {
   author: string
   body: string
   createdAt: Date
+  /**
+   * True when the words are a reply rather than the post itself. The address is
+   * still the post's, because that is where the reply lives and what you would
+   * type to go and read it (§4.3 — replies have no addresses of their own).
+   */
+  isReply?: boolean
 }
 
 /**

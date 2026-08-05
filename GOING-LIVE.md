@@ -11,7 +11,7 @@ these fail silently — the site keeps loading and one feature is quietly dead.
 
 ## 1. The database
 
-Your project was set up when there were three migrations. There are now nine.
+Your project was set up when there were three migrations. There are now ten.
 The five that came after add: the column-scoped grants that close two console
 bypasses, mail, the kill switch, rename, and erasure. **None of their features
 work until they are applied**, and none of them fail at build time — they fail
@@ -221,10 +221,16 @@ The levers are `ban`, `hide`, `close` and `forget` — everything except `forget
 is reversible, and `forget` asks before it runs. `./scripts/moderate.sh` with no
 arguments lists them.
 
-The same script is how a room gets opened, since §4.2 closes room creation to
-everybody using the site: `new-room <slug> <gloss>`, then `post-as <room> <name>
-<body>` so it does not sit empty. A room made that way is in that database only
-— `CHANGING-IT.md` covers putting it in the seed as well.
+The same script opens a curated room — one that sits in the lobby permanently,
+rather than fading when it goes quiet: `new-room <slug> <gloss>`, then `post-as
+<room> <name> <body>` so it does not sit empty. That is the difference between
+it and `make`, which anybody verified can now use: a room somebody makes lives
+in the lobby only while people are talking in it. A room made either way is in
+that database only — `CHANGING-IT.md` covers putting it in the seed as well.
+
+**When you add a route under `app/`, add it to `reserved_slugs`** in the same
+change, or somebody can take that name as a room and their room becomes
+unreachable by URL.
 
 ---
 

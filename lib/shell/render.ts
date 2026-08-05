@@ -6,15 +6,35 @@ import type { Line } from '@/lib/shell/types'
  * reply body +2. No `└─`, nothing that falls apart at 380px.
  */
 
-/** §3.11 — proof of life: the difference between a busy building and a list of doors. */
+/**
+ * §3.11 — proof of life: the difference between a busy building and a list of
+ * doors. And §4.2's mitigation, now that anybody can add a door.
+ *
+ * The cap is the whole of it. "40 rooms with three people each kills the entire
+ * feeling" is a claim about this list and nothing else, so the list is what is
+ * bounded: the curated rooms, then the liveliest of whatever people have made,
+ * and a line saying how to reach the rest. Everything stays addressable — this
+ * hides nothing, it just refuses to make the front page a directory.
+ */
+export const LOBBY_LIMIT = 12
+
 export function renderRoomList(
   rooms: readonly RoomSummary[],
   now = new Date(),
   /** How much of the latest post to show. Narrower on a share card (1200px). */
   bodyWidth = 56,
+  limit = LOBBY_LIMIT,
 ): Line[] {
   const lines: Line[] = []
-  for (const room of rooms) {
+
+  // Curated rooms are never the ones dropped. They are the furniture: the
+  // building has to look the same each time you walk in, or none of §3.11's
+  // argument about it reading as a place survives.
+  const curated = rooms.filter((room) => room.curated)
+  const made = rooms.filter((room) => !room.curated)
+  const shown = [...curated, ...made.slice(0, Math.max(0, limit - curated.length))]
+
+  for (const room of shown) {
     lines.push({ text: room.slug, tone: 'accent' })
     lines.push({
       text: room.latest
@@ -22,6 +42,15 @@ export function renderRoomList(
         : 'quiet in here',
       tone: room.latest ? 'dim' : 'faint',
       depth: 1,
+    })
+  }
+
+  const hidden = rooms.length - shown.length
+  if (hidden > 0) {
+    lines.push({ text: '' })
+    lines.push({
+      text: `${hidden} more ${hidden === 1 ? 'room' : 'rooms'} — find --rooms <word>, or go straight to one by name.`,
+      tone: 'faint',
     })
   }
   return lines

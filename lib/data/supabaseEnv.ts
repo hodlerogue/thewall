@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Live } from '@/lib/data/live'
-import type { Check, Env, MailItem } from '@/lib/shell/env'
-import type { Post, PostHit, Profile, Room, RoomSummary } from '@/lib/shell/model'
+import type { Check, Env, MadeRoom, MailItem } from '@/lib/shell/env'
+import type { Post, PostHit, Profile, Room, RoomHit, RoomSummary } from '@/lib/shell/model'
 
 /**
  * The Env the commands actually run against.
@@ -20,8 +20,14 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
       // §3.11 — one round trip for the whole lobby, including proof of life.
       const { data, error } = await client
         .from('room_overview')
-        .select('slug, gloss, ephemeral, latest_body, latest_at, latest_author')
+        .select('slug, gloss, ephemeral, curated, latest_body, latest_at, latest_author')
+        // Curated first in their curated order, then whatever people have made,
+        // liveliest first. The view has already dropped user rooms that went
+        // quiet, so this is a listing of the building rather than of the
+        // database (§4.2).
+        .order('curated', { ascending: false })
         .order('sort_order')
+        .order('latest_at', { ascending: false, nullsFirst: false })
 
       if (error) throw error
 
@@ -29,6 +35,7 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         slug: row.slug,
         gloss: row.gloss,
         ephemeral: row.ephemeral,
+        curated: row.curated ?? true,
         latest:
           row.latest_body && row.latest_at
             ? {
@@ -37,6 +44,38 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
                 createdAt: new Date(row.latest_at),
               }
             : undefined,
+      }))
+    },
+
+    async makeRoom(slug: string, gloss: string): Promise<MadeRoom> {
+      const { data, error } = await client.rpc('create_room', { p_slug: slug, p_gloss: gloss })
+      // Every rule lives in the function, and every refusal arrives as a
+      // sentence already written for a person to read (§3.7) — so this passes
+      // it through rather than translating it into something vaguer.
+      if (error) return { ok: false, reason: friendlyRoomError(error.message) }
+      return { ok: true, slug: typeof data === 'string' ? data : slug }
+    },
+
+    async findRooms(term: string): Promise<RoomHit[]> {
+      const { data, error } = await client.rpc('find_rooms', { p_term: term, p_limit: 20 })
+      if (error) throw error
+
+      const rows = (data ?? []) as {
+        slug: string
+        gloss: string
+        curated: boolean
+        in_lobby: boolean
+        latest_at: string | null
+        post_count: number
+      }[]
+
+      return rows.map((row) => ({
+        slug: row.slug,
+        gloss: row.gloss,
+        curated: row.curated,
+        inLobby: row.in_lobby,
+        posts: Number(row.post_count ?? 0),
+        latestAt: row.latest_at ? new Date(row.latest_at) : undefined,
       }))
     },
 
@@ -155,32 +194,40 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
     },
 
     async searchPosts(query): Promise<PostHit[]> {
-      let request = client
-        .from('posts')
-        // Ephemeral rooms are excluded: their posts have no permanent address,
-        // so a hit from commons would be somewhere you cannot `go` (§3.10).
-        .select('post_no, body, created_at, room_slug, rooms!inner(ephemeral), author:profiles!inner(name)')
-        .eq('rooms.ephemeral', false)
-        .order('created_at', { ascending: false })
-        .limit(query.limit)
-
-      // ilike rather than full-text: at six curated rooms (§4.2) a scan is
-      // honest and needs no tsvector column. Revisit when volume makes it slow,
-      // which is a good problem and not this one.
-      if (query.text) request = request.ilike('body', `%${query.text}%`)
-      if (query.room) request = request.eq('room_slug', query.room)
-      if (query.by) request = request.eq('profiles.name', query.by)
-      if (query.since) request = request.gte('created_at', query.since.toISOString())
-
-      const { data, error } = await request
+      /*
+       * One RPC over posts *and* replies.
+       *
+       * This used to read the posts table directly and therefore never found a
+       * single reply — on a site whose §4.3 shape is "a post, then a flat list
+       * of answers", that is most of what anybody says. It also interpolated
+       * the term straight into `ilike`, so a search for "100%" was a wildcard
+       * that matched everything.
+       */
+      const { data, error } = await client.rpc('search_said', {
+        p_text: query.text ?? null,
+        p_room: query.room ?? null,
+        p_by: query.by ?? null,
+        p_since: query.since?.toISOString() ?? null,
+        p_limit: query.limit,
+      })
       if (error) throw error
 
-      return (data ?? []).map((row) => ({
-        room: row.room_slug,
+      const rows = (data ?? []) as {
+        room: string
+        post_no: number
+        author: string
+        body: string
+        created_at: string
+        is_reply: boolean
+      }[]
+
+      return rows.map((row) => ({
+        room: row.room,
         id: row.post_no,
-        author: authorName(row.author),
+        author: row.author,
         body: row.body,
         createdAt: new Date(row.created_at),
+        isReply: row.is_reply,
       }))
     },
 
@@ -226,6 +273,7 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         ['profiles', 'banned_at', '20260804020000_moderation'],
         ['profiles', 'name_since', '20260804030000_rename'],
         ['rooms', 'owner_id', '20260804050000_walls'],
+        ['rooms', 'created_by', '20260805000000_user_rooms'],
       ] as const) {
         const { error } = await client.from(table).select(column).limit(1)
         checks.push({
@@ -279,6 +327,25 @@ function authorName(author: { name: string } | { name: string }[] | null): strin
   if (!author) return 'someone'
   const one = Array.isArray(author) ? author[0] : author
   return one?.name ?? 'someone'
+}
+
+/**
+ * Postgres error text, kept when it was written for a person and replaced when
+ * it was not.
+ *
+ * Every `raise` in `create_room` is already a sentence somebody can act on, so
+ * the default is to pass it through untouched. The exceptions are the ones
+ * Postgres itself writes — a check constraint firing, or the function being
+ * absent because the migration is not applied.
+ */
+function friendlyRoomError(message: string): string {
+  if (/Could not find the function|schema cache|PGRST202/i.test(message)) {
+    return 'making rooms is not switched on here yet — the database is missing a migration. type doctor.'
+  }
+  if (/violates check constraint|violates unique constraint/i.test(message)) {
+    return 'that name will not work. 2 to 24 characters of a-z, 0-9 and -, and not one already taken.'
+  }
+  return message
 }
 
 /** Same embed, but absent is the ordinary case: most rooms belong to nobody. */

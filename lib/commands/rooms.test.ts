@@ -1,0 +1,212 @@
+import { describe, expect, it } from 'vitest'
+import { CHIP_SETS, COMMANDS, findCommand } from '@/lib/commands/registry'
+import { createRunner } from '@/lib/commands/run'
+import { fixtureEnv } from '@/lib/shell/env'
+import { ROOMS } from '@/lib/shell/fixtures'
+import { renderRoomList, LOBBY_LIMIT } from '@/lib/shell/render'
+import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
+import type { Line, Location, RoomSummary } from '@/lib/shell/types'
+
+/**
+ * §4.2, reopened — and the half of it that has to keep being true.
+ *
+ * The doc closes room creation because "40 rooms with three people each kills
+ * the entire feeling". That is a claim about the *lobby*, so the property under
+ * test is not that rooms can be made — it is that making them cannot turn the
+ * front page into a directory.
+ */
+
+const text = (lines: Line[]) => lines.map((l) => l.text).join('\n')
+
+function harness(me: string | null = 'jameson') {
+  const api: SignupApi = {
+    async checkName() {
+      return { available: true, alternates: [] }
+    },
+    async create(name) {
+      return { ok: true as const, name }
+    },
+    async resend() {
+      return { note: '' }
+    },
+  }
+  const writer: Writer = {
+    async post() {
+      return 1
+    },
+    async reply() {},
+    async rename(name: string) {
+      return { ok: true as const, name }
+    },
+  }
+  // A copy of the fixtures, because making a room mutates the array it is given
+  // and the other suites read the shared one.
+  const rooms = ROOMS.map((room) => ({ ...room, posts: [...room.posts] }))
+  const session = new Session(api, writer, me)
+  return { run: createRunner(fixtureEnv(rooms), ['commons'], session), rooms }
+}
+
+const LOBBY: Location = {}
+
+describe('making a room', () => {
+  it('takes the name and what it is for on one line, and walks you in', async () => {
+    const { run, rooms } = harness()
+    const result = await run('make garden what you are growing', LOBBY)
+
+    expect(result.location).toEqual({ room: 'garden' })
+    expect(text(result.lines)).toContain('garden is open')
+    expect(rooms.some((room) => room.slug === 'garden')).toBe(true)
+  })
+
+  it('asks for the gloss by completing the line, not by describing it (§3.7)', async () => {
+    const { run } = harness()
+    const out = text((await run('make garden', LOBBY)).lines)
+    // The commonest mistake is typing only a name, so the fix is the same line
+    // finished — something to copy rather than a rule to decode.
+    expect(out).toContain('make garden what you are growing')
+  })
+
+  it('refuses a name that is not a name, and says what one is', async () => {
+    const { run } = harness()
+    const out = text((await run('make garden! what you are growing', LOBBY)).lines)
+    expect(out).toContain('2 to 24 characters')
+  })
+
+  it('takes the first word as the name, and says which room it made', async () => {
+    // The contract is "first word names it, the rest says what it is for", so
+    // `make My Room a place` makes `my`. That is a surprising outcome to type
+    // your way into, and the confirmation is what keeps it from being a silent
+    // one: it names the room, in accent, as the first line back.
+    const { run } = harness()
+    const result = await run('make My Room a place for things', LOBBY)
+    expect(result.location).toEqual({ room: 'my' })
+    expect(result.lines[0].text).toBe('my is open. you are in it.')
+    expect(result.lines[0].tone).toBe('accent')
+  })
+
+  it('refuses a name already taken, and points at the room that has it', async () => {
+    const { run } = harness()
+    const out = text((await run('make music more music', LOBBY)).lines)
+    expect(out).toContain('already exists')
+    expect(out).toContain('go music')
+  })
+
+  it('does not ask a nameless visitor to sign up for it', async () => {
+    // §3.9 puts the signup ask at the moment of contribution. A room is not a
+    // sentence — there is nothing held to post afterwards, so the ask would
+    // arrive with nothing to hand back.
+    const { run, rooms } = harness(null)
+    const before = rooms.length
+    const out = text((await run('make garden what you are growing', LOBBY)).lines)
+
+    expect(out).toContain('you need a name first')
+    expect(out).not.toMatch(/what do you want to be called/)
+    expect(rooms.length).toBe(before)
+  })
+
+  it('is in help, and answers to the words people reach for', async () => {
+    const { run } = harness()
+    expect(text((await run('help', LOBBY)).lines)).toMatch(/make — /)
+    for (const word of ['make', 'create', 'new', 'mkdir']) {
+      expect(findCommand(word)?.verb, word).toBe('make')
+    }
+  })
+
+  it('is not in the palette — it is rare, and the palette has six slots', () => {
+    for (const context of Object.keys(CHIP_SETS) as (keyof typeof CHIP_SETS)[]) {
+      expect(CHIP_SETS[context], context).not.toContain('make')
+    }
+    // Being off the palette is not being hidden: `help` and `what` both have it.
+    expect(COMMANDS.find((c) => c.verb === 'make')!.hidden).toBeFalsy()
+  })
+})
+
+describe('the lobby stays a building, not a directory (§4.2)', () => {
+  const room = (slug: string, curated: boolean): RoomSummary => ({
+    slug,
+    gloss: `what ${slug} is for`,
+    ephemeral: false,
+    curated,
+    latest: { author: 'someone', body: 'a thing', createdAt: new Date() },
+  })
+
+  it('shows everything while there is little', () => {
+    const out = text(renderRoomList([room('a', true), room('b', false)]))
+    expect(out).toContain('a')
+    expect(out).toContain('b')
+    expect(out).not.toContain('more room')
+  })
+
+  it('caps the list and says how to reach the rest', () => {
+    const many = [
+      ...Array.from({ length: 6 }, (_, i) => room(`curated${i}`, true)),
+      ...Array.from({ length: 20 }, (_, i) => room(`made${i}`, false)),
+    ]
+    const lines = renderRoomList(many)
+    const slugs = lines.filter((l) => l.tone === 'accent').map((l) => l.text)
+
+    expect(slugs.length).toBe(LOBBY_LIMIT)
+    // Nothing is hidden — the rest are one command away, and the line says so.
+    expect(text(lines)).toContain('14 more rooms')
+    expect(text(lines)).toContain('find --rooms')
+  })
+
+  it('never drops a curated room to make space for a new one', () => {
+    const many = [
+      ...Array.from({ length: 6 }, (_, i) => room(`curated${i}`, true)),
+      ...Array.from({ length: 40 }, (_, i) => room(`made${i}`, false)),
+    ]
+    const shown = renderRoomList(many).filter((l) => l.tone === 'accent').map((l) => l.text)
+
+    for (let i = 0; i < 6; i++) expect(shown).toContain(`curated${i}`)
+  })
+
+  it('shows only curated ones if that is already the whole cap', () => {
+    const many = [
+      ...Array.from({ length: 12 }, (_, i) => room(`curated${i}`, true)),
+      ...Array.from({ length: 5 }, (_, i) => room(`made${i}`, false)),
+    ]
+    const shown = renderRoomList(many).filter((l) => l.tone === 'accent').map((l) => l.text)
+    expect(shown.length).toBe(12)
+    expect(shown.every((slug) => slug.startsWith('curated'))).toBe(true)
+  })
+})
+
+describe('finding a room', () => {
+  it('searches names and what rooms are for', async () => {
+    const { run } = harness()
+
+    const byName = text((await run('find --rooms kitchen', LOBBY)).lines)
+    expect(byName).toContain('kitchen')
+
+    const byGloss = text((await run('find --rooms listening', LOBBY)).lines)
+    expect(byGloss).toContain('music')
+  })
+
+  it('says so when there is no such room', async () => {
+    const { run } = harness()
+    expect(text((await run('find --rooms xylophone', LOBBY)).lines)).toContain('no room called xylophone')
+  })
+
+  it('does not hijack --room, which has always filtered posts', async () => {
+    // `--rooms?` was the first spelling of this and matched `--room=music` too,
+    // turning every existing filter into a room search.
+    const { run } = harness()
+    const out = text((await run('find --room=music records', LOBBY)).lines)
+    expect(out).toContain('music/12')
+    expect(out).not.toContain('what music is for')
+  })
+
+  it('points at a room when nothing was said about the word', async () => {
+    const { run } = harness()
+    const out = text((await run('find latenight', LOBBY)).lines)
+    expect(out).toContain('nothing said about latenight')
+    // …but there is a room by that name, which is what you meant.
+    expect(out).toContain('quiet hours only')
+  })
+
+  it('offers a way in', async () => {
+    const { run } = harness()
+    expect(text((await run('find --rooms kitchen', LOBBY)).lines)).toContain('go kitchen')
+  })
+})
