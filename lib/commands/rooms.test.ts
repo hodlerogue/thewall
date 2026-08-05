@@ -318,3 +318,37 @@ describe('the fixture Env cannot quietly disagree with the real one', () => {
     expect(out).toContain('nothing in it yet')
   })
 })
+
+describe('the reserved names the fixture knows are the ones the schema knows', () => {
+  it('matches the migrations, row for row', async () => {
+    /*
+     * A durable version of a check that has been done by eye twice. The
+     * fixture keeps its own copy of `reserved_slugs` so the demo refuses what
+     * the site refuses; a copy is only useful while it is the same copy, and
+     * the failure mode is somebody trying a name in the demo, being allowed it,
+     * and then not being allowed it for real.
+     */
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+
+    const files = readFileSync(join(process.cwd(), 'scripts/migrations.sh'), 'utf8')
+      .split('\n')
+      .map((line) => line.match(/"([0-9_a-z]+\.sql)\|/)?.[1])
+      .filter((name): name is string => Boolean(name))
+
+    const inSchema = new Set<string>()
+    for (const file of files) {
+      const sql = readFileSync(join(process.cwd(), 'supabase/migrations', file), 'utf8')
+      for (const [, slug] of sql.matchAll(
+        /insert into public\.reserved_slugs[\s\S]*?values([\s\S]*?);/g,
+      )) {
+        for (const [, name] of slug.matchAll(/\('([a-z0-9.-]+)'/g)) inSchema.add(name)
+      }
+    }
+
+    expect(inSchema.size, 'no reserved slugs found — the scan has drifted').toBeGreaterThan(5)
+
+    const { RESERVED_SLUGS } = await import('@/lib/shell/env')
+    expect([...RESERVED_SLUGS.keys()].sort()).toEqual([...inSchema].sort())
+  })
+})

@@ -1,4 +1,11 @@
-import { formatAgo, type Post, type Profile, type Room, type RoomSummary } from '@/lib/shell/model'
+import {
+  formatAgo,
+  type Post,
+  type PostHit,
+  type Profile,
+  type Room,
+  type RoomSummary,
+} from '@/lib/shell/model'
 import type { Line } from '@/lib/shell/types'
 
 /**
@@ -53,6 +60,45 @@ export function renderRoomList(
       tone: 'faint',
     })
   }
+  return lines
+}
+
+/**
+ * The feed: everything on everybody's walls, newest first.
+ *
+ * Rendered like search hits rather than like a room, because that is what it
+ * is. A room listing puts a bare number in front of each post, and a bare
+ * number is meaningless here — `2` is a different post on every wall. The
+ * address carries the name, which is also what `go` wants back.
+ */
+export function renderFeed(posts: readonly PostHit[], now = new Date()): Line[] {
+  if (posts.length === 0) {
+    return [
+      { text: 'nothing on anybody’s wall yet.', tone: 'faint' },
+      { text: 'go ~yourname and say something, and it shows up here.', tone: 'faint' },
+    ]
+  }
+
+  const lines: Line[] = []
+  for (const post of posts) {
+    lines.push({
+      text: `${post.room}/${post.id}  ${post.author}, ${formatAgo(post.createdAt, now)}`,
+      tone: 'dim',
+    })
+    lines.push({ text: post.body, depth: 1 })
+    if (post.replies) {
+      lines.push({
+        text: `${post.replies} ${post.replies === 1 ? 'reply' : 'replies'} — go ${post.room}/${post.id}`,
+        tone: 'faint',
+        depth: 1,
+      })
+    }
+    lines.push({ text: '' })
+  }
+  lines.push({
+    text: 'anybody can answer any of these. say something here and it goes on your own wall.',
+    tone: 'faint',
+  })
   return lines
 }
 
@@ -152,8 +198,20 @@ export function renderProfile(profile: Profile, now = new Date()): Line[] {
   }
 
   for (const post of profile.posts) {
-    // The address, not the author: you already know whose page this is.
-    lines.push({ text: `${post.room}/${post.id}  ${formatAgo(post.createdAt, now)}`, tone: 'dim' })
+    /*
+     * The address, not the author: you already know whose page this is. But
+     * "(reply)" is not optional, and leaving it off was a real regression.
+     *
+     * A profile lists what somebody has said, and once search learned to cover
+     * replies this started including them — rendered identically to posts. So
+     * marisol's page showed `music/12` above her answer to jameson's post, as
+     * though the post were hers; following that address lands on his. `find`
+     * grew the marker at the time and this did not.
+     */
+    lines.push({
+      text: `${post.room}/${post.id}  ${formatAgo(post.createdAt, now)}${post.isReply ? '  (reply)' : ''}`,
+      tone: 'dim',
+    })
     lines.push({ text: post.body, depth: 1 })
   }
 

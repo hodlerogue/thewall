@@ -103,9 +103,9 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 354 unit tests: parser, aliases, errors, signup, search, themes, names, walls
-npm run test:e2e   # 109 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 178 assertions against the real migrations, on a throwaway database
+npm test           # 375 unit tests: parser, aliases, errors, signup, search, themes, names, walls
+npm run test:e2e   # 116 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm run test:db    # 195 assertions against the real migrations, on a throwaway database
 ```
 
 To see what is actually in a deployed project — read-only, and it tells apart
@@ -138,9 +138,14 @@ both are correctness rather than preference:
   `posts`, and a trigger refuses replies in ephemeral rooms. Commons is
   structurally incapable of keeping anything or growing a thread.
 
-Grants are column-scoped rather than table-wide, which is the difference between
-a policy that constrains *whose row it is* and one that constrains *what may
-change in it*. Both bypasses that cost — self-verification and future-dating a
+Grants are column-scoped rather than table-wide, **on the way in as well as on
+the way out**, which is the difference between a policy that constrains *whose
+row it is* and one that constrains *what may change in it*. The UPDATE half was
+closed early; INSERT was left table-wide for a long time and was the same hole —
+a session with no profile row could create one with `verified_at` already set
+and walk through the §4.7 gate without an inbox, and could choose the
+`created_at` on its own replies, which decides both where a reply sorts in a
+thread and whether it can ever be cleared from somebody's mail. Both bypasses that cost — self-verification and future-dating a
 commons post out of its own expiry — were reachable from the browser console
 with the anon key that ships in the bundle, and each now has its own negative
 assertion aimed at the user's own row.
@@ -370,6 +375,22 @@ email. Unread is one column: replies to posts you wrote, newer than
 clears the count, because in a pull-only design looking is the only signal there
 is. Each one carries its `room/id`, since a notification you cannot walk to is
 just an alert — and `go music/12` gets you there in one step.
+
+**`feed` is where the walls are.** Keeping them out of the lobby was right and
+left a hole: a wall is only ever found by already knowing whose it is, so
+anything said on one reaches whoever thought to look — which for most walls is
+nobody. `feed` is one room, in the lobby, holding what is on every wall, newest
+first. It has no posts of its own and `create_post` refuses its name; each line
+carries the real `~name/12`, because post numbers are per room and `2` on the
+feed is a different post on every wall. `say` there goes on your own wall, since
+that is the only wall you can add to and it is obviously what somebody means —
+and the confirmation names the whole address, because `go 7` only works inside
+the room the 7 belongs to and the feed is not it.
+
+A room that holds nothing renders as an empty one on every surface that draws a
+room from its posts, which caught four: the URL, the lobby line, the share card,
+and the description in `find --rooms`. Each said some version of "nothing here
+yet" about the busiest thing on the site.
 
 **Hiding reaches the inbox**, which it did not for a long time. Neither `mail()`
 nor `mail_count()` looked at `hidden_at` — not on the reply, not on the post it

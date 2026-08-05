@@ -183,6 +183,20 @@ export const ROOMS: Room[] = [
   },
   {
     /*
+     * `feed` — every wall in one place.
+     *
+     * A room with no posts of its own, on purpose: walls are kept out of the
+     * lobby (§4.2) and this is what stops that meaning nobody ever reads one.
+     * `readFeed` gathers them, `create_post` refuses this slug, and every line
+     * carries the `~name/12` it really lives at.
+     */
+    slug: 'feed',
+    gloss: 'what people are saying on their own walls',
+    ephemeral: false,
+    posts: [],
+  },
+  {
+    /*
      * A wall — a room with an owner (see the walls migration).
      *
      * It is in this list because it is a room and everything that walks rooms

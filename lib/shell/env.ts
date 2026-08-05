@@ -62,6 +62,16 @@ export interface Env {
    * rooms are included on purpose: this is the way back to one.
    */
   findRooms(term: string): Promise<RoomHit[]>
+  /**
+   * `feed` — what everybody is putting on their own wall, newest first.
+   *
+   * Walls are kept out of the lobby (§4.2), which worked and left a hole: a
+   * wall is only found by already knowing whose it is, so anything said on one
+   * reaches whoever thought to look. This is the one place they are all
+   * visible, and every hit carries its real `~name/12` address because post
+   * numbers are allocated per room and `2` on its own means nothing here.
+   */
+  readFeed(): Promise<PostHit[]>
   getRoom(slug: string): Promise<Room | undefined>
   getPost(slug: string, id: number): Promise<Post | undefined>
   who(roomSlug: string | undefined): Promise<Presence>
@@ -95,8 +105,13 @@ export type FixturePerson = {
   nameChangedHands?: Date
 }
 
-/** Mirrors `reserved_slugs` in the schema — every one a real path under app/. */
-const RESERVED_SLUGS = new Map([
+/**
+ * Mirrors `reserved_slugs` in the schema — every one a real path under app/.
+ *
+ * Exported so a test can compare it against the migrations rather than against
+ * somebody remembering to.
+ */
+export const RESERVED_SLUGS = new Map([
   ['lobby', 'the lobby lives there'],
   ['about', 'that is a route'],
   ['api', 'that is a route'],
@@ -107,6 +122,7 @@ const RESERVED_SLUGS = new Map([
   ['icon', 'that is a route'],
   ['apple-icon', 'that is a route'],
   ['opengraph-image', 'that is a route'],
+  ['feed', 'that is the wall feed'],
 ])
 
 /** §4.2's fade, matching the interval in the lobby query. */
@@ -135,11 +151,24 @@ export function fixtureEnv(
   // instead of restating the query that decides what a person's posts are.
   const env: Env = {
     async listRooms() {
+      /*
+       * `feed`'s line comes from the walls, because it has no posts of its own
+       * — the same thing `room_overview` does with a lateral that looks at
+       * walls for that one row. Without it the fixture reads "quiet in here"
+       * under the busiest thing on the site while the real one does not, which
+       * is the fixture lying in the direction that matters: the demo and the
+       * e2e suite would both certify a lobby the site does not have.
+       */
+      const newestOnAWall = rooms
+        .filter((room) => room.owner !== undefined)
+        .flatMap((room) => room.posts)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]
+
       // Walls are rooms everywhere except here (§4.2). The real Env gets this
       // for free — `room_overview` filters on `owner_id is null` — and this
       // mirrors it so the lobby reads the same against fixtures.
       return rooms.filter((room) => room.owner === undefined).map((room) => {
-        const latest = visiblePosts(room)[0]
+        const latest = room.slug === 'feed' ? newestOnAWall : visiblePosts(room)[0]
         return {
           slug: room.slug,
           gloss: room.gloss,
@@ -165,26 +194,36 @@ export function fixtureEnv(
     },
 
     async makeRoom(slug, gloss) {
+      /*
+       * The checks are in the order `create_room` does them, and that ordering
+       * is part of what is being mirrored rather than an accident of writing.
+       * `feed` is both a reserved name and an existing room; checking existence
+       * first answered "feed already exists" where the database says "feed is
+       * spoken for — that is the wall feed", and a fixture that disagrees about
+       * *which* refusal somebody gets is still a fixture that lies.
+       */
       const clean = slug.trim().toLowerCase()
-      if (rooms.some((room) => room.slug === clean)) {
-        return { ok: false, reason: `${clean} already exists. try: go ${clean}` }
+
+      if (!/^[a-z0-9-]{2,24}$/.test(clean)) {
+        return {
+          ok: false,
+          reason: 'a room name is 2 to 24 characters of a-z, 0-9 and -. nothing else, and no spaces.',
+        }
       }
       // Mirrors `reserved_slugs`. Without it the demo would happily make a room
       // the real site refuses, which is the direction a fixture must never lie
       // in: somebody tries it here, it works, and then it does not.
       const reserved = RESERVED_SLUGS.get(clean)
       if (reserved) return { ok: false, reason: `${clean} is spoken for — ${reserved}.` }
+
+      if (rooms.some((room) => room.slug === clean)) {
+        return { ok: false, reason: `${clean} already exists. try: go ${clean}` }
+      }
       // Somebody's name is not available as a room — §4.6's impersonation
       // argument is about the reader, and a room in the lobby wearing a
       // person's name is aimed squarely at them.
       if (people.some((person) => person.name === clean)) {
         return { ok: false, reason: `${clean} is somebody's name. try: go ~${clean} to see them.` }
-      }
-      if (!/^[a-z0-9-]{2,24}$/.test(clean)) {
-        return {
-          ok: false,
-          reason: 'a room name is 2 to 24 characters of a-z, 0-9 and -. nothing else, and no spaces.',
-        }
       }
       if (gloss.trim().length < 3) {
         return {
@@ -202,6 +241,22 @@ export function fixtureEnv(
         posts: [],
       })
       return { ok: true, slug: clean }
+    },
+
+    async readFeed() {
+      return rooms
+        .filter((room) => room.owner !== undefined)
+        .flatMap((room) =>
+          room.posts.map((post) => ({
+            room: room.slug,
+            id: post.id,
+            author: post.author,
+            body: post.body,
+            createdAt: post.createdAt,
+            replies: post.replies.length,
+          })),
+        )
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     },
 
     async findRooms(term) {

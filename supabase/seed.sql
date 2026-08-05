@@ -80,6 +80,9 @@ insert into public.rooms (slug, gloss, ephemeral, sort_order) values
   ('builders',  'what you are making',        false, 2)
 on conflict (slug) do nothing;
 
+-- feed is inserted by its own migration, not here: it holds no posts of its own
+-- and exists on every project whether or not this seed was ever run.
+
 -- Curated, always: these are the furniture. The column defaults to false, which
 -- is right for a room somebody makes and wrong for every room in this file — a
 -- seeded room that was not marked would fade out of the lobby after a fortnight

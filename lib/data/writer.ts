@@ -141,6 +141,18 @@ export function friendly(message: string): string {
   if (message.includes('commons does not keep threads')) {
     return 'commons doesn’t keep threads — say it as its own thing instead.'
   }
+  /*
+   * Two the database writes as finished sentences, aimed at the person who hit
+   * them. Falling through to "that didn't send. try again?" would replace an
+   * explanation with a shrug — and "try again" is advice that cannot work,
+   * since both refusals are about what was asked for rather than a failure.
+   */
+  if (message.includes('somebody else’s wall') || message.includes("somebody else's wall")) {
+    return message
+  }
+  if (message.includes('feed shows what people put on their own walls')) {
+    return message
+  }
   if (message.includes('signed in')) {
     return 'you have to be signed in to say something.'
   }

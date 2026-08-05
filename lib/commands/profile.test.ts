@@ -299,3 +299,37 @@ describe('§7 — doctor, for when the message could mean three things', () => {
     }
   })
 })
+
+
+describe('a profile lists replies as replies', () => {
+  it('marks them, so an address is not read as somebody else’s post', async () => {
+    /*
+     * A regression that arrived with the search fix. `getProfile` runs the same
+     * query `find --by=` does, and once that learned to cover replies, profiles
+     * started listing them — rendered exactly like posts.
+     *
+     * So marisol's page showed `music/12` above her answer to jameson's post,
+     * as though the post were hers, and following that address lands on his.
+     * `find` grew the marker at the time; this did not.
+     */
+    const { run } = harness()
+    const out = text((await run('go ~marisol', AT.lobby)).lines)
+
+    // Her reply in music, which is jameson's post.
+    expect(out).toContain('warped ones still play')
+    expect(out).toMatch(/music\/12.*\(reply\)/)
+
+    // And a real post of hers carries no marker.
+    expect(out).toMatch(/kitchen\/8(?!.*\(reply\))/)
+  })
+
+  it('shows what somebody said, which is posts and replies both', async () => {
+    // The question a profile answers is "what has this person said", and the
+    // answer was quietly only ever half of it.
+    const { run } = harness()
+    const out = text((await run('go ~marisol', AT.lobby)).lines)
+
+    expect(out).toContain('the trick with the tomatoes')
+    expect(out).toContain('the refrigerator and i are also here')
+  })
+})

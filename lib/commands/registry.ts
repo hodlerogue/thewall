@@ -15,7 +15,7 @@
 import { parseFlags, parseSince, splitStages } from '@/lib/commands/pipeline'
 import type { Env } from '@/lib/shell/env'
 import { formatAgo, type PostHit, type PostQuery, type RoomHit } from '@/lib/shell/model'
-import { renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
+import { renderFeed, renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
 import type { Session } from '@/lib/shell/session'
 import { ABOUT_SUMMARY } from '@/lib/guide/about'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
@@ -95,6 +95,9 @@ function applyTheme(name: string): void {
 
 const error = (text: string): RunResult => ({ lines: [{ text, tone: 'error' }] })
 
+/** The one room that holds nothing of its own — see the feed migration. */
+const FEED = 'feed'
+
 /** Matches the `limit` in `public.mail()`. Reaching it is said out loud. */
 const MAIL_LIMIT = 100
 
@@ -142,6 +145,8 @@ export const COMMANDS: readonly Command[] = [
         if (!profile) return error(`there’s no one called ${location.person}. try: leave`)
         return { lines: renderProfile(profile) }
       }
+
+      if (location.room === FEED) return { lines: renderFeed(await env.readFeed()) }
 
       const room = await env.getRoom(location.room!)
       if (!room) return error(`${location.room} isn’t there anymore. try: leave`)
@@ -244,9 +249,25 @@ export const COMMANDS: readonly Command[] = [
         if (context === 'commons') {
           return error('commons doesn’t keep posts, so there’s nothing to open here.')
         }
+        if (location.room === FEED) {
+          /*
+           * Numbers are allocated per room, so `2` on the feed is two or three
+           * different posts at once. The whole address is shown against every
+           * line here for exactly that reason, and `go` already takes one.
+           */
+          const feed = await env.readFeed().catch(() => [])
+          const example = feed[0] ? `${feed[0].room}/${feed[0].id}` : '~marisol/2'
+          return error(
+            `these live on people's walls, so the number needs the name — try: go ${example}`,
+          )
+        }
         const post = await env.getPost(location.room!, id)
         if (!post) return error(`there’s no post ${id} in ${location.room}. try: look`)
         return { lines: renderPost(post), location: { room: location.room, postId: id } }
+      }
+
+      if (arg.toLowerCase() === FEED) {
+        return { lines: renderFeed(await env.readFeed()), location: { room: FEED } }
       }
 
       // Anything else is a room name, and naming a room works from anywhere —
@@ -422,6 +443,25 @@ export const COMMANDS: readonly Command[] = [
           )
         }
         const onWall = await session.write({ room: `~${location.person}` }, arg)
+        return { lines: onWall.lines, retry: onWall.failed ? arg : undefined }
+      }
+
+      /*
+       * Standing on the feed, `say` puts it on your own wall.
+       *
+       * The feed is a view of walls and holds nothing itself — the database
+       * refuses a post addressed to it. Refusing here too would be correct and
+       * useless: somebody reading everybody's walls and typing a sentence means
+       * to add one, and the only wall they can add to is theirs.
+       */
+      if (location.room === FEED) {
+        const me = session.name()
+        if (me === null) {
+          // The wall is named at commit time, once there is a name to name it
+          // with — see `Held.toOwnWall`.
+          return { lines: session.begin({ location, body: arg, toOwnWall: true }) }
+        }
+        const onWall = await session.write({ room: `~${me}` }, arg)
         return { lines: onWall.lines, retry: onWall.failed ? arg : undefined }
       }
 
@@ -1149,7 +1189,12 @@ function renderRoomHits(hits: readonly RoomHit[], term: string): Line[] {
       // A room with nothing in it and a room nobody has been in for a month are
       // different invitations, and the count is what tells them apart.
       text:
-        hit.posts === 0
+        // feed counts zero because it holds nothing — the posts it shows are on
+        // walls. Reporting that as "nothing in it yet" is the empty-room lie in
+        // a third place.
+        hit.slug === FEED
+          ? 'everything anybody has put on their own wall'
+          : hit.posts === 0
           ? 'nothing in it yet'
           : `${hit.posts} ${hit.posts === 1 ? 'post' : 'posts'}${
               hit.latestAt ? `, newest ${formatAgo(hit.latestAt)}` : ''

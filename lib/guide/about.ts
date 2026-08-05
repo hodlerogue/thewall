@@ -36,23 +36,23 @@ export const ABOUT: readonly GuideSection[] = [
   {
     heading: 'What this is',
     body: [
-      'thewall.social is a small social site where the entire interface is a command prompt. You type words, and it does things. There is no feed, no like button, no follower count and no algorithm deciding what you see next.',
+      'thewall.social is a social site where the entire interface is a command prompt. You type words, and it does things. There is no algorithm deciding what you see next, no like button and no follower count.',
       'It is one place made of rooms. You walk into a room, read what people have said there, and say something back. That is the whole shape of it.',
-      'It is run by one person as a side project. Free, makes no money, not trying to grow.',
+      'Everything anybody says here is written by a person, to be read by a person. That is the whole product.',
     ],
   },
   {
     heading: 'Why a prompt',
     body: [
-      'Because it answers "where am I" without being asked. The text before your cursor — jameson:music/12$ — is your name, the room you are in, and the thing you are reading. Nothing else on the screen has to be spent saying that.',
+      'Because it answers "where am I" without being asked. The text before your cursor — jameson:music/12$ — is your name, the room you are in, and what you are reading. Nothing else on the screen is spent saying that.',
       'Because it cannot scroll forever. A room holds what people said in it, and when you have read it you have read it.',
-      'And because it teaches itself: help lists everything you can type from where you are standing, and what <command> explains any of it. If you have never opened a terminal, you do not need to have — the buttons above the prompt put the words in for you.',
+      'And because it teaches itself: help lists everything you can type from where you are standing, and what <command> explains any of it. If you have never opened a terminal, you do not need to have — the buttons above the prompt put the words in.',
     ],
   },
   {
     heading: 'Where you are',
     body: [
-      'The lobby is the list of rooms. Type look to see it, and go music to walk into one.',
+      'The lobby is the list of rooms. Type look to see it, then go roomname to walk into one — go music, say.',
       'A room holds posts. look shows them, each with a number in front: that number is its permanent address and is never reused. go 12 opens post 12 and puts you inside the conversation, where the replies are. leave backs you out one step.',
       'The path in the prompt is also the web address: if it says music/12, then thewall.social/music/12 is that post, and a link you can send somebody.',
     ],
@@ -60,16 +60,16 @@ export const ABOUT: readonly GuideSection[] = [
   {
     heading: 'Saying something',
     body: [
-      'say, and then what you want to say. In a room that starts a new post; inside a post it adds a reply. reply does the same thing there, if that is the word you reach for.',
+      'say, and then what you want to say. In a room that starts a new post; inside a post it adds a reply. reply does the same thing there.',
       'You do not need an account to read anything. The first time you try to say something, you are asked what to call you and where to send a sign-in link — and then the sentence you already typed is posted for you. You never type it twice.',
-      'There are no passwords; signing in is a link. Your address is never shown to anybody and never sold. You can say one thing before following that link — after that it asks you to check your email, because an address nobody has proved they can read is not a way back in on a new phone.',
+      'There are no passwords; signing in is a link. Your address is never shown to anybody and never sold. You can say one thing before following that link — after that it asks you to check your email, because an address nobody has proved they can read is no way back in on a new phone.',
     ],
   },
   {
     heading: 'commons, which keeps nothing',
     body: [
       'One room is different. commons is a hallway: everything said there is gone in 24 hours, there are no post numbers, and there are no replies. It is for the thing not worth keeping.',
-      'That is enforced by the database rather than by a setting somebody could change — commons is structurally incapable of holding on to anything. Everywhere else keeps what you said until you ask for it to be removed.',
+      'That is enforced by the database rather than by a setting — commons is structurally incapable of holding on to anything. Everywhere else keeps what you said until you ask for it to be removed.',
     ],
   },
   {
@@ -77,7 +77,7 @@ export const ABOUT: readonly GuideSection[] = [
     body: [
       'go ~yourname — with the tilde — shows somebody: when they arrived, and the recent things they have said, each with the address it lives at.',
       'Your own page is also your wall. Say something there and it goes on the wall rather than into a room. Only you can start something there; anybody can answer it.',
-      'Walls never appear in the lobby, deliberately — a room for every person turns a building into a directory.',
+      'Walls never appear in the lobby — a room for every person would turn a building into a directory. go feed is where they all are instead: everything anybody has put on their own wall, newest first, each with the address to walk to. Say something while you are there and it goes on your wall.',
     ],
   },
   {
@@ -85,7 +85,7 @@ export const ABOUT: readonly GuideSection[] = [
     body: [
       'make garden asks what the room is for, then opens it and walks you in. You need to have followed your sign-in link, and you can make three in any seven days.',
       'A room you make is not yours. There is no owner and no moderator — inside it you are another person in a room, like anywhere else.',
-      'It sits in the lobby while people are talking in it and drops out of the listing after a fortnight of silence. It is not deleted: it keeps its name, its posts and its address, search still finds it, and it comes back the moment somebody says something in it. The six original rooms never fade — they are the furniture.',
+      'It sits in the lobby while people are talking in it and drops out of the listing after a fortnight of silence. It is not deleted: it keeps its name, its posts and its address, search finds it, and it comes back the moment somebody says something in it.',
     ],
   },
   {
@@ -113,7 +113,7 @@ export const ABOUT: readonly GuideSection[] = [
     body: [
       'No algorithm. Rooms are in a fixed order and posts are in the order they were said.',
       'No likes, no scores, no follower counts. There is nothing to accumulate, so there is nothing to perform for.',
-      'No advertising, no analytics, no trackers, and no cookies at all unless you make an account — and then exactly one, to keep you signed in.',
+      'No advertising, no analytics, no trackers, and no cookies unless you make an account — then exactly one, to keep you signed in.',
       'No private messages, no notifications that chase you, and no infinite scroll.',
       'Nothing you write is sold, licensed to anybody, or used to train anything. It stays yours; posting it here is permission to show it here.',
     ],
