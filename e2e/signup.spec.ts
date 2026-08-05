@@ -49,6 +49,12 @@ test('the first say collects a name and an email, then sends what you typed', as
   await expect(scrollback(page)).toContainText('where should i send your key?')
   await expect(scrollback(page)).toContainText('no password')
 
+  // The moment of assent, and the only one there is. §6 rules out a form and a
+  // checkbox, so the sentence has to sit immediately above the answer that
+  // creates the account — and say what typing it does.
+  await expect(scrollback(page)).toContainText('means you agree to the terms')
+  await expect(scrollback(page)).toContainText('type terms to read them')
+
   await type(page, 'newcomer@example.com')
 
   // The sentence posts itself. The user never retyped it.
@@ -201,4 +207,35 @@ test('a spent or missing key says so rather than doing nothing', async ({ page }
   await expect(scrollback(page)).toContainText('already been used, or it expired')
   await expect(scrollback(page)).toContainText('type resend')
   expect(page.url()).not.toContain('key=')
+})
+
+
+test('the terms are readable before you agree, without losing the signup', async ({ page }) => {
+  // Being told to read something you cannot reach without abandoning what you
+  // were doing is the footer trick in a different hat. §3.9 holds here too:
+  // the sentence and the half-made account both survive the detour.
+  await type(page, 'leave')
+  await type(page, 'go music')
+  await type(page, 'say a thing worth keeping')
+  await type(page, 'reader')
+
+  await expect(scrollback(page)).toContainText('means you agree to the terms')
+
+  await type(page, 'terms')
+  await expect(scrollback(page)).toContainText('what you write stays yours')
+  // And the question comes back, because a document is long enough to have
+  // scrolled away what you were in the middle of.
+  await expect(scrollback(page)).toContainText('where should i send your key?')
+
+  // The other document the same question points at. `type privacy for what's
+  // kept` was already on screen and had never worked — mid-signup it came back
+  // as "that doesn't look like an email address".
+  await type(page, 'privacy')
+  await expect(scrollback(page)).toContainText('reading thewall is anonymous')
+
+  // Still mid-signup: the next thing typed is still the email, and the held
+  // sentence is still held.
+  await type(page, 'reader@example.com')
+  await expect(scrollback(page)).toContainText('the thing you were trying to say')
+  await expect(page.getByTestId('prompt-label')).toHaveText('reader:music$')
 })

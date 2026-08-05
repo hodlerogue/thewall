@@ -1,4 +1,5 @@
 import { suggestAlternates, validateName } from '@/lib/auth/names'
+import { DOCUMENTS } from '@/lib/legal/documents'
 import { formatAgo } from '@/lib/shell/model'
 import type { Line, Location } from '@/lib/shell/types'
 
@@ -164,6 +165,25 @@ export class Session {
           text: 'type back to change the name. your address is never shown to anyone — type privacy for what’s kept.',
           tone: 'faint',
         },
+        /*
+         * The moment of assent, and the only one there is.
+         *
+         * The terms used to say "using it means agreeing", which nothing on the
+         * site had ever mentioned — browsewrap, with no notice and no record.
+         * §6 rules out a form and a checkbox, so this is the honest version of
+         * the same idea: the sentence sits immediately above the answer that
+         * creates the account, it names the command that shows the document,
+         * and the answer itself is a deliberate act. `terms_accepted_at` is
+         * written server-side on the same statement that makes the account.
+         *
+         * Accent, not faint. It is the one line here that is a legal
+         * consequence rather than a reassurance, and burying it in the quietest
+         * colour on the screen would be the footer trick in a different hat.
+         */
+        {
+          text: 'sending it makes an account, and means you agree to the terms — type terms to read them first.',
+          tone: 'accent',
+        },
       ],
     }
   }
@@ -192,6 +212,37 @@ export class Session {
         lines: [
           { text: `no harm done — nothing was made, and ${wrong} is still free.`, tone: 'faint' },
           { text: 'what do you want to be called?', tone: 'accent' },
+        ],
+      }
+    }
+
+    /*
+     * Reading the documents, from inside the question that asks you to agree.
+     *
+     * This question already told people to `type privacy for what's kept`, and
+     * that instruction did not work: mid-signup everything typed is an answer,
+     * so `privacy` came back as "that doesn't look like an email address". An
+     * instruction the product refuses is worse than no instruction, and adding
+     * the terms line made it two of them — being told to read something you
+     * cannot reach without abandoning what you were doing is the footer trick
+     * in a different hat.
+     *
+     * Safe here for the same reason `back` is, and for no other reason: an
+     * answer to this question has to be an email address, so no real answer is
+     * being spent. It would not be safe at the name question, where `terms` is
+     * a name somebody could want.
+     *
+     * The question is asked again afterwards, because a document is long and
+     * the thing you were in the middle of should not have scrolled away
+     * silently.
+     */
+    const document = DOCUMENTS.find((doc) => doc.title === text.trim().toLowerCase())
+    if (document) {
+      return {
+        lines: [
+          ...document.summary.map((line) => ({ text: line, tone: 'faint' as const })),
+          { text: '' },
+          { text: 'where should i send your key?', tone: 'accent' },
         ],
       }
     }

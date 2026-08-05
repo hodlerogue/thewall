@@ -4,6 +4,7 @@ import { clientHash } from '@/lib/auth/clientHash'
 import { sendMagicLink } from '@/lib/auth/mail'
 import { verifyUrl } from '@/lib/auth/links'
 import { createAdminClient, createRouteClient } from '@/lib/supabase/server'
+import { LAST_UPDATED } from '@/lib/legal/documents'
 
 /**
  * The server half of §3.9.
@@ -88,7 +89,26 @@ export async function POST(request: Request) {
 
   const { error: profileError } = await admin
     .from('profiles')
-    .insert({ id: created.user.id, name: validated.name })
+    /*
+     * The acceptance is recorded here and nowhere else.
+     *
+     * This is the server-side half of the sentence the prompt says before it
+     * asks for an address: making an account means agreeing to the terms. It
+     * is written under the service role, on the same statement that creates
+     * the account, so the record and the thing it is a record of cannot come
+     * apart — and there is no UPDATE grant on profiles for anybody, so it
+     * cannot be forged from a browser afterwards.
+     *
+     * The version matters more than the timestamp. "They agreed" is nearly
+     * useless once the document has changed; "they agreed to this version of
+     * it" is the part that can be stood behind.
+     */
+    .insert({
+      id: created.user.id,
+      name: validated.name,
+      terms_accepted_at: new Date().toISOString(),
+      terms_version: LAST_UPDATED,
+    })
 
   if (profileError) {
     // Don't leave an auth user with no profile behind; it would hold the email

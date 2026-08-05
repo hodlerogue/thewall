@@ -61,7 +61,14 @@ describe('the privacy policy', () => {
     // Every one of these is a column somebody could be identified by. The list
     // grows when the schema does — `created_by` arrived with user-made rooms
     // and was personal data nobody had written down.
-    for (const held of ['name', 'email', 'post', 'ip address', 'rooms you opened']) {
+    for (const held of [
+      'name',
+      'email',
+      'post',
+      'ip address',
+      'rooms you opened',
+      'when you agreed to the terms',
+    ]) {
       expect(full, held).toContain(held)
     }
   })
@@ -164,6 +171,45 @@ describe('the terms', () => {
       expect(text).not.toContain('NOT SET YET')
       expect(TERMS.summary.join('\n')).not.toContain('governing law')
     }
+  })
+
+  it('names a body of law a court could actually apply', () => {
+    const where = jurisdiction()
+    if (where === null) return
+
+    /*
+     * The failure this catches is a plausible-looking clause that resolves to
+     * nothing. "The United States" is the obvious one — contract and consumer
+     * law there is state law, so there is no federal body of it to choose and
+     * a court has nothing to apply. Same for any bare federal country name.
+     * Naming a place is not the requirement; naming a *jurisdiction* is.
+     */
+    const federalOnly = /^the (United States|Canada|Australia)(,|$)/i
+    expect(where.law, 'a country with no sub-jurisdiction named').not.toMatch(federalOnly)
+    expect(where.law.length, 'too short to be a real jurisdiction').toBeGreaterThan(4)
+    expect(where.courts.length).toBeGreaterThan(4)
+  })
+
+  it('say when somebody agreed, because "by using it" is not agreement', () => {
+    /*
+     * The terms used to say "using it means agreeing", and nothing on the site
+     * had ever mentioned them — browsewrap, with no notice and no record, which
+     * US courts throw out routinely and for good reason. What replaced it has
+     * to be described here or the document is claiming a consent it does not
+     * collect.
+     */
+    expect(full).toContain('when you make an account, and not before')
+    // Reading is not agreeing, and that has to be said rather than implied.
+    expect(full).toMatch(/reading does not require agreeing/)
+    // And the record of it, because "they agreed" without a version is close
+    // to useless once the wording has moved.
+    expect(full).toMatch(/version you agreed to are recorded/)
+  })
+
+  it('does not claim a consent record for accounts that predate it', () => {
+    // Backfilling would be inventing evidence. The document says so, which is
+    // what stops somebody quietly backfilling it later.
+    expect(full).toMatch(/rather than backdated|nothing stored/)
   })
 
   it('keep a visitor’s own consumer rights whatever law governs', () => {

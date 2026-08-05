@@ -277,6 +277,7 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         // readable by the browser, so probing it would report every correctly
         // migrated project as missing this one.
         ['rooms', 'curated', '20260805000000_user_rooms'],
+        ['profiles', 'terms_accepted_at', '20260805010000_terms_accepted'],
       ] as const) {
         const { error } = await client.from(table).select(column).limit(1)
         checks.push({

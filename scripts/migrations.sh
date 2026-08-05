@@ -23,6 +23,7 @@ MIGRATION_PROBES=(
   "20260804040000_erasure.sql|select to_regproc('public.forget') is not null"
   "20260804050000_walls.sql|select exists (select 1 from information_schema.columns where table_name = 'rooms' and column_name = 'owner_id')"
   "20260805000000_user_rooms.sql|select to_regproc('public.create_room') is not null"
+  "20260805010000_terms_accepted.sql|select exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'terms_accepted_at')"
 )
 
 probe_for() {

@@ -97,9 +97,9 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 277 unit tests: parser, aliases, errors, signup, search, themes, names, walls
-npm run test:e2e   # 99 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 166 assertions against the real migrations, on a throwaway database
+npm test           # 284 unit tests: parser, aliases, errors, signup, search, themes, names, walls
+npm run test:e2e   # 100 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm run test:db    # 170 assertions against the real migrations, on a throwaway database
 ```
 
 To see what is actually in a deployed project — read-only, and it tells apart
@@ -432,11 +432,34 @@ asserts the parts that could quietly stop being true — a reachable contact, a
 named processor for each third party, a stated lawful basis and retention, and a
 working deletion route.
 
+**Agreement happens once, at the moment an account is made.** The terms used to
+say "using it means agreeing", and nothing on the site had ever mentioned them —
+browsewrap, with no notice, no moment of assent and nothing recorded. US courts
+throw that out routinely, and the reasoning is not a technicality: somebody who
+was never shown the terms did not agree to them.
+
+§6 rules out a form and a checkbox, so it is sign-in wrap instead. The line sits
+immediately above the answer that creates the account, in accent rather than the
+quietest colour on the screen, and names the command that shows the document:
+
+```
+sending it makes an account, and means you agree to the terms — type terms to read them first.
+```
+
+`terms` and `privacy` both work from inside that question, which they did not
+before — the prompt had been telling people to type `privacy` and answering
+"that doesn't look like an email address". The signup route records
+`terms_accepted_at` and `terms_version` under the service role on the same
+statement that creates the account. The version is the part worth having: "they
+agreed" is nearly useless once the wording has moved. There is no UPDATE grant
+on `profiles` for anybody, so the record cannot be forged from a browser, and
+accounts made before it existed are left null rather than backdated — a
+backfilled timestamp would be inventing evidence.
+
 **Nobody here is a lawyer, and these are not legal advice.** They are an honest
 description by someone who read the code. If this ever carries money or a
-company, have somebody qualified read them. Two things to do before they go
-live: point `hello@thewall.social` at an inbox you actually read, and check the
-governing-law clause says the right country.
+company, have somebody qualified read them. One thing left to do before they go
+live: point `hello@thewall.social` at an inbox you actually read.
 
 Erasure is `./scripts/moderate.sh forget <name>` — the address and the handle
 go permanently, and what they posted stays up attached to a handle that is

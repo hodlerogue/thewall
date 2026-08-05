@@ -52,7 +52,25 @@ export interface Jurisdiction {
  *     return { law: 'the State of California', courts: 'San Francisco County, California' }
  */
 export function jurisdiction(): Jurisdiction | null {
-  return null
+  /*
+   * "The United States" is not, by itself, a governing law for something like
+   * this. Contract and consumer law in the US is state law — there is no
+   * federal body of it to choose — so a clause reading "governed by the laws of
+   * the United States" names nothing a court can apply, which is the exact
+   * failure this function's null case exists to avoid.
+   *
+   * So this names a state as well, and the state is the operator's own. Change
+   * `law` and `courts` together if that is not where you are; they are one
+   * decision and a mismatched pair is worse than either.
+   */
+  return {
+    law: 'the State of Arizona, United States',
+    // The state's courts rather than one named county. Naming a county pins
+    // every dispute to a courthouse the operator may not live near for long,
+    // and the Law section below already preserves a consumer's right to sue
+    // where they are — so a narrower clause would buy nothing and cost that.
+    courts: 'the State of Arizona',
+  }
 }
 
 export interface Section {
@@ -106,6 +124,7 @@ export const PRIVACY: Document = {
         'When you signed up, when you last read your mail, and when your current name was taken.',
         'Names you have previously used. Not public: a name is shown as "previously somebody else\'s" only as a date, never attached to a person, so renaming to get away from a name actually works.',
         'Which rooms you opened, if you make any. Not public — the site never shows who made a room, and the database does not let a browser read it either. It is held so the three-a-week limit can be counted, and so there is a record if a room needs looking at.',
+        'When you agreed to the terms, and which version of them. Not public. It is the record that you were asked and answered, and it is deleted with your account.',
         'A one-way hash of the IP address you signed up from. Used to stop one person creating a hundred accounts. It is a SHA-256 digest, not an address, and it is not linked to your account — it is kept for one hour and deleted.',
       ],
     },
@@ -115,6 +134,7 @@ export const PRIVACY: Document = {
         'Your name and your posts: to perform the contract you entered into by making an account. Without them there is no service to provide.',
         'Your email address: the same, plus our legitimate interest in being able to let you back in on a new device.',
         'Which rooms you opened: our legitimate interest in enforcing a limit that keeps the place usable, and in being able to answer for a room if somebody complains about one.',
+        'Your agreement to the terms: our legal obligation to be able to show what was agreed, and our legitimate interest in not having to guess later.',
         'The signup IP hash: our legitimate interest in not being overrun by automated accounts. It is the least identifying thing that answers the question, and it is short-lived.',
         'We do not rely on consent for any of it, which means there is nothing to withdraw — if you want out, deletion is the lever, and it is below.',
       ],
@@ -194,7 +214,16 @@ export const TERMS: Document = {
       heading: 'What this is',
       body: [
         'thewall.social is a small social site run by one person as a side project. It is free, it makes no money, and it comes with no promises about uptime, backups or how long it will exist.',
-        'Using it means agreeing to what is below. If you do not, do not use it — reading is anonymous, so you can walk away having left nothing behind.',
+        'Reading does not require agreeing to anything. There is no account, nothing is stored about you, and you can close the tab having left nothing behind. These terms are about having an account.',
+      ],
+    },
+    {
+      heading: 'When you agree to this',
+      body: [
+        'When you make an account, and not before. The prompt says so at the moment it asks for your email address, and names the command that shows you this document — the account is created by what you type next, so that is the point of agreement.',
+        'The date and the version you agreed to are recorded against your account. If this document changes, that record still says which wording you accepted.',
+        'Accounts made before that record existed have nothing stored, and are marked as such rather than backdated.',
+        'If you do not want to agree, do not make an account. Everything on this site is readable without one.',
       ],
     },
     {
@@ -271,7 +300,8 @@ export const TERMS: Document = {
     {
       heading: 'Changes',
       body: [
-        `Last updated ${LAST_UPDATED}. Changes that matter are announced in commons before they take effect. Continuing to use the site after that is how you accept them.`,
+        `Last updated ${LAST_UPDATED}. Changes that matter are announced in commons before they take effect, and the announcement says what changed rather than only that something did.`,
+        'If a change materially reduces your rights, continuing to post after it is how you accept it — and if you would rather not, deletion is a sentence away and takes your address and your name with it.',
       ],
     },
     {

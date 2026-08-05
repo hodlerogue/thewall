@@ -1344,6 +1344,42 @@ select tests.ok(
   'and a % in the term is a literal there too'
 );
 
+\echo ''
+\echo 'agreeing to the terms is recorded, and cannot be forged'
+
+-- The record is written by the signup route under the service role, on the same
+-- statement that creates the account. What matters here is the other half: that
+-- nothing lets a browser write or rewrite it. A consent record a user controls
+-- is not a consent record.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+
+  select tests.raises(
+    $sql$update public.profiles set terms_accepted_at = now()
+          where id = '99999999-9999-4999-8999-999999999999'$sql$,
+    'nobody can record their own agreement'
+  );
+  select tests.raises(
+    $sql$update public.profiles set terms_version = 'whatever i like'
+          where id = '99999999-9999-4999-8999-999999999999'$sql$,
+    'nor change which version they agreed to'
+  );
+  -- Readable, though: it is your own data, and "what did I agree to, and when"
+  -- is a question somebody is entitled to ask.
+  select tests.ok(
+    (select count(*) from public.profiles
+      where id = '99999999-9999-4999-8999-999999999999') = 1,
+    'while your own row still reads'
+  );
+commit;
+
+select tests.ok(
+  (select terms_accepted_at from public.profiles
+    where id = '99999999-9999-4999-8999-999999999999') is null,
+  'and an account made before the record existed is null, not backdated'
+);
+
 -- Decay is about rooms going cold. A quiet wall is a person who has not posted
 -- lately, which is not a problem and not anybody's to tidy up.
 select public.archive_quiet_rooms(interval '1 second');
