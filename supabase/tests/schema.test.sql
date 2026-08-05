@@ -1047,6 +1047,59 @@ select tests.raises(
   'and a room cannot be disguised as a wall'
 );
 
+-- §4.2 — room creation is closed, and closed means from the browser.
+--
+-- Every assertion above runs as the owner and tests a *constraint*. That is a
+-- different question from what somebody with the anon key and a signed-in
+-- session can do, and answering the first as though it settled the second is
+-- exactly how the verified_at bypass shipped: a row policy says whose row it
+-- is and nothing about which verbs anyone holds.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+
+  select tests.raises(
+    $sql$insert into public.rooms (slug, gloss, ephemeral, sort_order)
+         values ('mine', 'a room i made from the console', false, 99)$sql$,
+    'a signed-in user cannot open a room'
+  );
+  -- `raises`, not `changes_nothing`. An UPDATE the policy filters matches no
+  -- rows and succeeds quietly; these are refused outright, because there is no
+  -- UPDATE grant on rooms for anybody. That is the stronger of the two answers
+  -- and worth asserting as the stronger one — if a grant is ever added, this
+  -- fails rather than passing on a policy that might have holes in it.
+  select tests.raises(
+    $sql$update public.rooms set gloss = 'mine now' where slug = 'music'$sql$,
+    'nor rewrite what a room is for'
+  );
+  select tests.raises(
+    $sql$update public.rooms set owner_id = '99999999-9999-4999-8999-999999999999'
+          where slug = 'music'$sql$,
+    'nor claim one as a wall, which would take it out of the lobby'
+  );
+  select tests.raises(
+    $sql$delete from public.rooms where slug = 'music'$sql$,
+    'nor close one'
+  );
+
+  -- The one path that does create a room from a user action, held to its shape:
+  -- it is reachable only through create_post, only for a `~` slug, and only for
+  -- your own name. Every other spelling is "no room called that".
+  select tests.raises(
+    $sql$select public.create_post('brandnew', 'a room by writing to it')$sql$,
+    'and posting to a name that is not a room does not conjure one'
+  );
+commit;
+
+select tests.ok(
+  (select count(*) from public.rooms where slug in ('mine', 'brandnew')) = 0,
+  'none of that left a room behind'
+);
+select tests.ok(
+  (select gloss from public.rooms where slug = 'music') = 'what you are listening to',
+  'and music is still what it was'
+);
+
 -- Decay is about rooms going cold. A quiet wall is a person who has not posted
 -- lately, which is not a problem and not anybody's to tidy up.
 select public.archive_quiet_rooms(interval '1 second');

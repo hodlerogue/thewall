@@ -137,10 +137,19 @@ file — and to `OWN_WALL_CHIPS` if it belongs on your own page.
 
 **Nobody creates a room from inside the site, and that is the design.** §4.2
 closes room creation: *"40 rooms with three people each kills the entire
-feeling"*. There is no verb for it, no admin surface, and no plan for one. The
-only rooms that make themselves are walls, and a wall is created lazily by
-`create_post` the first time somebody posts to their own — which is why they are
-excluded from the lobby.
+feeling"*. There is no verb for it, no admin surface, and no plan for one.
+
+It is closed in the schema rather than in the client, so a console and the anon
+key do not get around it: `anon` and `authenticated` hold `select` on `rooms`
+and nothing else — no insert, no update, no delete. `schema.test.sql` asserts
+all four as a signed-in user, plus that a room's gloss cannot be rewritten and
+that nobody can claim an existing room as their wall (which would drop it out of
+the lobby).
+
+The only rooms that make themselves are walls, and that path is narrow on
+purpose: `create_post` will create a room only when the slug starts with `~`
+**and** matches the caller's own name. Every other spelling answers "no room
+called that" rather than conjuring one, which is also asserted.
 
 So there are exactly two ways, and they answer different questions.
 

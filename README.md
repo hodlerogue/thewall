@@ -99,7 +99,7 @@ looking at.
 ```bash
 npm test           # 252 unit tests: parser, aliases, errors, signup, search, themes, names, walls
 npm run test:e2e   # 90 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 124 assertions against the real migrations, on a throwaway database
+npm run test:db    # 131 assertions against the real migrations, on a throwaway database
 ```
 
 To see what is actually in a deployed project — read-only, and it tells apart
