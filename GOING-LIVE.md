@@ -208,6 +208,20 @@ callback ran on. If it says `thewallsocial.netlify.app` while you are reading
 `thewall.social`, following a key signs you in on the other origin and leaves
 you a guest on this one.
 
+### "The link says my domain, but following it lands on netlify.app"
+
+A different fault from the one below, with the same result. The callback used
+to build its redirect from `request.url`, and inside a route handler on Netlify
+that is the **internal** deploy URL rather than the address the person typed —
+so a key that correctly said `thewall.social` bounced to a deploy-scoped
+`…--site.netlify.app` host that appears in no configuration anywhere, and the
+session cookie was set over there.
+
+Fixed in the code: the callback now sends a **relative** `Location`, which
+cannot name the wrong host because it never names one. Nothing to configure. If
+you are still seeing it, you are on a build from before that fix — check
+`doctor`'s build line.
+
 ### "I signed up, followed the link, and it still doesn't know me"
 
 All of these are the same fault, and it is `site url` above:
