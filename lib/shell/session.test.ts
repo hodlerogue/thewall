@@ -483,3 +483,53 @@ describe('§3.9 — one step back, when the name was wrong', () => {
     expect(out).toMatch(/type back/)
   })
 })
+
+
+describe('agreeing to the terms, at the one moment there is', () => {
+  it('says what sending the address does, before it is sent', async () => {
+    const { run } = harness()
+    await run('say something', { room: 'music' })
+    const out = text((await run('newcomer', { room: 'music' })).lines)
+
+    expect(out).toContain('means you agree to the terms')
+    expect(out).toContain('type terms')
+  })
+
+  it('lets you read either document without losing your place', async () => {
+    /*
+     * The email question already said `type privacy for what's kept`, and that
+     * instruction did not work: mid-signup everything typed is an answer, so it
+     * came back as "that doesn't look like an email address". An instruction the
+     * product refuses is worse than none, and the terms line made it two.
+     */
+    const { run } = harness()
+    await run('say something', { room: 'music' })
+    await run('newcomer', { room: 'music' })
+
+    for (const document of ['terms', 'privacy']) {
+      const out = text((await run(document, { room: 'music' })).lines)
+      expect(out, document).not.toContain('doesn’t look like an email address')
+      // And the question is asked again, since a document is long enough to
+      // have pushed it off the screen.
+      expect(out, document).toContain('where should i send your key?')
+    }
+  })
+
+  it('still takes the address afterwards, with the sentence still held', async () => {
+    const { run, posted } = harness()
+    await run('say a thing worth keeping', { room: 'music' })
+    await run('newcomer', { room: 'music' })
+    await run('terms', { room: 'music' })
+
+    const done = await run('newcomer@example.com', { room: 'music' })
+    expect(done.identity).toBe('newcomer')
+    expect(posted).toEqual([{ room: 'music', body: 'a thing worth keeping' }])
+  })
+
+  it('does not spend a name on a document at the name question', () => {
+    // `terms` is a perfectly good name, and intercepting it where names are
+    // taken is the bug that once made people's accounts `look`.
+    expect(validateName('terms')).toMatchObject({ ok: true })
+    expect(validateName('privacy')).toMatchObject({ ok: true })
+  })
+})

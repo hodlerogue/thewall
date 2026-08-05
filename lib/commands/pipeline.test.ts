@@ -49,7 +49,10 @@ describe('§4.8 — one working pipe', () => {
 
   it('pipes into count', async () => {
     const all = text((await run('posts', LOBBY)).lines)
-    const total = (all.match(/^\w+\/\d+ /gm) ?? []).length
+    // `~name/2` is an address too — a wall is a room, and a search crosses it
+    // like any other. Counting only `\w` slugs silently dropped them and made
+    // the pipe look like it had lost rows.
+    const total = (all.match(/^~?\w+\/\d+ /gm) ?? []).length
 
     const counted = text((await run('posts | count', LOBBY)).lines)
     expect(counted).toBe(`${total} posts`)
@@ -66,10 +69,18 @@ describe('§4.8 — one working pipe', () => {
     const nobody = text((await run('find --by=nobody | count', LOBBY)).lines)
     expect(nobody).toBe('0 posts')
 
-    // jameson has the music post and the poker one. His builders line is a
-    // reply, and replies are not posts — which is the distinction this counts.
+    /*
+     * Four: the music post, the poker one, and two replies — the matchbook
+     * under the short leg in builders, and "the tip is the tell" in poker.
+     *
+     * This asserted 2 for a long time, with a comment explaining that replies
+     * are not posts. That was true of the implementation and never true of the
+     * question: somebody asking what jameson has said means all of it. `find`
+     * read the posts table directly, so on a site whose §4.3 shape is a post
+     * and a flat list of answers it was silently missing most of what was said.
+     */
     const some = text((await run('find --by=jameson | count', LOBBY)).lines)
-    expect(some).toBe('2 posts')
+    expect(some).toBe('4 posts')
   })
 
   it('narrows by age', async () => {
@@ -203,7 +214,7 @@ describe('§4.8 — flags that teach when they are wrong (§3.7)', () => {
   it('names the flags that exist', async () => {
     const out = text((await run('posts --author=ren', LOBBY)).lines)
     expect(out).toMatch(/i don’t know --author/)
-    expect(out).toMatch(/--room, --by, --since, --limit/)
+    expect(out).toMatch(/--room, --rooms, --by, --since, --limit/)
   })
 
   it('explains a duration that is not one', async () => {

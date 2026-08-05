@@ -11,7 +11,7 @@ these fail silently — the site keeps loading and one feature is quietly dead.
 
 ## 1. The database
 
-Your project was set up when there were three migrations. There are now eight.
+Your project was set up when there were three migrations. There are now eleven.
 The five that came after add: the column-scoped grants that close two console
 bypasses, mail, the kill switch, rename, and erasure. **None of their features
 work until they are applied**, and none of them fail at build time — they fail
@@ -110,39 +110,43 @@ and an address in a privacy policy that bounces is worse than no address.
 
 ---
 
-## 6. Set the governing law
+## 6. The governing law — set, and worth checking once
 
-**This is the one outstanding item in the two documents, and `/terms` says so on
-its own front page until you fix it.** The clause is deliberately unset rather
-than guessed: naming somewhere plausible would be a false statement on a
-published page, which is worse than an obvious to-do.
+**Set to Arizona.** `jurisdiction()` in `lib/legal/documents.ts` returns the law
+of the State of Arizona and its courts, and the "not set yet" notices that used
+to appear on `/terms` and in the `terms` command are gone automatically.
 
-It is about **where you are** — not where visitors are. Somebody in the UK using
-the site does not make UK law govern the terms. What protects them is already
-written and applies regardless of this setting: the privacy policy is written to
-the GDPR, and the Law section preserves consumer rights that cannot be signed
-away, including the right to bring a claim in their own local courts. So welcome
-UK and EU visitors freely; this clause is still your own jurisdiction.
+It names a **state**, not the country, and that is not a formality: contract and
+consumer law in the US is state law, so "governed by the laws of the United
+States" names nothing a court could apply. A test now refuses a bare federal
+country name for exactly that reason. Canada names a province; most other places
+the country is enough.
 
-One edit, in `lib/legal/documents.ts`:
+The clause is about **where you are** — not where visitors are. Somebody in the
+UK using the site does not make UK law govern the terms. What protects them is
+already written and unaffected by this: the privacy policy is written to the
+GDPR, and the Law section preserves consumer rights that cannot be signed away,
+including the right to bring a claim in their own local courts. So welcome UK and
+EU visitors freely.
 
-```ts
-export const JURISDICTION: { law: string; courts: string } | null = {
-  law: 'the State of California',
-  courts: 'San Francisco County, California',
-}
-```
-
-US contracts name a **state**, not the country. Canada names a province.
-Elsewhere the country is usually enough. Use wherever you actually live — if a
-dispute ever happened, it is the courts you can reach.
-
-The notice on `/terms`, the extra line in the `terms` command, the unit test and
-the e2e test all flip together the moment this is non-null. Nothing else to
-change.
+If you move, or if this was never right, change `law` and `courts` together —
+they are one decision and a mismatched pair is worse than either.
 
 While you are in that file: `CONTACT` is `hello@thewall.social`, which needs to
-receive mail per step 5.
+receive mail per step 5. That is now the only unfinished item in either document.
+
+### How agreement is collected
+
+Worth knowing before you launch, because it is the part people get wrong. There
+is no checkbox — §6 rules out forms — so the terms are agreed to at the one
+moment somebody deliberately makes an account: the prompt says so immediately
+above the answer that creates it, and `terms` and `privacy` both work from
+inside that question. `profiles.terms_accepted_at` and `terms_version` are
+written by the signup route under the service role.
+
+**If you change the terms, change `LAST_UPDATED` in the same edit.** New accounts
+record whichever string is there, so leaving it stale means the record says
+people agreed to a version that was already gone.
 
 ---
 
@@ -221,6 +225,17 @@ The levers are `ban`, `hide`, `close` and `forget` — everything except `forget
 is reversible, and `forget` asks before it runs. `./scripts/moderate.sh` with no
 arguments lists them.
 
+The same script opens a curated room — one that sits in the lobby permanently,
+rather than fading when it goes quiet: `new-room <slug> <gloss>`, then `post-as
+<room> <name> <body>` so it does not sit empty. That is the difference between
+it and `make`, which anybody verified can now use: a room somebody makes lives
+in the lobby only while people are talking in it. A room made either way is in
+that database only — `CHANGING-IT.md` covers putting it in the seed as well.
+
+**When you add a route under `app/`, add it to `reserved_slugs`** in the same
+change, or somebody can take that name as a room and their room becomes
+unreachable by URL.
+
 ---
 
 ## Still deliberately not done
@@ -231,4 +246,9 @@ arguments lists them.
 - **Backups.** Supabase's own are whatever your plan includes. Nothing here adds
   to them, and the terms say so rather than implying otherwise.
 - **Anything §4.2, §4.3 and §6 argue for leaving out** — user-created rooms,
-  threading, private messages, personal walls.
+  threading, private messages.
+
+Walls used to be on that list. They are built now, as rooms with owners
+(`~name`), and the one thing they do not get is a line in the lobby — which is
+where §4.2's "forty rooms with three people each kills the entire feeling"
+actually applies. `scripts/moderate.sh` reaches them like any other room.

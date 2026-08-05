@@ -191,11 +191,22 @@ describe('§3.8 — what <command> replaces man', () => {
 })
 
 describe('§3.6 — the palette is a glossary derived from the registry', () => {
-  const contexts: Context[] = ['lobby', 'room', 'commons', 'post']
+  const contexts: Context[] = ['lobby', 'room', 'commons', 'post', 'person']
+
+  /*
+   * Every palette there is, including the one for standing on your own page.
+   * Listing contexts alone missed it: `person` has two sets, and the second is
+   * reachable only when the name matches, so it would have been the one palette
+   * none of these rules were checked against.
+   */
+  const palettes: [string, ReturnType<typeof chipsForContext>][] = [
+    ...contexts.map((c) => [c, chipsForContext(c)] as [string, ReturnType<typeof chipsForContext>]),
+    ['person (your own)', chipsForContext('person', true)],
+  ]
 
   it('never exceeds ~6 items in any context', () => {
-    for (const context of contexts) {
-      expect(chipsForContext(context).length, context).toBeLessThanOrEqual(6)
+    for (const [where, chips] of palettes) {
+      expect(chips.length, where).toBeLessThanOrEqual(6)
     }
   })
 
@@ -208,27 +219,48 @@ describe('§3.6 — the palette is a glossary derived from the registry', () => 
   })
 
   it('reads `verb — what it does`, never a bare verb', () => {
-    for (const context of contexts) {
-      for (const chip of chipsForContext(context)) {
-        expect(chip.gloss.length, `${chip.verb} in ${context}`).toBeGreaterThan(3)
+    for (const [where, chips] of palettes) {
+      for (const chip of chips) {
+        expect(chip.gloss.length, `${chip.verb} in ${where}`).toBeGreaterThan(3)
+      }
+    }
+  })
+
+  it('keeps a dash out of the gloss, because the line already has one', () => {
+    // `help` and the palette both render `verb — gloss`. A second dash turns
+    // the line into a puzzle, and it is the kind of thing that only reads wrong
+    // once it is on a screen next to forty other lines.
+    for (const [where, chips] of palettes) {
+      for (const chip of chips) {
+        expect(chip.gloss, `${chip.verb} in ${where}`).not.toMatch(/[—–-]/)
       }
     }
   })
 
   it('leaves a trailing space exactly when an argument follows', () => {
-    for (const context of contexts) {
-      for (const chip of chipsForContext(context)) {
+    for (const [where, chips] of palettes) {
+      for (const chip of chips) {
         const takesArg = ['go', 'say', 'what', 'theme', 'find'].includes(chip.verb)
-        expect(chip.insert.endsWith(' '), `${chip.verb} in ${context}`).toBe(takesArg)
+        expect(chip.insert.endsWith(' '), `${chip.verb} in ${where}`).toBe(takesArg)
       }
     }
   })
 
   it('inserts text that actually parses back to the same command', () => {
-    for (const context of contexts) {
-      for (const chip of chipsForContext(context)) {
-        expect(parse(chip.insert)?.command?.verb).toBe(chip.verb)
+    for (const [where, chips] of palettes) {
+      for (const chip of chips) {
+        expect(parse(chip.insert)?.command?.verb, `${chip.verb} in ${where}`).toBe(chip.verb)
       }
+    }
+  })
+
+  it('leads with the doing verb, then help — measured, not assumed', () => {
+    // Roughly one chip fits at 380px, so position is visibility. `say` shipped
+    // third once and was off the right edge with nothing to say it was there.
+    for (const [where, chips] of palettes) {
+      const verbs = chips.map((chip) => chip.verb)
+      if (verbs.includes('say')) expect(verbs[0], where).toBe('say')
+      expect(verbs.indexOf('help'), `help in ${where}`).toBeLessThanOrEqual(1)
     }
   })
 })

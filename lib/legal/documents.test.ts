@@ -58,9 +58,31 @@ describe('the privacy policy', () => {
   })
 
   it('accounts for everything the schema stores about a person', () => {
-    for (const held of ['name', 'email', 'post', 'ip address']) {
+    // Every one of these is a column somebody could be identified by. The list
+    // grows when the schema does — `created_by` arrived with user-made rooms
+    // and was personal data nobody had written down.
+    for (const held of [
+      'name',
+      'email',
+      'post',
+      'ip address',
+      'rooms you opened',
+      'when you agreed to the terms',
+    ]) {
       expect(full, held).toContain(held)
     }
+  })
+
+  it('does not claim who made a room is public, because it is not', () => {
+    // The interface never shows it and the grant does not expose it — the
+    // policy has to match, or it is describing a different site.
+    expect(full).toMatch(/not public.*(site never shows who made a room|who made a room)/i)
+  })
+
+  it('says what happens to a room when the person who made it leaves', () => {
+    // The awkward case, and the one somebody exercising erasure will ask
+    // about: their account goes and the room does not.
+    expect(full).toContain('outlives your account')
   })
 
   it('states a lawful basis, which is the part a template usually invents', () => {
@@ -102,6 +124,23 @@ describe('the terms', () => {
     expect(full).toMatch(/you keep/)
   })
 
+  it('describe making a room as it is actually built', () => {
+    const terms = full
+    expect(terms).toContain('three in any seven days')
+    expect(terms).toContain('verified')
+    // The claim the product makes structurally, so the terms must make it too.
+    expect(terms).toMatch(/does not make it yours|no owner/)
+    // Fading is not deletion, and somebody whose room left the lobby will want
+    // to know which one happened.
+    expect(terms).toContain('not deleted')
+  })
+
+  it('list every lever that can be used against somebody', () => {
+    for (const lever of ['hidden', 'closed', 'stopped from posting']) {
+      expect(full, lever).toContain(lever)
+    }
+  })
+
   it('describe the rename rule as it is actually built', () => {
     // Free recycling is a decision with a consequence, and terms that skipped
     // it would be describing a different product.
@@ -132,6 +171,45 @@ describe('the terms', () => {
       expect(text).not.toContain('NOT SET YET')
       expect(TERMS.summary.join('\n')).not.toContain('governing law')
     }
+  })
+
+  it('names a body of law a court could actually apply', () => {
+    const where = jurisdiction()
+    if (where === null) return
+
+    /*
+     * The failure this catches is a plausible-looking clause that resolves to
+     * nothing. "The United States" is the obvious one — contract and consumer
+     * law there is state law, so there is no federal body of it to choose and
+     * a court has nothing to apply. Same for any bare federal country name.
+     * Naming a place is not the requirement; naming a *jurisdiction* is.
+     */
+    const federalOnly = /^the (United States|Canada|Australia)(,|$)/i
+    expect(where.law, 'a country with no sub-jurisdiction named').not.toMatch(federalOnly)
+    expect(where.law.length, 'too short to be a real jurisdiction').toBeGreaterThan(4)
+    expect(where.courts.length).toBeGreaterThan(4)
+  })
+
+  it('say when somebody agreed, because "by using it" is not agreement', () => {
+    /*
+     * The terms used to say "using it means agreeing", and nothing on the site
+     * had ever mentioned them — browsewrap, with no notice and no record, which
+     * US courts throw out routinely and for good reason. What replaced it has
+     * to be described here or the document is claiming a consent it does not
+     * collect.
+     */
+    expect(full).toContain('when you make an account, and not before')
+    // Reading is not agreeing, and that has to be said rather than implied.
+    expect(full).toMatch(/reading does not require agreeing/)
+    // And the record of it, because "they agreed" without a version is close
+    // to useless once the wording has moved.
+    expect(full).toMatch(/version you agreed to are recorded/)
+  })
+
+  it('does not claim a consent record for accounts that predate it', () => {
+    // Backfilling would be inventing evidence. The document says so, which is
+    // what stops somebody quietly backfilling it later.
+    expect(full).toMatch(/rather than backdated|nothing stored/)
   })
 
   it('keep a visitor’s own consumer rights whatever law governs', () => {

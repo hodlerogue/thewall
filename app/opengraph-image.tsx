@@ -37,6 +37,9 @@ export default async function Image() {
             slug: room.slug,
             gloss: room.gloss,
             ephemeral: room.ephemeral,
+            // The card only ever shows named curated rooms (see ogRooms), so
+            // this is a constant rather than a lookup.
+            curated: true,
             latest: latest && {
               author: latest.author,
               body: latest.body,

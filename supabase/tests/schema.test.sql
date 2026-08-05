@@ -164,7 +164,14 @@ commit;
 
 begin;
   set local role anon;
-  select tests.ok((select count(*) from public.rooms) = 6, 'anonymous readers see every room');
+  select tests.ok(
+    (select count(*) from public.rooms where owner_id is null) = 6,
+    'anonymous readers see every room');
+  -- Including the ones that are somebody's wall: a wall is not private, it is
+  -- just not in the lobby.
+  select tests.ok(
+    (select count(*) from public.rooms where owner_id is not null) > 0,
+    'and every wall, which is public like everything else here');
   select tests.ok((select count(*) from public.posts) > 0, 'anonymous readers see posts');
   select tests.ok((select count(*) from public.replies) > 0, 'anonymous readers see replies');
   select tests.ok((select count(*) from public.profiles) > 0, 'anonymous readers see who people are');
@@ -923,6 +930,474 @@ begin;
   set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
   select tests.raises($sql$select public.forget('tester')$sql$, 'erasure is not a lever users hold');
 commit;
+
+\echo ''
+\echo 'walls — §3.10 reversed, and the geography kept anyway'
+
+insert into auth.users (id, aud, role, email)
+values ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'authenticated', 'authenticated', 'waller@seed.invalid')
+on conflict (id) do nothing;
+insert into public.profiles (id, name, verified_at)
+values ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'waller', now())
+on conflict (id) do nothing;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+
+  -- Made on first use, not at signup: everybody starting with an empty room
+  -- they never asked for is the §5 failure mode, once per account.
+  select tests.ok(
+    (public.create_post('~waller', 'the first thing on my wall')).post_no = 1,
+    'a wall is created by putting something on it'
+  );
+  select tests.ok(
+    (public.create_post('~waller', 'and a second')).post_no = 2,
+    'and it allocates addresses like any other room (§3.4)'
+  );
+commit;
+
+select tests.ok(
+  (select owner_id from public.rooms where slug = '~waller')
+    = 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+  'the wall belongs to them'
+);
+
+-- §4.2 — forty rooms with three people each kills the feeling, and a room per
+-- person is exactly that. A wall is reached through its owner, never browsed.
+begin;
+  set local role anon;
+  select tests.ok(
+    (select count(*) from public.room_overview where slug = '~waller') = 0,
+    'and it is not in the lobby'
+  );
+  select tests.ok(
+    (select count(*) from public.posts where room_slug = '~waller') = 2,
+    'but everything on it is public, like everything else here'
+  );
+commit;
+
+\echo ''
+\echo 'a wall is yours to start things on, and everyone else’s to answer'
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+
+  select tests.raises(
+    $sql$select public.create_post('~waller', 'posting on your wall as if it were mine')$sql$,
+    'somebody else cannot post to your wall'
+  );
+
+  -- The whole point of it being a wall rather than a diary.
+  insert into public.replies (post_id, author_id, body)
+  select id, '99999999-9999-4999-8999-999999999999', 'answering on somebody''s wall'
+    from public.posts where room_slug = '~waller' and post_no = 1;
+commit;
+
+select tests.ok(
+  (select count(*) from public.replies where body = 'answering on somebody''s wall') = 1,
+  'but anybody may reply to what is on it'
+);
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+  select tests.raises(
+    $sql$select public.create_post('~nobodyatall', 'a wall for somebody who is not me')$sql$,
+    'and nobody can make a wall in another name'
+  );
+commit;
+
+\echo ''
+\echo 'a wall follows its owner’s name (§4.6)'
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+  select public.change_name('walled');
+commit;
+
+select tests.ok(
+  (select count(*) from public.rooms where slug = '~walled') = 1,
+  'renaming moves the wall to the new address'
+);
+select tests.ok(
+  (select count(*) from public.posts where room_slug = '~walled') = 2,
+  'and every post on it comes along — the address is a name, and names move'
+);
+select tests.ok(
+  (select count(*) from public.rooms where slug = '~waller') = 0,
+  'nothing is left at the old one'
+);
+
+-- One each, and it has to look like what it is.
+select tests.raises(
+  $sql$insert into public.rooms (slug, gloss, ephemeral, owner_id)
+       values ('~walled2', 'a second wall', false, 'ffffffff-ffff-4fff-8fff-ffffffffffff')$sql$,
+  'nobody gets two walls'
+);
+select tests.raises(
+  $sql$insert into public.rooms (slug, gloss, ephemeral, owner_id)
+       values ('sneaky', 'a wall pretending to be a room', false, '99999999-9999-4999-8999-999999999999')$sql$,
+  'a wall cannot be disguised as a room'
+);
+select tests.raises(
+  $sql$insert into public.rooms (slug, gloss, ephemeral) values ('~orphan', 'a wall with no owner', false)$sql$,
+  'and a room cannot be disguised as a wall'
+);
+
+-- §4.2 — room creation is closed, and closed means from the browser.
+--
+-- Every assertion above runs as the owner and tests a *constraint*. That is a
+-- different question from what somebody with the anon key and a signed-in
+-- session can do, and answering the first as though it settled the second is
+-- exactly how the verified_at bypass shipped: a row policy says whose row it
+-- is and nothing about which verbs anyone holds.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+
+  select tests.raises(
+    $sql$insert into public.rooms (slug, gloss, ephemeral, sort_order)
+         values ('mine', 'a room i made from the console', false, 99)$sql$,
+    'a signed-in user cannot open a room'
+  );
+  -- `raises`, not `changes_nothing`. An UPDATE the policy filters matches no
+  -- rows and succeeds quietly; these are refused outright, because there is no
+  -- UPDATE grant on rooms for anybody. That is the stronger of the two answers
+  -- and worth asserting as the stronger one — if a grant is ever added, this
+  -- fails rather than passing on a policy that might have holes in it.
+  select tests.raises(
+    $sql$update public.rooms set gloss = 'mine now' where slug = 'music'$sql$,
+    'nor rewrite what a room is for'
+  );
+  select tests.raises(
+    $sql$update public.rooms set owner_id = '99999999-9999-4999-8999-999999999999'
+          where slug = 'music'$sql$,
+    'nor claim one as a wall, which would take it out of the lobby'
+  );
+  select tests.raises(
+    $sql$delete from public.rooms where slug = 'music'$sql$,
+    'nor close one'
+  );
+
+  -- The one path that does create a room from a user action, held to its shape:
+  -- it is reachable only through create_post, only for a `~` slug, and only for
+  -- your own name. Every other spelling is "no room called that".
+  select tests.raises(
+    $sql$select public.create_post('brandnew', 'a room by writing to it')$sql$,
+    'and posting to a name that is not a room does not conjure one'
+  );
+commit;
+
+select tests.ok(
+  (select count(*) from public.rooms where slug in ('mine', 'brandnew')) = 0,
+  'none of that left a room behind'
+);
+select tests.ok(
+  (select gloss from public.rooms where slug = 'music') = 'what you are listening to',
+  'and music is still what it was'
+);
+
+\echo ''
+\echo '§4.2, reopened — anybody verified may make a room, three a week'
+
+-- An unverified account, because "you may post once before checking your email"
+-- (§4.7) must not extend to opening a permanent address in a shared space.
+insert into auth.users (
+  id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+  confirmation_token, recovery_token, email_change, email_change_token_new,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '00000000-0000-0000-0000-000000000000',
+        'authenticated', 'authenticated', 'unverified@seed.invalid', '', now(),
+        '', '', '', '', '{}'::jsonb, '{}'::jsonb, now(), now())
+on conflict (id) do nothing;
+insert into public.profiles (id, name) values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'unverified')
+on conflict (id) do nothing;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  select tests.raises(
+    $sql$select public.create_room('mine'::citext, 'a room by somebody who never followed the key')$sql$,
+    'an unverified account cannot make a room'
+  );
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+
+  -- Every name rule, each with its own message rather than one constraint.
+  select tests.raises(
+    $sql$select public.create_room('terms'::citext, 'what the rules are')$sql$,
+    'a reserved name is refused, and says which route owns it'
+  );
+  select tests.raises(
+    $sql$select public.create_room('a'::citext, 'too short a name')$sql$,
+    'a one-character name is refused'
+  );
+  select tests.raises(
+    $sql$select public.create_room('~someone'::citext, 'a wall in disguise')$sql$,
+    'a ~ name is refused — that spelling belongs to walls'
+  );
+  select tests.raises(
+    $sql$select public.create_room('music'::citext, 'a second music')$sql$,
+    'a name already taken is refused'
+  );
+  select tests.raises(
+    $sql$select public.create_room('marisol'::citext, 'a room wearing a person''s name')$sql$,
+    'somebody''s name is not available as a room'
+  );
+  select tests.raises(
+    $sql$select public.create_room('garden'::citext, 'x')$sql$,
+    'and a room with no gloss is refused — the lobby is built out of them'
+  );
+
+  select tests.ok(
+    public.create_room('garden'::citext, 'what you are growing') = 'garden',
+    'a verified account makes a room'
+  );
+  -- Not owner_id. That column means "this is their wall" and carries a `~`
+  -- address; making a room does not make it yours.
+  select tests.ok(
+    (select owner_id from public.rooms where slug = 'garden') is null,
+    'without making it theirs — a room has no owner'
+  );
+
+  select tests.ok(
+    public.create_room('cycling'::citext, 'two wheels and a headwind') = 'cycling',
+    'a second is fine'
+  );
+  select tests.ok(
+    public.create_room('film'::citext, 'what you watched') = 'film',
+    'and a third'
+  );
+  select tests.raises(
+    $sql$select public.create_room('books'::citext, 'what you are reading')$sql$,
+    'the fourth this week is refused'
+  );
+commit;
+
+-- As the owner, because `created_by` is deliberately unreadable by the browser
+-- — asserted below, and the reason this one cannot sit in the block above.
+select tests.ok(
+  (select created_by from public.rooms where slug = 'garden')
+    = '99999999-9999-4999-8999-999999999999',
+  'and it records who opened it'
+);
+
+-- The bypass that defeated the §4.7 gate, aimed at this one. A STABLE function
+-- reads the snapshot from the start of the statement, so all twenty-five calls
+-- would see "no rooms yet" and all twenty-five would be allowed.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '44444444-4444-4444-8444-444444444444';
+  select tests.raises(
+    $sql$select public.create_room(('flood' || g)::citext, 'a room number ' || g)
+           from generate_series(1, 25) g$sql$,
+    'twenty-five in one statement is still three'
+  );
+commit;
+
+select tests.ok(
+  (select count(*) from public.rooms where slug like 'flood%') = 0,
+  'and the whole statement rolled back, so none of them exist'
+);
+
+\echo ''
+\echo '§4.2 — the lobby is what the warning is about, so the lobby is what is defended'
+
+-- An earlier block ran `archive_quiet_rooms(interval '1 second')` to prove the
+-- manual decay lever works, which left most of the seeded rooms archived. These
+-- assertions are about the *automatic* fade in the lobby query, so they start
+-- from an un-archived building rather than inheriting that one.
+update public.rooms set archived_at = null;
+
+select tests.ok(
+  (select count(*) from public.room_overview where curated) = 6,
+  'the curated rooms are all in the lobby'
+);
+select tests.ok(
+  (select count(*) from public.room_overview where not curated) = 3,
+  'and so are the new ones, while they are new'
+);
+
+-- Fade: a user room with nothing said in it for a fortnight leaves the listing.
+update public.rooms set created_at = now() - interval '15 days' where slug = 'film';
+
+select tests.ok(
+  not exists (select 1 from public.room_overview where slug = 'film'),
+  'a room nobody has been in for a fortnight leaves the lobby'
+);
+select tests.ok(
+  exists (select 1 from public.rooms where slug = 'film' and hidden_at is null),
+  'but it is still there, and still answers to its name'
+);
+select tests.ok(
+  exists (select 1 from public.find_rooms('film') where slug = 'film' and not in_lobby),
+  'and search still finds it, saying it is quiet'
+);
+select tests.ok(
+  (select count(*) from public.room_overview where curated) = 6,
+  'a curated room never fades, however quiet — it is the furniture'
+);
+
+-- Who opened a room is not public.
+--
+-- `grant select on public.rooms` is table-wide, so adding created_by handed
+-- every column to anon and authenticated alike — the same shape as the bug that
+-- made verified_at settable from a browser console, where a row policy answers
+-- "whose row" and nothing answers "which columns". It is shown nowhere in the
+-- interface, and "a room has no owner" is meant to be true of the data.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '55555555-5555-4555-8555-555555555555';
+
+  select tests.raises(
+    $sql$select created_by from public.rooms where slug = 'garden'$sql$,
+    'who opened a room is not readable from the browser'
+  );
+  -- And everything the interface actually needs still is.
+  select tests.ok(
+    (select gloss from public.rooms where slug = 'garden') = 'what you are growing',
+    'while the room itself reads exactly as before'
+  );
+  select tests.ok(
+    (select count(*) from public.room_overview) > 0,
+    'and the lobby still answers'
+  );
+commit;
+
+-- `curated` is its own column and not `created_by is null`, and this is why.
+-- created_by is `on delete set null`, so erasing whoever opened a room would
+-- otherwise promote it to furniture: permanently in the lobby, never fading,
+-- chosen by nobody.
+update public.rooms set created_by = null where slug = 'cycling';
+
+select tests.ok(
+  (select curated from public.rooms where slug = 'cycling') = false,
+  'a room whose creator was erased does not become curated'
+);
+update public.rooms set created_at = now() - interval '20 days' where slug = 'cycling';
+select tests.ok(
+  not exists (select 1 from public.room_overview where slug = 'cycling'),
+  'and it still fades when it goes quiet, like the user room it is'
+);
+
+-- A banned account asking for a room gets told it is banned, rather than being
+-- sent to look for an email that would not have helped.
+--
+-- Banned as the owner, because `authenticated` has no update on profiles at all
+-- — which is itself asserted further up, and is why a first draft of this block
+-- failed with "permission denied" rather than proving anything.
+update public.profiles set banned_at = now() where id = '99999999-9999-4999-8999-999999999999';
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+  select tests.raises(
+    $sql$select public.create_room('banned'::citext, 'a room from a banned account')$sql$,
+    'a banned account is refused, and not told to check its email'
+  );
+commit;
+update public.profiles set banned_at = null where id = '99999999-9999-4999-8999-999999999999';
+
+\echo ''
+\echo 'finding a room, and finding what was said in one'
+
+select tests.ok(
+  exists (select 1 from public.find_rooms('growing') where slug = 'garden'),
+  'a room is findable by what it is for, not only by its name'
+);
+select tests.ok(
+  not exists (select 1 from public.find_rooms('marisol') where slug::text like '~%'),
+  'a wall is never a room search result'
+);
+select tests.ok(
+  (select count(*) from public.find_rooms('100%')) = 0,
+  'a % in the term is a literal %, not a wildcard that matches everything'
+);
+
+-- The hole that mattered most: `find` read the posts table and therefore never
+-- returned a single reply, on a site whose shape is a post and a flat list of
+-- answers (§4.3).
+select tests.ok(
+  exists (select 1 from public.search_said('law of bicycles') where is_reply),
+  'search reaches replies'
+);
+select tests.ok(
+  (select room || '/' || post_no from public.search_said('law of bicycles') limit 1) = 'builders/2',
+  'and a reply carries the address of the post it is under, since it has none of its own'
+);
+select tests.ok(
+  not exists (select 1 from public.search_said('super keeps saying')),
+  'commons is never searchable — nothing there has an address to go to'
+);
+select tests.ok(
+  exists (select 1 from public.search_said(null, '~walled'::citext)),
+  'a wall is searchable, because it is a room'
+);
+select tests.ok(
+  (select count(*) from public.search_said('100%')) = 0,
+  'and a % in the term is a literal there too'
+);
+
+\echo ''
+\echo 'agreeing to the terms is recorded, and cannot be forged'
+
+-- The record is written by the signup route under the service role, on the same
+-- statement that creates the account. What matters here is the other half: that
+-- nothing lets a browser write or rewrite it. A consent record a user controls
+-- is not a consent record.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+
+  select tests.raises(
+    $sql$update public.profiles set terms_accepted_at = now()
+          where id = '99999999-9999-4999-8999-999999999999'$sql$,
+    'nobody can record their own agreement'
+  );
+  select tests.raises(
+    $sql$update public.profiles set terms_version = 'whatever i like'
+          where id = '99999999-9999-4999-8999-999999999999'$sql$,
+    'nor change which version they agreed to'
+  );
+  -- Readable, though: it is your own data, and "what did I agree to, and when"
+  -- is a question somebody is entitled to ask.
+  select tests.ok(
+    (select count(*) from public.profiles
+      where id = '99999999-9999-4999-8999-999999999999') = 1,
+    'while your own row still reads'
+  );
+commit;
+
+select tests.ok(
+  (select terms_accepted_at from public.profiles
+    where id = '99999999-9999-4999-8999-999999999999') is null,
+  'and an account made before the record existed is null, not backdated'
+);
+
+-- Decay is about rooms going cold. A quiet wall is a person who has not posted
+-- lately, which is not a problem and not anybody's to tidy up.
+select public.archive_quiet_rooms(interval '1 second');
+select tests.ok(
+  (select archived_at from public.rooms where slug = '~walled') is null,
+  'a quiet wall is never archived'
+);
+
+-- Every lever in §7 still reaches it, because a wall is a room.
+select tests.ok(public.hide_post('~walled', 1) = 1, 'the kill switch reaches a wall');
+begin;
+  set local role anon;
+  select tests.ok(
+    (select count(*) from public.posts where room_slug = '~walled' and post_no = 1) = 0,
+    'and hiding works there exactly as it does anywhere'
+  );
+commit;
+select public.hide_post('~walled', 1, false);
 
 \echo ''
 \echo 'all schema tests passed'

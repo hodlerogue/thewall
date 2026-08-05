@@ -182,6 +182,43 @@ export const ROOMS: Room[] = [
     ],
   },
   {
+    /*
+     * A wall — a room with an owner (see the walls migration).
+     *
+     * It is in this list because it is a room and everything that walks rooms
+     * has to find it: `go ~marisol/3`, search, mail, moderation. It is kept out
+     * of `listRooms` instead, which is the one place a wall must not appear:
+     * §4.2's "forty rooms with three people each kills the entire feeling" is
+     * exactly what a room per person would do to the lobby.
+     */
+    slug: '~marisol',
+    gloss: 'what marisol is saying',
+    owner: 'marisol',
+    ephemeral: false,
+    posts: [
+      {
+        id: 2,
+        author: 'marisol',
+        body: 'three days without AC and i have learned which of my neighbours own fans and which of them share',
+        createdAt: minutes(15),
+        replies: [
+          {
+            author: 'tuck',
+            body: 'the fan people are the good people. remember them in winter.',
+            createdAt: minutes(9),
+          },
+        ],
+      },
+      {
+        id: 1,
+        author: 'marisol',
+        body: 'putting things here instead of shouting them into a room feels different and i can’t say why yet',
+        createdAt: minutes(220),
+        replies: [],
+      },
+    ],
+  },
+  {
     // §5: one room should be a mood, not a topic. Mood rooms are what make this
     // feel like a place rather than a forum.
     slug: 'latenight',

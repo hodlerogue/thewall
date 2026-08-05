@@ -20,13 +20,18 @@ export interface Location {
   room?: string
   postId?: number
   /**
-   * Someone's profile — `~marisol`.
+   * Someone — `~marisol`. Their page, and their wall.
    *
-   * A view, not a place: nothing is postable here. §3.10 is the doc's most
-   * emphatic architectural warning, that a space which absorbs activity
-   * "deletes the geography that makes this feel like a place", and personal
-   * walls are that trap in a different hat. Every post shown on a profile
-   * carries its real room/id, so the page is a set of doors back into rooms.
+   * This began as a view with nothing postable on it, on §3.10's warning that a
+   * space which absorbs activity "deletes the geography that makes this feel
+   * like a place". Walls were built anyway, deliberately: a wall is a *room
+   * with an owner*, so it inherits addresses, replies, mail, search and every
+   * moderation lever without the shell learning a second kind of place — and
+   * the one thing it does not inherit is a line in the lobby, which is where
+   * §3.10's warning actually bites.
+   *
+   * Every post shown here still carries its real room/id, so a profile remains
+   * a set of doors: some of them lead back into rooms, and some lead to `~name`.
    */
   person?: string
 }
@@ -119,7 +124,17 @@ export function pathToLocation(pathname: string): Location {
     const person = room.slice(1)
     // A bare `/~` names nobody. Passing an empty string on would ask the
     // database for a profile called "" and report that they don't exist.
-    return person ? { person } : {}
+    if (!person) return {}
+    /*
+     * `/~marisol` is somebody; `/~marisol/3` is something on their wall.
+     *
+     * A wall is a room (see the walls migration), so the second one is an
+     * ordinary post location whose room happens to be spelled with a tilde —
+     * which is what lets `go`, `say`, `reply`, mail and moderation all reach it
+     * without learning a new kind of address.
+     */
+    if (postId !== undefined && /^\d+$/.test(postId)) return { room, postId: Number(postId) }
+    return { person }
   }
   if (room === undefined || room === 'lobby') return {}
   return postId !== undefined && /^\d+$/.test(postId)

@@ -80,6 +80,12 @@ insert into public.rooms (slug, gloss, ephemeral, sort_order) values
   ('builders',  'what you are making',        false, 2)
 on conflict (slug) do nothing;
 
+-- Curated, always: these are the furniture. The column defaults to false, which
+-- is right for a room somebody makes and wrong for every room in this file — a
+-- seeded room that was not marked would fade out of the lobby after a fortnight
+-- of quiet, which is the one thing curated rooms must never do.
+update public.rooms set curated = true where owner_id is null and created_by is null;
+
 -- Ordering is set rather than left to the insert, because `on conflict do
 -- nothing` skips a room that already exists — so on a project seeded before
 -- builders was written, it would arrive with its sort_order and everything
@@ -90,6 +96,22 @@ update public.rooms set sort_order = v.sort_order
                ('poker', 3), ('kitchen', 4), ('latenight', 5))
        as v (slug, sort_order)
  where rooms.slug = v.slug::citext;
+
+-- One wall, so the feature is discoverable rather than invisible.
+--
+-- A wall is a room with an owner and it is created lazily, on the first thing
+-- somebody puts on it — which means a fresh project has none at all, and the
+-- first visitor to a profile learns nothing about walls existing. §5's argument
+-- against a ghost town applies here exactly as it does to the rooms.
+--
+-- It is deliberately not in the lobby, and gets that for free: `room_overview`
+-- filters `owner_id is null`. sort_order is set high for the same reason it is
+-- set at all — it is never read for a wall, and a number that collides with a
+-- real room would be a trap for whoever adds the seventh one.
+insert into public.rooms (slug, gloss, ephemeral, sort_order, owner_id) values
+  ('~marisol', 'what marisol is saying', false, 1000,
+   '22222222-2222-4222-8222-222222222222')
+on conflict (slug) do nothing;
 
 -- Posts are inserted directly here rather than through create_post(), because
 -- the seed runs without an auth context. The room counters are advanced by hand
@@ -146,7 +168,17 @@ insert into public.posts (room_slug, post_no, author_id, body, created_at) value
   -- card has to read as a place with people in it, not one person posting).
   ('builders', 3, '33333333-3333-4333-8333-333333333333',
    'rewired the lamp my grandmother left me and it works. i have never been so pleased with anything.',
-   now() - interval '50 minutes')
+   now() - interval '50 minutes'),
+
+  -- On a wall, and the only author it may have is its owner. The words are
+  -- deliberately the sort of thing that would be odd in a room and reads right
+  -- on a page of your own, which is the whole argument for walls existing.
+  ('~marisol', 1, '22222222-2222-4222-8222-222222222222',
+   'putting things here instead of shouting them into a room feels different and i can''t say why yet',
+   now() - interval '4 hours'),
+  ('~marisol', 2, '22222222-2222-4222-8222-222222222222',
+   'three days without AC and i have learned which of my neighbours own fans and which of them share',
+   now() - interval '15 minutes')
 on conflict do nothing;
 
 -- The column types come from the VALUES list, which is all text, so each one is
@@ -172,7 +204,12 @@ select p.id, v.author_id::uuid, v.body, v.created_at
      'level is a rumour. matchbook under the short leg and never speak of it again.',
      now() - interval '4 hours'),
     ('builders', 2, '22222222-2222-4222-8222-222222222222',
-     'there is always one bolt. it is a law of bicycles.', now() - interval '2 hours')
+     'there is always one bolt. it is a law of bicycles.', now() - interval '2 hours'),
+    -- Somebody else answering on her wall, which is the half of the feature
+    -- that is easy to miss: only marisol starts things there, anybody replies.
+    ('~marisol', 2, '33333333-3333-4333-8333-333333333333',
+     'the fan people are the good people. remember them in winter.',
+     now() - interval '9 minutes')
   ) as v (room_slug, post_no, author_id, body, created_at)
   join public.posts p
     on p.room_slug = v.room_slug::citext

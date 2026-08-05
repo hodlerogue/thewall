@@ -45,6 +45,11 @@ usage: ./scripts/moderate.sh <command> [args]
   close <room>                 the room and everything in it stop existing
   open <room>                  put it back
 
+  new-room <slug> <gloss>      make a room. §4.2 leans against this — read the
+                               note under `new-room` in CHANGING-IT.md first
+  post-as <room> <name> <body> put the first thing in it, under a real name
+
+
   forget <name>                erasure request: address and handle erased
                                permanently, what they posted left standing so
                                other people's replies survive. irreversible.
@@ -137,6 +142,101 @@ case "${command}" in
     n=$(q "select public.hide_room($(lit "${room}"), ${hide})")
     [ "${n}" = "1" ] && echo "${room} is now $([ "${hide}" = true ] && echo closed || echo open)." \
       || echo "nothing changed — ${room} was already that way, or is not there."
+    ;;
+
+  new-room)
+    slug="${1:?usage: new-room <slug> <gloss>}"; shift
+    gloss="${*:?usage: new-room <slug> <gloss>}"
+
+    # Both of these are check constraints, so the database refuses them anyway.
+    # They are here to refuse them in a sentence rather than in a constraint
+    # name, which is the whole reason this script exists (§3.7 applies to the
+    # operator too — they are the person awake at 2am).
+    case "${slug}" in
+      '~'*) echo "~ names a wall, and walls make themselves. pick a plain name." >&2; exit 1 ;;
+    esac
+    [[ "${slug}" =~ ^[a-z0-9-]{2,24}$ ]] || {
+      echo "a room slug is 2-24 characters of a-z, 0-9 and -. got: ${slug}" >&2; exit 1
+    }
+
+    # sort_order goes to the end rather than being asked for. The lobby order is
+    # a curation decision and the last position is the only one that is right by
+    # default — inserting into the middle silently demotes something.
+    # Wrapped in a CTE so the statement psql runs is a SELECT.
+    # `insert ... returning` through `psql -tAc` prints the command tag
+    # ("INSERT 0 0") when nothing was inserted, which is a non-empty string —
+    # so the "did it happen" check below read a no-op as a success and this
+    # reported a room created every time it ran.
+    # curated = true, which is the whole difference between this and `make`.
+    # A room the operator opens is furniture: always in the lobby, never faded.
+    # sort_order counts over the curated block only — user rooms sit at 500 and
+    # would otherwise push every future curated room past them.
+    made=$(q "
+      with made as (
+        insert into public.rooms (slug, gloss, ephemeral, sort_order, curated)
+        select $(lit "${slug}"), $(lit "${gloss}"), false,
+               coalesce((select max(sort_order) + 1 from public.rooms
+                          where owner_id is null and curated), 0),
+               true
+        on conflict (slug) do nothing
+        returning slug
+      )
+      select slug from made")
+
+    [ -n "${made}" ] || { echo "${slug} already exists. see it with: who"; exit 1; }
+
+    echo "${slug} is open, at the end of the lobby."
+    echo
+    # §5, and it is not a nicety: "an empty room is worse than no room. the
+    # demo cannot launch to a ghost town." A room created and left empty reads
+    # as a dead site rather than a new topic, and it is the operator who has to
+    # fix that within the hour.
+    echo "it is empty, which §5 calls worse than not having it. put something in it:"
+    echo "  ./scripts/moderate.sh post-as ${slug} <your name> 'the first thing'"
+    echo
+    echo "this room lives only in this database. to have it in the demo, the"
+    echo "e2e suite and every future deploy, add it to supabase/seed.sql and"
+    echo "lib/shell/fixtures.ts as well — see CHANGING-IT.md."
+    ;;
+
+  post-as)
+    room="${1:?usage: post-as <room> <name> <body>}"; shift
+    name="${1:?usage: post-as <room> <name> <body>}"; shift
+    body="${*:?usage: post-as <room> <name> <body>}"
+
+    # Checked first so a missing name cannot burn an address. Numbers are never
+    # reused (§3.4), so a bumped counter with no post behind it leaves a
+    # permanent hole in a room's numbering for a typo.
+    exists=$(q "select 1 from public.profiles where name = $(lit "${name}")")
+    [ -n "${exists}" ] || { echo "there is nobody called ${name}." >&2; exit 1; }
+
+    # The counter bump and the insert are one statement, because the allocator
+    # is the database's job and this is the one place outside create_post() that
+    # touches it. Clearing archived_at matches what posting normally does: §4.2
+    # decay is undone by somebody speaking, and this is somebody speaking.
+    number=$(q "
+      with taken as (
+        update public.rooms
+           set next_post_no = next_post_no + 1,
+               archived_at  = null
+         where slug = $(lit "${room}") and hidden_at is null
+        returning slug, next_post_no - 1 as post_no
+      ), written as (
+        insert into public.posts (room_slug, post_no, author_id, body)
+        select taken.slug, taken.post_no, p.id, $(lit "${body}")
+          from taken, public.profiles p
+         where p.name = $(lit "${name}")
+        returning post_no
+      )
+      select post_no from written")
+
+    [ -n "${number}" ] || { echo "no room called ${room}, or it is closed." >&2; exit 1; }
+
+    echo "${room}/${number} — posted as ${name}."
+    # Said out loud because it is the one lever here that puts words in
+    # somebody's mouth. Every other command hides or restores what people
+    # actually wrote.
+    echo "that is now a real post under a real name. undo with: hide ${room} ${number}"
     ;;
 
   forget)

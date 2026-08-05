@@ -14,11 +14,12 @@
 
 import { parseFlags, parseSince, splitStages } from '@/lib/commands/pipeline'
 import type { Env } from '@/lib/shell/env'
-import { formatAgo, type PostHit, type PostQuery } from '@/lib/shell/model'
+import { formatAgo, type PostHit, type PostQuery, type RoomHit } from '@/lib/shell/model'
 import { renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
 import type { Session } from '@/lib/shell/session'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
 import { DEFAULT_THEME, THEMES, findTheme } from '@/lib/shell/themes'
+import { pathToLocation } from '@/lib/shell/types'
 import type { Context, Line, Location, RunResult } from '@/lib/shell/types'
 
 export interface HandlerArgs {
@@ -155,7 +156,7 @@ export const COMMANDS: readonly Command[] = [
     contexts: ALL,
     gloss: (c) => (c === 'lobby' || c === 'person' ? 'enter a room' : 'open a post'),
     detail: () =>
-      'moves you. at the lobby, go music. inside a room, go 12 opens that post. a room name works from anywhere, and go ~marisol shows you somebody.',
+      'moves you. at the lobby, go music. inside a room, go 12 opens that post. a whole address works from anywhere — go music/12 — and so does go ~marisol, which shows you somebody: their page, and their wall.',
     insert: () => 'go ',
     wrongContext: () => '',
     async run({ arg, context, location, env, hint }) {
@@ -167,6 +168,24 @@ export const COMMANDS: readonly Command[] = [
               ? `go where? try: go ${await hint()}`
               : 'go where? try: go 12, or the name of a room.',
         )
+      }
+
+      /*
+       * `music/12` and `~marisol/2` — a whole address, typed in one go.
+       *
+       * This is what `find`, `mail` and a profile all print, so it was always
+       * the obvious thing to type back and it always failed. Walls made the
+       * failure worse rather than new: `go ~marisol/2` fell into the tilde
+       * branch below and answered "there's no one called marisol/2", which is
+       * an error about the wrong thing entirely.
+       */
+      if (arg.includes('/')) {
+        const target = pathToLocation(`/${arg}`)
+        if (target.room !== undefined && target.postId !== undefined) {
+          const post = await env.getPost(target.room, target.postId)
+          if (!post) return error(`there’s nothing at ${arg}. try: go ${target.room}`)
+          return { lines: renderPost(post), location: target }
+        }
       }
 
       // `~marisol` is somebody, not somewhere. §3.10 warns that a space which
@@ -194,9 +213,19 @@ export const COMMANDS: readonly Command[] = [
       // rooms that keep things (§3.4, §3.10).
       if (/^\d+$/.test(arg)) {
         const id = Number(arg)
-        // A profile has no post numbers of its own for the same reason it has
-        // no `say`: the posts on it belong to rooms, and their addresses say so.
-        if (context === 'lobby' || context === 'person') {
+        // On a profile a bare number is their wall — the one place a person
+        // does have addresses of their own now.
+        if (context === 'person') {
+          const post = await env.getPost(`~${location.person}`, id)
+          if (!post) {
+            return error(`there's nothing at ${id} on ${location.person}'s wall. try: look`)
+          }
+          return {
+            lines: renderPost(post),
+            location: { room: `~${location.person}`, postId: id },
+          }
+        }
+        if (context === 'lobby') {
           return error(`post numbers only work inside a room. try: go ${await hint()} first.`)
         }
         if (context === 'commons') {
@@ -233,6 +262,65 @@ export const COMMANDS: readonly Command[] = [
   },
 
   {
+    /*
+     * §4.2, reopened. The doc closes room creation — "a fixed, curated set at
+     * launch" — on the grounds that "40 rooms with three people each kills the
+     * entire feeling". That is a warning about the *lobby*, not about how many
+     * rooms exist, and the lobby is defended where it lives: curated rooms
+     * first, user rooms only while somebody is in them.
+     *
+     * The name and the gloss are one line, deliberately. A second question
+     * would make this the only place on the site that interrupts you to fill in
+     * a form, and §3.9's whole shape is that friction lands once, at the moment
+     * you have already decided.
+     */
+    verb: 'make',
+    aliases: ['create', 'new', 'mkdir', 'open-room'],
+    contexts: ALL,
+    gloss: () => 'start a new room',
+    detail: () =>
+      'makes a room: make garden what you are growing. the first word is its name, the rest says what it is for and shows under it in the lobby. you need a verified account, and you can make three a week. a room has no owner — once it exists it is everybody\u2019s.',
+    insert: () => 'make ',
+    wrongContext: () => '',
+    async run({ arg, env, session }) {
+      const [slug = '', ...rest] = arg.trim().split(/\s+/)
+      const gloss = rest.join(' ')
+
+      if (slug === '') {
+        return error('make what? try: make garden what you are growing')
+      }
+      if (gloss === '') {
+        // §3.7 — the fix, shown rather than described. The commonest mistake
+        // here is typing only a name, so the error is the same line completed.
+        return error(`say what ${slug} is for, on the same line — try: make ${slug} what you are growing`)
+      }
+      if (session.name() === null) {
+        return error('you need a name first. say something anywhere and i’ll ask you for one.')
+      }
+
+      const made = await env.makeRoom(slug, gloss)
+      if (!made.ok) return error(made.reason)
+
+      const room = await env.getRoom(made.slug)
+      return {
+        lines: [
+          { text: `${made.slug} is open. you are in it.`, tone: 'accent' },
+          { text: '' },
+          ...(room
+            ? renderRoom(room)
+            : [{ text: 'nothing here yet. say something and it will be the first thing.', tone: 'faint' as const }]),
+          { text: '' },
+          // Said once, at the only moment it is useful: a room with nothing in
+          // it drops out of the lobby, and §5 is blunt about an empty room
+          // being worse than no room.
+          { text: 'it stays in the lobby while people are talking in it. it is always reachable by name.', tone: 'faint' },
+        ],
+        location: { room: made.slug },
+      }
+    },
+  },
+
+  {
     verb: 'say',
     aliases: ['wall', 'post', 'write', 'talk'],
     /*
@@ -243,19 +331,57 @@ export const COMMANDS: readonly Command[] = [
      * brand new post, which is the opposite of what somebody typing "reply"
      * wants. It is a command of its own below, and does nothing this cannot.
      */
-    contexts: ['room', 'commons', 'post'],
+    contexts: ['room', 'commons', 'post', 'person'],
     gloss: (c) =>
-      c === 'post' ? 'reply here' : c === 'commons' ? 'say something' : 'post something here',
+      c === 'post'
+        ? 'reply here'
+        : c === 'commons'
+          ? 'say something'
+          : c === 'person'
+            // "your own" rather than "your", because `help` prints this from
+            // somebody else's page too, where only they may start something.
+            ? 'post on your own wall'
+            : 'post something here',
     detail: () =>
-      'contributes wherever you’re standing. in a room it starts a new post; inside a post it adds a reply.',
+      'contributes wherever you’re standing. in a room it starts a new post; inside a post it adds a reply; on your own page it goes on your wall, where anybody can answer it.',
     insert: () => 'say ',
     // §3.7 — the canonical example: name the fix, don't report a failure.
     wrongContext: (_c, hint) => `you have to be in a room first. try: go ${hint}`,
-    async run({ arg, context, location, session }) {
+    async run({ arg, context, location, env, session }) {
       if (arg === '') {
         return error(
           context === 'post' ? 'say what? try: say i agree' : 'say what? type say and then your sentence.',
         )
+      }
+
+      /*
+       * A wall is a room, so this is the ordinary write path with the room
+       * named for you — which is the whole reason walls were built that way.
+       * Somebody else's wall is theirs to start things on; you can answer what
+       * is already there, which is what makes it a wall and not a diary.
+       */
+      if (context === 'person') {
+        /*
+         * Ownership is checked before the name is, and that order is the whole
+         * of it. A page only exists for somebody who exists, so a visitor with
+         * no name is never standing on their own wall — asking them to sign up
+         * here would collect a name in exchange for a sentence the wall is then
+         * going to refuse, which is §3.9's promise turned into a trap.
+         */
+        if (location.person !== session.name()) {
+          // Named against the wall itself, so "go 2" is a post that is really
+          // there. An empty wall has nothing to point at, and inventing a
+          // number would be an instruction that fails when followed (§3.7).
+          const wall = await env.getRoom(`~${location.person}`).catch(() => undefined)
+          const example = wall?.posts[0]?.id
+          return error(
+            example === undefined
+              ? `this is ${location.person}'s wall — only they can put things on it, and there's nothing here to answer yet.`
+              : `this is ${location.person}'s wall — only they can put things on it. you can answer what's here: go ${example}`,
+          )
+        }
+        const onWall = await session.write({ room: `~${location.person}` }, arg)
+        return { lines: onWall.lines, retry: onWall.failed ? arg : undefined }
       }
 
       // §3.9 — the sentence is captured first, then the account is asked for.
@@ -303,8 +429,10 @@ export const COMMANDS: readonly Command[] = [
       // instruction somebody can follow and one they have to decode.
       const example = await newestPostIn(env, location.room)
       return error(
-        context === 'lobby' || context === 'person'
-          ? 'replies live inside a post. go to a room first, then open one.'
+        context === 'person'
+          ? `replies live inside a post. open one of ${location.person}'s first — try: go 1`
+          : context === 'lobby'
+            ? 'replies live inside a post. go to a room first, then open one.'
           : context === 'commons'
             ? 'commons doesn’t keep replies — say it as its own thing instead.'
             : `replies live inside a post. open one first — try: go ${example}`,
@@ -363,6 +491,18 @@ export const COMMANDS: readonly Command[] = [
       if (context === 'post') {
         const room = await env.getRoom(location.room!)
         if (!room) return { lines: renderRoomList(await env.listRooms()), location: {} }
+
+        /*
+         * Backing out of a wall post lands on the person, not on `{room:
+         * '~marisol'}`. Both would print `~marisol` in the prompt and both
+         * would be `/~marisol` in the URL — and a reload would come back as
+         * the person, because that is what the path parses to. One address
+         * cannot mean two contexts, so the wall has exactly one of them.
+         */
+        if (room.owner !== undefined) {
+          const profile = await env.getProfile(room.owner)
+          if (profile) return { lines: renderProfile(profile), location: { person: profile.name } }
+        }
         return { lines: renderRoom(room), location: { room: room.slug } }
       }
       return { lines: renderRoomList(await env.listRooms()), location: {} }
@@ -680,12 +820,44 @@ export const COMMANDS: readonly Command[] = [
       const [source = '', ...rest] = arg.split('|')
       const sinks = splitStages(rest.join('|'))
 
+      /*
+       * `find --rooms cycling` answers a different question from `find
+       * cycling`, and it became a question worth answering the moment rooms
+       * were something people make: the lobby stopped being the list of what
+       * is here. Name and gloss both, because half the time you remember what
+       * a room was *for* rather than what it was called.
+       */
+      // `--rooms`, exactly. Written `--rooms?` first, which also matched
+      // `--room=music` and quietly hijacked the filter that has always existed
+      // — every `find --room=x` became a room search returning the wrong shape.
+      if (/(^|\s)--rooms(\s|=|$)/.test(source)) {
+        if (sinks.length > 0) return error('rooms don’t pipe yet. try: find --rooms garden')
+        const term = source.replace(/(^|\s)--rooms(=\S*)?/g, ' ').trim()
+        return { lines: renderRoomHits(await env.findRooms(term), term) }
+      }
+
       const query = buildQuery(source, location)
       if ('problem' in query) return error(query.problem)
 
       const hits = await env.searchPosts(query.query)
 
-      if (sinks.length === 0) return { lines: renderHits(hits, query.query.text) }
+      if (sinks.length === 0) {
+        // Nothing was *said* about it — but it may be the name of a room, and
+        // that is the likeliest thing somebody typing one word meant (§3.7).
+        if (hits.length === 0 && query.query.text) {
+          const rooms = await env.findRooms(query.query.text).catch(() => [])
+          if (rooms.length > 0) {
+            return {
+              lines: [
+                { text: `nothing said about ${query.query.text}.`, tone: 'faint' },
+                { text: '' },
+                ...renderRoomHits(rooms, query.query.text),
+              ],
+            }
+          }
+        }
+        return { lines: renderHits(hits, query.query.text) }
+      }
       if (sinks.length > 1) {
         return error('one pipe at a time for now. try: find --since=7d | count')
       }
@@ -716,7 +888,7 @@ export const COMMANDS: readonly Command[] = [
   },
 ]
 
-const FLAG_NAMES = ['room', 'by', 'since', 'limit']
+const FLAG_NAMES = ['room', 'rooms', 'by', 'since', 'limit']
 
 function buildQuery(
   input: string,
@@ -787,9 +959,48 @@ function renderHits(hits: readonly PostHit[], term?: string): Line[] {
   for (const hit of hits) {
     // The address comes first and includes the room, because a search crosses
     // rooms and the result has to remain somewhere you can go.
-    lines.push({ text: `${hit.room}/${hit.id}  ${hit.author}, ${formatAgo(hit.createdAt)}`, tone: 'dim' })
+    // "(reply)" rather than a different address: a reply has no address of its
+    // own (§4.3), so the one shown is the post it is under — which is exactly
+    // what you type to go and read it, and would be a lie without the marker.
+    lines.push({
+      text: `${hit.room}/${hit.id}  ${hit.author}, ${formatAgo(hit.createdAt)}${hit.isReply ? '  (reply)' : ''}`,
+      tone: 'dim',
+    })
     lines.push({ text: hit.body, depth: 1 })
   }
+  return lines
+}
+
+/** Rooms as results. Says which are quiet, because that decides whether to go. */
+function renderRoomHits(hits: readonly RoomHit[], term: string): Line[] {
+  if (hits.length === 0) {
+    return [
+      {
+        text: term ? `no room called ${term}, and none about it.` : 'no rooms.',
+        tone: 'faint',
+      },
+    ]
+  }
+
+  const lines: Line[] = []
+  for (const hit of hits) {
+    lines.push({ text: hit.slug, tone: 'accent' })
+    lines.push({ text: hit.gloss, tone: 'dim', depth: 1 })
+    lines.push({
+      // A room with nothing in it and a room nobody has been in for a month are
+      // different invitations, and the count is what tells them apart.
+      text:
+        hit.posts === 0
+          ? 'nothing in it yet'
+          : `${hit.posts} ${hit.posts === 1 ? 'post' : 'posts'}${
+              hit.latestAt ? `, newest ${formatAgo(hit.latestAt)}` : ''
+            }${hit.inLobby ? '' : ' — quiet, so it’s not in the lobby'}`,
+      tone: 'faint',
+      depth: 1,
+    })
+  }
+  lines.push({ text: '' })
+  lines.push({ text: `go ${hits[0].slug} to walk in.`, tone: 'faint' })
   return lines
 }
 
@@ -819,11 +1030,22 @@ export const CHIP_SETS: Record<Context, readonly string[]> = {
   room: ['say', 'help', 'look', 'go', 'who', 'leave'],
   commons: ['say', 'help', 'look', 'who', 'leave'],
   post: ['say', 'help', 'look', 'who', 'leave'],
-  // No `say`. The palette is the fastest way anyone learns what a place is for,
-  // and a profile is for reading and walking away from (§3.10). `go` leads
-  // because every line on the page is an address in a room.
+  // Somebody else's page. No `say`: only they can start things on their wall,
+  // and a palette that offers a verb which always fails teaches the wrong thing.
+  // `go` leads because every line on the page is an address you can open.
   person: ['go', 'help', 'look', 'find', 'leave'],
 }
+
+/**
+ * Your own page, which is the only place `say` means "put it on your wall".
+ *
+ * A separate set rather than a sixth Context: standing on your own profile is
+ * the same *place* as standing on somebody else's — same prompt, same URL
+ * shape, same valid commands — and the only difference is whether the write
+ * will be allowed. Context decides what is possible; this decides what to
+ * offer. `say` still leads, for the same reason it does in a room.
+ */
+export const OWN_WALL_CHIPS: readonly string[] = ['say', 'help', 'look', 'go', 'find', 'leave']
 
 const BY_NAME = new Map<string, Command>()
 for (const command of COMMANDS) {
