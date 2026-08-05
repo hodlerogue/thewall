@@ -15,7 +15,7 @@
  */
 
 export const CONTACT = 'hello@thewall.social'
-export const LAST_UPDATED = '4 August 2026'
+export const LAST_UPDATED = '5 August 2026'
 
 export interface Jurisdiction {
   /** e.g. "the State of California", "Ontario", "Ireland". */
@@ -73,7 +73,8 @@ export const PRIVACY: Document = {
   path: '/privacy',
   summary: [
     'reading thewall is anonymous. no account, no cookie, no analytics, no trackers.',
-    'if you make an account we keep three things: the name you chose, your email address, and what you post.',
+    'if you make an account we keep the name you chose, your email address, and what you post.',
+    'if you make a room, we record that you made it. nobody else can see that.',
     'your email is never shown to anyone and never sold. it exists to send you a sign-in link.',
     'what you post is public — that is the point of posting.',
     'you can have all of it deleted by writing to ' + CONTACT + '.',
@@ -104,6 +105,7 @@ export const PRIVACY: Document = {
         'What you post and reply. Public, along with the time you posted it.',
         'When you signed up, when you last read your mail, and when your current name was taken.',
         'Names you have previously used. Not public: a name is shown as "previously somebody else\'s" only as a date, never attached to a person, so renaming to get away from a name actually works.',
+        'Which rooms you opened, if you make any. Not public — the site never shows who made a room, and the database does not let a browser read it either. It is held so the three-a-week limit can be counted, and so there is a record if a room needs looking at.',
         'A one-way hash of the IP address you signed up from. Used to stop one person creating a hundred accounts. It is a SHA-256 digest, not an address, and it is not linked to your account — it is kept for one hour and deleted.',
       ],
     },
@@ -112,6 +114,7 @@ export const PRIVACY: Document = {
       body: [
         'Your name and your posts: to perform the contract you entered into by making an account. Without them there is no service to provide.',
         'Your email address: the same, plus our legitimate interest in being able to let you back in on a new device.',
+        'Which rooms you opened: our legitimate interest in enforcing a limit that keeps the place usable, and in being able to answer for a room if somebody complains about one.',
         'The signup IP hash: our legitimate interest in not being overrun by automated accounts. It is the least identifying thing that answers the question, and it is short-lived.',
         'We do not rely on consent for any of it, which means there is nothing to withdraw — if you want out, deletion is the lever, and it is below.',
       ],
@@ -122,6 +125,7 @@ export const PRIVACY: Document = {
         'Posts in commons are deleted after 24 hours, automatically and unconditionally. This is enforced by the database, not by a cleanup job that could be turned off.',
         'Posts in every other room are kept until you ask for them to be removed.',
         'Your account is kept until you ask for it to be deleted.',
+        'A room you opened outlives your account. When you are erased the link between you and it is removed, and the room stays — by then the conversations in it belong to everybody who turned up, and taking it down would delete their words to satisfy a request that was never about them.',
         'Signup rate-limit hashes are kept for one hour.',
         'Previously used names are kept for 90 days, then stop being consulted; they are deleted outright when you close your account.',
       ],
@@ -176,6 +180,7 @@ export const TERMS: Document = {
     'be a person. don’t post things that are illegal, or aimed at hurting someone.',
     'what you write stays yours. posting it here gives us permission to show it here, nothing more.',
     'you can change your name whenever you like. the one you leave behind is free for anyone.',
+    'you can make rooms, three a week. a room you make is not yours — it has no owner.',
     'this is one person’s side project. it can break, and it can end.',
     'accounts can be removed for the things above, and you can ask why.',
     ...(jurisdiction()
@@ -211,6 +216,17 @@ export const TERMS: Document = {
       ],
     },
     {
+      heading: 'Rooms you make',
+      body: [
+        'Anyone with a verified account can make a room, three in any seven days. It needs a name and a line saying what it is for, and both are public.',
+        'Making a room does not make it yours. There is no owner, no moderator and no special powers — inside it you are exactly another person in a room, and everything below about what not to post applies to you there like anybody else.',
+        'You cannot take a name somebody is using, or one the site needs for its own pages. Nothing stops you naming a room after a subject, a joke or a mood.',
+        'A room drops out of the lobby when nothing has been said in it for a fortnight. It is not deleted — it keeps its name, its posts and its address, it can still be found by searching, and it comes back the moment somebody speaks in it.',
+        'A room can be closed, the same way a post can be hidden, if what is happening in it breaks the rules below. That is reversible and nothing in it is destroyed.',
+        'If you close your account, rooms you made stay. The record that you made them goes with your account; the rooms belong to the conversations in them by then.',
+      ],
+    },
+    {
       heading: 'What not to post',
       body: [
         'Anything illegal where you are, or where this is hosted.',
@@ -220,12 +236,13 @@ export const TERMS: Document = {
         'Malware, phishing, or links intended to harm whoever clicks them.',
         'Spam, advertising, and automated posting. This is a conversation between people.',
         'Impersonating somebody else, including by taking a name in order to be mistaken for its previous holder.',
+        'All of this applies to what you call a room and what you say it is for, as much as to what you post in one.',
       ],
     },
     {
       heading: 'What happens when somebody breaks that',
       body: [
-        'Posts can be hidden and accounts can be stopped from posting. Both are reversible, and nothing is destroyed when either happens — the replies other people wrote stay where they are.',
+        'Posts can be hidden, rooms can be closed, and accounts can be stopped from posting. All three are reversible, and nothing is destroyed when any of them happens — the replies other people wrote stay where they are.',
         `You can ask why, at ${CONTACT}, and you will get an answer from a person. If it was a mistake it will be undone.`,
         'There is no formal appeals process, because there is no formal moderation team. There is one person, and they will read your email.',
       ],

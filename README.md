@@ -97,9 +97,9 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 273 unit tests: parser, aliases, errors, signup, search, themes, names, walls
+npm test           # 277 unit tests: parser, aliases, errors, signup, search, themes, names, walls
 npm run test:e2e   # 99 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 163 assertions against the real migrations, on a throwaway database
+npm run test:db    # 166 assertions against the real migrations, on a throwaway database
 ```
 
 To see what is actually in a deployed project — read-only, and it tells apart
@@ -240,7 +240,12 @@ So creation opens and the lobby is what gets defended:
   it is `on delete set null` so a room outlives the person who made it.
   `curated` is a separate column rather than `created_by is null`, precisely
   because of that: otherwise erasing whoever opened a room would silently
-  promote it to furniture nobody chose.
+  promote it to furniture nobody chose. **`created_by` is not readable by the
+  browser** — the grant on `rooms` is column-scoped and it is not in the list,
+  because "a room has no owner" ought to be true of the data and not only of the
+  interface. Adding the column to a table-wide `grant select` had quietly
+  published the account id behind every room; it is the same shape as the bug
+  that once made `verified_at` settable from a console.
 - **A name somebody is using is not available**, alongside the reserved routes.
   `go marisol` and `go ~marisol` are already different addresses so nothing
   breaks — but a room sitting in the lobby under a person's name, with a gloss

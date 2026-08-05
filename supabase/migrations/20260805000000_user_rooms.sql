@@ -59,6 +59,25 @@ comment on column public.rooms.curated is
 -- it is curated by definition.
 update public.rooms set curated = true where owner_id is null;
 
+-- Who made it is not public --------------------------------------------------
+--
+-- `grant select on public.rooms` is table-wide, so adding created_by handed
+-- every column of it to anon and authenticated alike: one line in a browser
+-- console and you have the account id behind every room on the site. It is
+-- shown nowhere in the interface, and "a room has no owner" is supposed to be
+-- true of the data and not merely of the UI.
+--
+-- This is the same shape as the bug that made `verified_at` settable from the
+-- console — a table-wide grant beside a row policy, where the policy answers
+-- "whose row" and nothing answers "which columns". Column-scoped, then, and
+-- created_by is simply not in the list. The lobby reads `curated` instead,
+-- which is a boolean about the room rather than a fact about a person.
+revoke select on public.rooms from anon, authenticated;
+grant select (
+  slug, gloss, ephemeral, sort_order, next_post_no, created_at,
+  hidden_at, archived_at, owner_id, curated
+) on public.rooms to anon, authenticated;
+
 -- Names nobody may take ------------------------------------------------------
 --
 -- Every one of these is a real path under app/. A room called `terms` would be

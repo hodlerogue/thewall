@@ -1159,11 +1159,6 @@ begin;
     public.create_room('garden'::citext, 'what you are growing') = 'garden',
     'a verified account makes a room'
   );
-  select tests.ok(
-    (select created_by from public.rooms where slug = 'garden')
-      = '99999999-9999-4999-8999-999999999999',
-    'and it records who opened it'
-  );
   -- Not owner_id. That column means "this is their wall" and carries a `~`
   -- address; making a room does not make it yours.
   select tests.ok(
@@ -1184,6 +1179,14 @@ begin;
     'the fourth this week is refused'
   );
 commit;
+
+-- As the owner, because `created_by` is deliberately unreadable by the browser
+-- — asserted below, and the reason this one cannot sit in the block above.
+select tests.ok(
+  (select created_by from public.rooms where slug = 'garden')
+    = '99999999-9999-4999-8999-999999999999',
+  'and it records who opened it'
+);
 
 -- The bypass that defeated the §4.7 gate, aimed at this one. A STABLE function
 -- reads the snapshot from the start of the statement, so all twenty-five calls
@@ -1240,6 +1243,32 @@ select tests.ok(
   (select count(*) from public.room_overview where curated) = 6,
   'a curated room never fades, however quiet — it is the furniture'
 );
+
+-- Who opened a room is not public.
+--
+-- `grant select on public.rooms` is table-wide, so adding created_by handed
+-- every column to anon and authenticated alike — the same shape as the bug that
+-- made verified_at settable from a browser console, where a row policy answers
+-- "whose row" and nothing answers "which columns". It is shown nowhere in the
+-- interface, and "a room has no owner" is meant to be true of the data.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '55555555-5555-4555-8555-555555555555';
+
+  select tests.raises(
+    $sql$select created_by from public.rooms where slug = 'garden'$sql$,
+    'who opened a room is not readable from the browser'
+  );
+  -- And everything the interface actually needs still is.
+  select tests.ok(
+    (select gloss from public.rooms where slug = 'garden') = 'what you are growing',
+    'while the room itself reads exactly as before'
+  );
+  select tests.ok(
+    (select count(*) from public.room_overview) > 0,
+    'and the lobby still answers'
+  );
+commit;
 
 -- `curated` is its own column and not `created_by is null`, and this is why.
 -- created_by is `on delete set null`, so erasing whoever opened a room would

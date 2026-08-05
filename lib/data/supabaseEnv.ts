@@ -273,7 +273,10 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         ['profiles', 'banned_at', '20260804020000_moderation'],
         ['profiles', 'name_since', '20260804030000_rename'],
         ['rooms', 'owner_id', '20260804050000_walls'],
-        ['rooms', 'created_by', '20260805000000_user_rooms'],
+        // `curated`, not `created_by`: the latter is deliberately not
+        // readable by the browser, so probing it would report every correctly
+        // migrated project as missing this one.
+        ['rooms', 'curated', '20260805000000_user_rooms'],
       ] as const) {
         const { error } = await client.from(table).select(column).limit(1)
         checks.push({

@@ -58,9 +58,24 @@ describe('the privacy policy', () => {
   })
 
   it('accounts for everything the schema stores about a person', () => {
-    for (const held of ['name', 'email', 'post', 'ip address']) {
+    // Every one of these is a column somebody could be identified by. The list
+    // grows when the schema does — `created_by` arrived with user-made rooms
+    // and was personal data nobody had written down.
+    for (const held of ['name', 'email', 'post', 'ip address', 'rooms you opened']) {
       expect(full, held).toContain(held)
     }
+  })
+
+  it('does not claim who made a room is public, because it is not', () => {
+    // The interface never shows it and the grant does not expose it — the
+    // policy has to match, or it is describing a different site.
+    expect(full).toMatch(/not public.*(site never shows who made a room|who made a room)/i)
+  })
+
+  it('says what happens to a room when the person who made it leaves', () => {
+    // The awkward case, and the one somebody exercising erasure will ask
+    // about: their account goes and the room does not.
+    expect(full).toContain('outlives your account')
   })
 
   it('states a lawful basis, which is the part a template usually invents', () => {
@@ -100,6 +115,23 @@ describe('the terms', () => {
   it('keep the copyright with the person who wrote the words', () => {
     expect(full).toContain('copyright')
     expect(full).toMatch(/you keep/)
+  })
+
+  it('describe making a room as it is actually built', () => {
+    const terms = full
+    expect(terms).toContain('three in any seven days')
+    expect(terms).toContain('verified')
+    // The claim the product makes structurally, so the terms must make it too.
+    expect(terms).toMatch(/does not make it yours|no owner/)
+    // Fading is not deletion, and somebody whose room left the lobby will want
+    // to know which one happened.
+    expect(terms).toContain('not deleted')
+  })
+
+  it('list every lever that can be used against somebody', () => {
+    for (const lever of ['hidden', 'closed', 'stopped from posting']) {
+      expect(full, lever).toContain(lever)
+    }
   })
 
   it('describe the rename rule as it is actually built', () => {
