@@ -20,6 +20,16 @@ import type { Line, Location } from '@/lib/shell/types'
 export interface Held {
   location: Location
   body: string
+  /**
+   * Whether the room it is going to keeps addresses.
+   *
+   * Captured with the sentence rather than worked out when it lands, because
+   * the only thing that knows is the command handler that took it — and by the
+   * time this is posted, two questions have been asked and answered. Without
+   * it the very first thing a new person ever writes, which is usually in
+   * commons, came back announcing a post number that means nothing there.
+   */
+  addressed?: boolean
 }
 
 export interface SignupApi {
@@ -285,7 +295,7 @@ export class Session {
     }
 
     lines.push({ text: 'now — the thing you were trying to say.', tone: 'accent' })
-    const written = await this.write(held.location, held.body)
+    const written = await this.write(held.location, held.body, { addressed: held.addressed })
     lines.push(...written.lines)
 
     // Losing the sentence here would be the worst possible moment for it.
@@ -354,7 +364,18 @@ export class Session {
   }
 
   /** The write path itself, used by `say` and by the held-message commit. */
-  async write(location: Location, body: string): Promise<WriteResult> {
+  async write(
+    location: Location,
+    body: string,
+    /**
+     * Whether the room keeps what is said in it.
+     *
+     * Passed in rather than looked up: the caller is the command handler, which
+     * already knows — `commons` is its own context precisely because §3.10
+     * makes it a different kind of place.
+     */
+    options: { addressed?: boolean } = {},
+  ): Promise<WriteResult> {
     if (!location.room) {
       return {
         lines: [{ text: 'you have to be in a room to say something.', tone: 'error' }],
@@ -368,7 +389,29 @@ export class Session {
         return { lines: [{ text: 'said.', tone: 'faint' }], failed: false }
       }
       const postNo = await this.writer.post(location.room, body)
-      return { lines: [{ text: `said — it’s post ${postNo}.`, tone: 'faint' }], failed: false }
+
+      /*
+       * Commons gets a number from the allocator like everywhere else, and it
+       * means nothing there: §3.10 keeps no threads, `go 26` in commons answers
+       * "there's nothing to open here", and the post is gone in a day. Saying
+       * "it's post 26" anyway was an invitation to look for a number that is
+       * not shown next to anything and cannot be used — which is exactly the
+       * question it produced.
+       */
+      if (options.addressed === false) {
+        return { lines: [{ text: 'said.', tone: 'faint' }], failed: false }
+      }
+
+      return {
+        lines: [
+          { text: `said — it’s post ${postNo}.`, tone: 'faint' },
+          // What the number is *for*. On its own it reads as a receipt; the
+          // point of it is that it is the address replies arrive at, and that
+          // it is the same number in the URL (§3.4).
+          { text: `go ${postNo} opens it, which is where replies land.`, tone: 'faint' },
+        ],
+        failed: false,
+      }
     } catch (error) {
       return {
         lines: [

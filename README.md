@@ -97,8 +97,8 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 299 unit tests: parser, aliases, errors, signup, search, themes, names, walls
-npm run test:e2e   # 100 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm test           # 307 unit tests: parser, aliases, errors, signup, search, themes, names, walls
+npm run test:e2e   # 103 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
 npm run test:db    # 170 assertions against the real migrations, on a throwaway database
 ```
 
@@ -144,6 +144,20 @@ prompt string, the palette set, the valid command set and the URL at once — wh
 is why `thewall.social/music/12` and `go 12` are the same address (§3.4). The lobby
 lives at `/lobby` so that `/` can put arrivals in commons without making `leave`
 impossible.
+
+**Commons says nothing about post numbers, because it has none.** §3.10 gives
+it no permanent addresses, so `look` there shows no numbers and `go 26` answers
+"there's nothing to open here" — and the write confirmation announced "it's post
+26" anyway, which sent people looking for a door that is not there. Everywhere
+that keeps things, the confirmation now also says what the number is *for*: it
+is the address replies arrive at, and the same number in the URL (§3.4). It
+reads as a receipt otherwise.
+
+For the same reason `reply` is not listed in `help` in commons. In the lobby or
+on somebody's page it is one step from working — go to a room, open a post — and
+saying so teaches the step. In commons it can never work at all, so offering it
+would be advertising a dead end; typed anyway, it still explains why. `go` there
+is glossed "go to another room" rather than "open a post".
 
 **`reply` is a command, against §3.3's lean.** The doc says there is no reply
 verb to learn — one verb for all contribution — and `reply` was an alias for

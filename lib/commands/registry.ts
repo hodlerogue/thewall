@@ -154,7 +154,15 @@ export const COMMANDS: readonly Command[] = [
     verb: 'go',
     aliases: ['cd', 'enter', 'open', 'join', 'read'],
     contexts: ALL,
-    gloss: (c) => (c === 'lobby' || c === 'person' ? 'enter a room' : 'open a post'),
+    gloss: (c) =>
+      c === 'lobby' || c === 'person'
+        ? 'enter a room'
+        : // Commons has no posts to open (§3.10), so offering to open one is
+          // the palette naming something that cannot happen. Naming a room is
+          // what `go` is actually for from here.
+          c === 'commons'
+          ? 'go to another room'
+          : 'open a post',
     detail: () =>
       'moves you. at the lobby, go music. inside a room, go 12 opens that post. a whole address works from anywhere — go music/12 — and so does go ~marisol, which shows you somebody: their page, and their wall.',
     insert: () => 'go ',
@@ -387,10 +395,12 @@ export const COMMANDS: readonly Command[] = [
       // §3.9 — the sentence is captured first, then the account is asked for.
       // Friction lands at peak motivation, and nothing typed is ever lost.
       if (session.name() === null) {
-        return { lines: session.begin({ location, body: arg }) }
+        return {
+          lines: session.begin({ location, body: arg, addressed: context !== 'commons' }),
+        }
       }
 
-      const written = await session.write(location, arg)
+      const written = await session.write(location, arg, { addressed: context !== 'commons' })
       // §3.9 — nothing typed is ever lost, including to a network blip.
       return { lines: written.lines, retry: written.failed ? arg : undefined }
     },
@@ -408,14 +418,26 @@ export const COMMANDS: readonly Command[] = [
      */
     verb: 'reply',
     aliases: ['re', 'answer'],
-    contexts: ALL,
+    /*
+     * Everywhere except commons.
+     *
+     * `help` lists what you can type from where you are standing, so a verb
+     * that is listed and always fails is the same defect as a palette chip that
+     * always fails. In the lobby or on somebody's page `reply` is a step away
+     * from working — go to a room, open a post — and saying so teaches the
+     * step. In commons it can never work at all: §3.10 gives it no threads and
+     * a trigger in the schema refuses replies there. So it is not offered, and
+     * typing it still gets the sentence that explains why.
+     */
+    contexts: ['lobby', 'room', 'post', 'person'],
     // No dash inside a gloss: help renders `verb — gloss`, and a second one
     // turns the line into a puzzle.
     gloss: (c) => (c === 'post' ? 'answer this' : 'answer a post, once you open it'),
     detail: () =>
-      'answers somebody. replies live inside a post, so open one first: go 12, then reply. inside a post this and say are the same thing.',
+      'answers somebody. replies live inside a post, so open one first: go 12, then reply. inside a post this and say are the same thing. commons is the exception — nothing there keeps replies.',
     insert: (c) => (c === 'post' ? 'reply ' : 'go '),
-    wrongContext: () => '',
+    // Only ever commons, since that is the only context left out above.
+    wrongContext: () => 'commons doesn’t keep replies — say it as its own thing instead.',
     async run(args) {
       const { context, location, env } = args
 
@@ -433,8 +455,6 @@ export const COMMANDS: readonly Command[] = [
           ? `replies live inside a post. open one of ${location.person}'s first — try: go 1`
           : context === 'lobby'
             ? 'replies live inside a post. go to a room first, then open one.'
-          : context === 'commons'
-            ? 'commons doesn’t keep replies — say it as its own thing instead.'
             : `replies live inside a post. open one first — try: go ${example}`,
       )
     },
