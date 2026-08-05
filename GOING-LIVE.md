@@ -11,7 +11,7 @@ these fail silently — the site keeps loading and one feature is quietly dead.
 
 ## 1. The database
 
-Your project was set up when there were three migrations. There are now twelve.
+Your project was set up when there were three migrations. There are now fourteen.
 The five that came after add: the column-scoped grants that close two console
 bypasses, mail, the kill switch, rename, and erasure. **None of their features
 work until they are applied**, and none of them fail at build time — they fail

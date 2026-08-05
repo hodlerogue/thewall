@@ -135,3 +135,45 @@ test('--room still filters posts, which --rooms must not have taken over', async
   await type(page, 'find --room=music records')
   await expect(scrollback(page)).toContainText('music/12')
 })
+
+
+test('feed is in the lobby, and the walls are not', async ({ page }) => {
+  await page.goto('/lobby')
+
+  // The arrangement in one assertion: one room in the listing holds what is on
+  // every wall, so a door per person is not needed and §4.2 stays honoured.
+  await expect(scrollback(page)).toContainText('feed')
+  await expect(scrollback(page)).not.toContainText('~')
+})
+
+test('the feed shows walls, with the whole address on every line', async ({ page }) => {
+  await page.goto('/lobby')
+  await type(page, 'go feed')
+
+  await expect(label(page)).toHaveText('guest:feed$')
+  await expect(scrollback(page)).toContainText('~marisol/2')
+  await expect(scrollback(page)).toContainText('neighbours own fans')
+
+  // And the address it printed is the address `go` takes.
+  await type(page, 'go ~marisol/2')
+  await expect(label(page)).toHaveText('guest:~marisol/2$')
+})
+
+test('a bare number on the feed is refused, since it names two posts at once', async ({ page }) => {
+  await page.goto('/feed')
+  await type(page, 'go 2')
+  await expect(scrollback(page)).toContainText('needs the name')
+})
+
+test('saying something on the feed puts it on your own wall', async ({ page }) => {
+  await page.goto('/feed')
+  await type(page, 'say a thing for my own wall')
+  await type(page, 'wallposter')
+  await type(page, 'wallposter@example.com')
+
+  // §3.9 — the held sentence lands, and the wall it lands on is the one the
+  // name it was just given owns. There was no `~name` to write down when the
+  // sentence was captured.
+  await expect(scrollback(page)).toContainText('the thing you were trying to say')
+  await expect(scrollback(page)).toContainText('said')
+})

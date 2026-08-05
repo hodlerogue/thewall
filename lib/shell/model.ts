@@ -92,6 +92,14 @@ export interface PostHit {
    * type to go and read it (§4.3 — replies have no addresses of their own).
    */
   isReply?: boolean
+  /**
+   * How many answers it has, where that is known.
+   *
+   * Absent for a search hit, which is a needle rather than a thing to browse.
+   * The feed is a listing, and there "three replies" is most of what decides
+   * whether to open something.
+   */
+  replies?: number
 }
 
 /**

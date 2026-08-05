@@ -30,6 +30,15 @@ export interface Held {
    * commons, came back announcing a post number that means nothing there.
    */
   addressed?: boolean
+  /**
+   * Send it to the wall of whoever this turns out to be.
+   *
+   * `location` cannot say that yet. Somebody typing on the feed with no account
+   * has no name, so there is no `~name` to write down — and by the time there
+   * is, two questions have been asked and the location that started this is
+   * long gone. So the intent is recorded and the address resolved at commit.
+   */
+  toOwnWall?: boolean
 }
 
 export interface SignupApi {
@@ -354,7 +363,9 @@ export class Session {
     }
 
     lines.push({ text: 'now — the thing you were trying to say.', tone: 'accent' })
-    const written = await this.write(held.location, held.body, { addressed: held.addressed })
+    // The wall is named here, because here is the first moment there is a name.
+    const target = held.toOwnWall ? { room: `~${this.who}` } : held.location
+    const written = await this.write(target, held.body, { addressed: held.addressed })
     lines.push(...written.lines)
 
     // Losing the sentence here would be the worst possible moment for it.

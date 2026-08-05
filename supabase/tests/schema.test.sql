@@ -165,7 +165,7 @@ commit;
 begin;
   set local role anon;
   select tests.ok(
-    (select count(*) from public.rooms where owner_id is null) = 6,
+    (select count(*) from public.rooms where owner_id is null) = 7,
     'anonymous readers see every room');
   -- Including the ones that are somebody's wall: a wall is not private, it is
   -- just not in the lobby.
@@ -298,7 +298,9 @@ commit;
 begin;
   set local role anon;
   select tests.ok(
-    (select count(*) from public.room_overview where latest_body is not null) = 6,
+    (select count(*) from public.room_overview where latest_body is not null) = 7,
+    -- Seven now, not six: `feed` is in the lobby and its line comes from the
+    -- walls rather than from posts of its own, which is the whole point of it.
     'every seeded room has something recent to show'
   );
   select tests.ok(
@@ -1216,7 +1218,7 @@ select tests.ok(
 update public.rooms set archived_at = null;
 
 select tests.ok(
-  (select count(*) from public.room_overview where curated) = 6,
+  (select count(*) from public.room_overview where curated) = 7,
   'the curated rooms are all in the lobby'
 );
 select tests.ok(
@@ -1240,8 +1242,8 @@ select tests.ok(
   'and search still finds it, saying it is quiet'
 );
 select tests.ok(
-  (select count(*) from public.room_overview where curated) = 6,
-  'a curated room never fades, however quiet — it is the furniture'
+  (select count(*) from public.room_overview where curated) = 7,
+  'a curated room never fades, however quiet'
 );
 
 -- Who opened a room is not public.
@@ -1451,6 +1453,70 @@ select tests.ok(
     where id = '99999999-9999-4999-8999-999999999999') is null,
   'and an account made before the record existed is null, not backdated'
 );
+
+\echo ''
+\echo 'feed — every wall in one place, and nothing of its own'
+
+select tests.ok(
+  exists (select 1 from public.room_overview where slug = 'feed'),
+  'feed is in the lobby, which is what lets the walls stay out of it'
+);
+select tests.ok(
+  (select curated from public.rooms where slug = 'feed'),
+  'and never fades, whatever it is holding'
+);
+
+-- The lobby line for it comes from the walls, not from feed's own posts, of
+-- which there are none. Without that it reads "quiet in here" under a room that
+-- is not — the §5 failure mode, on the busiest thing on the site.
+select tests.ok(
+  (select latest_body from public.room_overview where slug = 'feed') is not null,
+  'its lobby line comes from the walls, since it has no posts of its own'
+);
+select tests.ok(
+  (select count(*) from public.posts where room_slug = 'feed') = 0,
+  'and it really has none'
+);
+
+select tests.ok(
+  (select count(*) from public.wall_feed()) >= 2,
+  'the feed shows what is on the walls'
+);
+select tests.ok(
+  not exists (select 1 from public.wall_feed() where room::text not like '~%'),
+  'and only walls — a room post is not wall content'
+);
+select tests.ok(
+  (select room::text from public.wall_feed() limit 1) like '~%',
+  'every line carries the wall it is on, because a bare number is ambiguous'
+);
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
+  -- A post addressed to feed would sit in a room that shows everything except
+  -- itself, with an address nobody could reason about.
+  select tests.raises(
+    $sql$select public.create_post('feed', 'this should not land')$sql$,
+    'nothing can be posted into the feed'
+  );
+commit;
+
+-- Moderation reaches it, like everywhere else.
+insert into public.posts (room_slug, post_no, author_id, body)
+select '~walled', 99, owner_id, 'a wall post to hide'
+  from public.rooms where slug = '~walled';
+
+select tests.ok(
+  exists (select 1 from public.wall_feed() where body = 'a wall post to hide'),
+  'a wall post reaches the feed'
+);
+update public.posts set hidden_at = now() where body = 'a wall post to hide';
+select tests.ok(
+  not exists (select 1 from public.wall_feed() where body = 'a wall post to hide'),
+  'and hiding it takes it out of the feed too'
+);
+delete from public.posts where body = 'a wall post to hide';
 
 -- Decay is about rooms going cold. A quiet wall is a person who has not posted
 -- lately, which is not a problem and not anybody's to tidy up.

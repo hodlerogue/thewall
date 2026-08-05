@@ -79,6 +79,29 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
       }))
     },
 
+    async readFeed(): Promise<PostHit[]> {
+      const { data, error } = await client.rpc('wall_feed', { p_limit: 40 })
+      if (error) throw error
+
+      const rows = (data ?? []) as {
+        room: string
+        post_no: number
+        author: string
+        body: string
+        created_at: string
+        replies: number
+      }[]
+
+      return rows.map((row) => ({
+        room: row.room,
+        id: row.post_no,
+        author: row.author,
+        body: row.body,
+        createdAt: new Date(row.created_at),
+        replies: Number(row.replies ?? 0),
+      }))
+    },
+
     async getRoom(slug: string): Promise<Room | undefined> {
       const { data: room, error: roomError } = await client
         .from('rooms')

@@ -103,9 +103,9 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 354 unit tests: parser, aliases, errors, signup, search, themes, names, walls
-npm run test:e2e   # 109 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 178 assertions against the real migrations, on a throwaway database
+npm test           # 364 unit tests: parser, aliases, errors, signup, search, themes, names, walls
+npm run test:e2e   # 113 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm run test:db    # 187 assertions against the real migrations, on a throwaway database
 ```
 
 To see what is actually in a deployed project — read-only, and it tells apart
@@ -370,6 +370,15 @@ email. Unread is one column: replies to posts you wrote, newer than
 clears the count, because in a pull-only design looking is the only signal there
 is. Each one carries its `room/id`, since a notification you cannot walk to is
 just an alert — and `go music/12` gets you there in one step.
+
+**`feed` is where the walls are.** Keeping them out of the lobby was right and
+left a hole: a wall is only ever found by already knowing whose it is, so
+anything said on one reaches whoever thought to look — which for most walls is
+nobody. `feed` is one room, in the lobby, holding what is on every wall, newest
+first. It has no posts of its own and `create_post` refuses its name; each line
+carries the real `~name/12`, because post numbers are per room and `2` on the
+feed is a different post on every wall. `say` there goes on your own wall, since
+that is the only wall you can add to and it is obviously what somebody means.
 
 **Hiding reaches the inbox**, which it did not for a long time. Neither `mail()`
 nor `mail_count()` looked at `hidden_at` — not on the reply, not on the post it

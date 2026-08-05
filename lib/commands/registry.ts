@@ -95,6 +95,9 @@ function applyTheme(name: string): void {
 
 const error = (text: string): RunResult => ({ lines: [{ text, tone: 'error' }] })
 
+/** The one room that holds nothing of its own — see the feed migration. */
+const FEED = 'feed'
+
 /** Matches the `limit` in `public.mail()`. Reaching it is said out loud. */
 const MAIL_LIMIT = 100
 
@@ -142,6 +145,8 @@ export const COMMANDS: readonly Command[] = [
         if (!profile) return error(`there’s no one called ${location.person}. try: leave`)
         return { lines: renderProfile(profile) }
       }
+
+      if (location.room === FEED) return { lines: renderFeed(await env.readFeed()) }
 
       const room = await env.getRoom(location.room!)
       if (!room) return error(`${location.room} isn’t there anymore. try: leave`)
@@ -244,9 +249,25 @@ export const COMMANDS: readonly Command[] = [
         if (context === 'commons') {
           return error('commons doesn’t keep posts, so there’s nothing to open here.')
         }
+        if (location.room === FEED) {
+          /*
+           * Numbers are allocated per room, so `2` on the feed is two or three
+           * different posts at once. The whole address is shown against every
+           * line here for exactly that reason, and `go` already takes one.
+           */
+          const feed = await env.readFeed().catch(() => [])
+          const example = feed[0] ? `${feed[0].room}/${feed[0].id}` : '~marisol/2'
+          return error(
+            `these live on people's walls, so the number needs the name — try: go ${example}`,
+          )
+        }
         const post = await env.getPost(location.room!, id)
         if (!post) return error(`there’s no post ${id} in ${location.room}. try: look`)
         return { lines: renderPost(post), location: { room: location.room, postId: id } }
+      }
+
+      if (arg.toLowerCase() === FEED) {
+        return { lines: renderFeed(await env.readFeed()), location: { room: FEED } }
       }
 
       // Anything else is a room name, and naming a room works from anywhere —
@@ -422,6 +443,25 @@ export const COMMANDS: readonly Command[] = [
           )
         }
         const onWall = await session.write({ room: `~${location.person}` }, arg)
+        return { lines: onWall.lines, retry: onWall.failed ? arg : undefined }
+      }
+
+      /*
+       * Standing on the feed, `say` puts it on your own wall.
+       *
+       * The feed is a view of walls and holds nothing itself — the database
+       * refuses a post addressed to it. Refusing here too would be correct and
+       * useless: somebody reading everybody's walls and typing a sentence means
+       * to add one, and the only wall they can add to is theirs.
+       */
+      if (location.room === FEED) {
+        const me = session.name()
+        if (me === null) {
+          // The wall is named at commit time, once there is a name to name it
+          // with — see `Held.toOwnWall`.
+          return { lines: session.begin({ location, body: arg, toOwnWall: true }) }
+        }
+        const onWall = await session.write({ room: `~${me}` }, arg)
         return { lines: onWall.lines, retry: onWall.failed ? arg : undefined }
       }
 
@@ -1127,6 +1167,45 @@ function renderHits(hits: readonly PostHit[], term?: string): Line[] {
     })
     lines.push({ text: hit.body, depth: 1 })
   }
+  return lines
+}
+
+/**
+ * The feed: everything on everybody's walls, newest first.
+ *
+ * Rendered like search hits rather than like a room, because that is what it
+ * is. A room listing puts a bare number in front of each post, and a bare
+ * number is meaningless here — `2` is a different post on every wall. The
+ * address carries the name, which is also what `go` wants back.
+ */
+function renderFeed(posts: readonly PostHit[]): Line[] {
+  if (posts.length === 0) {
+    return [
+      { text: 'nothing on anybody’s wall yet.', tone: 'faint' },
+      { text: 'go ~yourname and say something, and it shows up here.', tone: 'faint' },
+    ]
+  }
+
+  const lines: Line[] = []
+  for (const post of posts) {
+    lines.push({
+      text: `${post.room}/${post.id}  ${post.author}, ${formatAgo(post.createdAt)}`,
+      tone: 'dim',
+    })
+    lines.push({ text: post.body, depth: 1 })
+    if (post.replies) {
+      lines.push({
+        text: `${post.replies} ${post.replies === 1 ? 'reply' : 'replies'} — go ${post.room}/${post.id}`,
+        tone: 'faint',
+        depth: 1,
+      })
+    }
+    lines.push({ text: '' })
+  }
+  lines.push({
+    text: 'anybody can answer any of these. say something here and it goes on your own wall.',
+    tone: 'faint',
+  })
   return lines
 }
 
