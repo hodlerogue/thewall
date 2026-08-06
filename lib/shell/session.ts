@@ -393,7 +393,20 @@ export class Session {
       return { lines, identity: this.who }
     }
 
-    lines.push({ text: 'now — the thing you were trying to say.', tone: 'accent' })
+    /*
+     * Past tense, and it has to be.
+     *
+     * This said "now — the thing you were trying to say.", which was a heading
+     * for the confirmation underneath it. Once success stopped printing a
+     * status line, there was nothing underneath it in commons or in a post —
+     * so the last thing on screen was a sentence promising something, followed
+     * by blank. A promise with no payoff reads worse than the receipt it
+     * replaced, and it is not something a fixture test would have shown.
+     *
+     * Said this way it is complete on its own, and still reads correctly in a
+     * room, where the address does follow it.
+     */
+    lines.push({ text: 'and the thing you were trying to say is up.', tone: 'accent' })
     // The wall is named here, because here is the first moment there is a name.
     const target = held.toOwnWall ? { room: `~${this.who}` } : held.location
     const written = await this.write(target, held.body, { addressed: held.addressed })
@@ -523,57 +536,83 @@ export class Session {
       }
     }
 
+    /*
+     * Print the address, or print nothing. Never print a word about whether it
+     * worked.
+     *
+     * "Do you need something to tell you it's said? Shouldn't that be the
+     * assumption unless there's an error?" — yes, and that is the oldest
+     * convention there is: `cp` says nothing on success. `said.` was a status
+     * report, and a status report on a line of its own under every sentence is
+     * how a prompt turns into a chat client with delivery receipts.
+     *
+     * What survives is not a confirmation, it is a value: the address. It is
+     * the one thing about the post that is *not* already on the screen — your
+     * own words are right there on the echo line above — and there is no other
+     * way to get it without walking back into the room. That is exactly the
+     * `git commit` shape: one line, the identifier, no adjectives.
+     *
+     * Silence would have been wrong as a blanket rule for one specific reason:
+     * `lib/data/live.ts` deliberately drops your own posts from the realtime
+     * channel, so nothing arrives to show you. In a real terminal `cp` is
+     * silent and you believe it because the filesystem is right there; here the
+     * room does not visibly change. So the rule is not "say nothing", it is
+     * "say the thing that is not otherwise knowable" — which for a reply and
+     * for commons is nothing at all.
+     */
     try {
       if (location.postId !== undefined) {
+        // §4.3 — a reply has no address of its own, so there is nothing to
+        // print. Your words are on the echo line; that is the receipt.
         await this.writer.reply(location.room, location.postId, body)
-        return { lines: [{ text: 'said.', tone: 'faint' }], failed: false }
+        return { lines: [], failed: false }
       }
       const postNo = await this.writer.post(location.room, body)
 
       /*
-       * Commons gets a number from the allocator like everywhere else, and it
+       * Commons gets a number from the allocator like everywhere else and it
        * means nothing there: §3.10 keeps no threads, `go 26` in commons answers
-       * "there's nothing to open here", and the post is gone in a day. Saying
-       * "it's post 26" anyway was an invitation to look for a number that is
-       * not shown next to anything and cannot be used — which is exactly the
-       * question it produced.
+       * "there's nothing to open here", and the post is gone in a day. There is
+       * no address, so there is no output.
        */
       if (options.addressed === false) {
-        return { lines: [{ text: 'said.', tone: 'faint' }], failed: false }
+        return { lines: [], failed: false }
       }
 
       /*
-       * A wall post is named in full, and that is not decoration.
+       * The whole address, never the bare number — and this is now the simpler
+       * rule as well as the correct one.
        *
-       * `go 7` only works while you are standing in the room the 7 belongs to.
-       * Saying something on your own wall can happen from two places that are
-       * not it — your page, and the feed — and on the feed a bare number is
-       * refused outright, because 7 is a different post on every wall. So the
-       * site was handing somebody an instruction that fails when followed,
-       * which is §3.7's whole prohibition.
-       *
-       * `~jameson/7` works from everywhere, including both of those.
+       * `go 7` only works while you are standing in the room the 7 belongs to,
+       * and saying something on your own wall can happen from two places that
+       * are not it — your page, and the feed, where a bare number is refused
+       * outright because 7 is a different post on every wall. That used to be a
+       * special case for walls. As a lone line with no sentence around it, a
+       * bare `7` is also just cryptic, so the special case disappears into the
+       * general rule: print what `go` takes from anywhere, which is what every
+       * other listing on the site prints too.
        */
-      const address = location.room.startsWith('~') ? `${location.room}/${postNo}` : `${postNo}`
+      const address = `${location.room}/${postNo}`
 
       /*
        * The explanation is said once, and then never again.
        *
        * "Why do I even need to know what the number is if I'm sending it?" is a
        * fair question, and the answer — it is the address, it is where replies
-       * arrive, it is the same number in the URL (§3.4) — is worth a line the
-       * first time somebody posts. It is worth nothing the fourth time, and by
-       * then it is two lines of furniture under every sentence they write.
+       * arrive, it is the same thing in the URL (§3.4) — is worth a line the
+       * first time somebody posts. It is worth nothing the fourth time.
        *
        * A thing you need told once and a thing you need told always are
        * different lines, and printing the first as though it were the second is
-       * how an interface that explains itself turns into one that nags. The
-       * address itself stays on every post: it is information, not teaching.
+       * how an interface that explains itself turns into one that nags.
        */
-      const lines: Line[] = [{ text: `said — it’s post ${postNo}.`, tone: 'faint' }]
+      const lines: Line[] = [{ text: address, tone: 'dim' }]
       if (!this.explainedAddresses) {
         this.explainedAddresses = true
-        lines.push({ text: `go ${address} opens it, which is where replies land.`, tone: 'faint' })
+        lines.push({
+          text: `that’s where it lives — go ${address} opens it, and replies land there.`,
+          tone: 'faint',
+        })
       }
 
       return { lines, failed: false }

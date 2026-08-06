@@ -181,7 +181,7 @@ test('reply in a room no longer posts a brand new post', async ({ page }) => {
   await type(page, 'go music')
   await type(page, 'reply this should not become a post')
 
-  await expect(scrollback(page)).not.toContainText('said — it’s post')
+  await expect(scrollback(page)).not.toContainText('music/')
   await expect(scrollback(page)).not.toContainText('what do you want to be called')
 })
 
@@ -201,8 +201,14 @@ test('commons never mentions a post number, because it has none to mention', asy
   await type(page, 'ryan')
   await type(page, 'ryan@example.com')
 
-  await expect(scrollback(page)).toContainText('said')
-  await expect(scrollback(page)).not.toContainText('it’s post')
+  /*
+   * The held sentence landed, and the line that says so has to be complete on
+   * its own — because in commons there is no address, so nothing follows it.
+   * It used to read "now — the thing you were trying to say." with a receipt
+   * underneath; once the receipt went, that was a promise followed by blank.
+   */
+  await expect(scrollback(page)).toContainText('the thing you were trying to say is up')
+  await expect(scrollback(page)).not.toContainText('commons/')
 
   // And the listing agrees: no numbers anywhere in commons.
   await type(page, 'look')
@@ -215,9 +221,9 @@ test('a room that keeps things says what the number is for', async ({ page }) =>
   await type(page, 'ryan')
   await type(page, 'ryan@example.com')
 
-  await expect(scrollback(page)).toContainText('it’s post')
+  await expect(scrollback(page)).toContainText('music/')
   // The half that was missing: the number is an address, not a receipt.
-  await expect(scrollback(page)).toContainText('opens it, which is where replies land')
+  await expect(scrollback(page)).toContainText('that’s where it lives')
 })
 
 test('help in commons offers nothing commons cannot do', async ({ page }) => {

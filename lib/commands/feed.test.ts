@@ -223,7 +223,7 @@ describe('what the feed tells you after you say something', () => {
     const out = text((await run('say a thing for my own wall', FEED)).lines)
 
     expect(out).toContain('~jameson/7')
-    expect(out).not.toMatch(/go 7 opens it/)
+    expect(out).not.toMatch(/(^|\s)7($|\s)/)
   })
 
   it('and that address really resolves', async () => {
@@ -232,9 +232,16 @@ describe('what the feed tells you after you say something', () => {
     expect(result.location).toEqual({ room: '~marisol', postId: 2 })
   })
 
-  it('still says the bare number in a room, where the bare number is right', async () => {
+  it('gives the same shape of address in an ordinary room', async () => {
+    /*
+     * This used to assert the opposite — that a room printed a bare `7` and
+     * only a wall printed the full address. The wall special case existed
+     * because `go 7` fails from the feed; once success printed nothing but the
+     * address, a lone `7` under a sentence was simply cryptic wherever it
+     * appeared, and the special case collapsed into the general rule.
+     */
     const { run } = harness('jameson')
     const out = text((await run('say found my dad’s records', { room: 'music' })).lines)
-    expect(out).toMatch(/go 7 opens it/)
+    expect(out).toContain('music/7')
   })
 })

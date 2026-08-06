@@ -38,7 +38,7 @@ test('make walks you into the room it just made, and the url follows', async ({ 
 
   // And it is a real room: you can say something in it like any other.
   await type(page, 'say four tomato plants and a lot of optimism')
-  await expect(scrollback(page)).toContainText('said')
+  await expect(scrollback(page)).toContainText('garden/')
 })
 
 test('a new room is in the lobby, under the curated ones', async ({ page }) => {
@@ -174,8 +174,8 @@ test('saying something on the feed puts it on your own wall', async ({ page }) =
   // §3.9 — the held sentence lands, and the wall it lands on is the one the
   // name it was just given owns. There was no `~name` to write down when the
   // sentence was captured.
-  await expect(scrollback(page)).toContainText('the thing you were trying to say')
-  await expect(scrollback(page)).toContainText('said')
+  await expect(scrollback(page)).toContainText('the thing you were trying to say is up')
+  await expect(scrollback(page)).toContainText('~wallposter/')
 })
 
 

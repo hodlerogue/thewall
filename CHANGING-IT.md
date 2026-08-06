@@ -341,6 +341,28 @@ and the first name's history stayed on the name they had abandoned. Nothing was
 wrong at any single step; the advice was wrong as a path. When you write an
 error that says "try X", type X into the thing and see what it answers.
 
+**Success prints a value, or it prints nothing. Never a status word.** `cp`
+says nothing when it works, and a prompt that answers `said.` under every
+sentence is a chat client with delivery receipts wearing a terminal's clothes.
+What a successful `say` prints is the *address* — `music/7` — because that is
+the one fact about the post which is not already on the screen; your own words
+are on the echo line directly above it. Where there is no address there is no
+output: a reply has none (§4.3) and neither does commons (§3.10).
+
+Two things make this safe, and both are load-bearing:
+
+- `lib/data/live.ts` deliberately drops your own posts from the realtime
+  channel, so nothing arrives to show you. Silence works because the echo line
+  is the receipt — not because the room visibly changed. If own-post
+  suppression ever goes, revisit this.
+- **Any line that introduces the output has to read as finished without it.**
+  "now — the thing you were trying to say." was a heading for a confirmation;
+  the moment the confirmation stopped printing, commons and replies ended on a
+  promise followed by blank, which is worse than the receipt it replaced. It
+  now reads "and the thing you were trying to say is up." Fixture tests cannot
+  see this — the lines were all individually correct. It was found by
+  screenshotting the three cases at 380×740 and looking at them.
+
 **Time runs down the screen, once.** `Terminal` sets `scrollTop = scrollHeight`
 after every command, so the view lands on the **last line printed**, not the
 first. Anything time-ordered must therefore print oldest-first, or the screen

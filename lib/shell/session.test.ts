@@ -87,7 +87,7 @@ describe('§3.9 — signup is deferred to first contribution', () => {
     const done = await run('newcomer@example.com', at)
 
     expect(posted).toEqual([{ room: 'music', body: sentence }])
-    expect(text(done.lines)).toMatch(/now — the thing you were trying to say/)
+    expect(text(done.lines)).toMatch(/the thing you were trying to say is up/)
     // The prompt stops saying `guest` in the same breath.
     expect(done.identity).toBe('newcomer')
     expect(session.name()).toBe('newcomer')
@@ -209,7 +209,7 @@ describe('§3.9 — signup is deferred to first contribution', () => {
     posted.length = 0
 
     const out = text((await run('say second', at)).lines)
-    expect(out).toMatch(/said — it’s post 42/)
+    expect(out).toMatch(/music\/42/)
     expect(posted).toEqual([{ room: 'music', body: 'second' }])
     expect(session.isAsking()).toBe(false)
   })
@@ -556,21 +556,32 @@ describe('what a post number is for, and where there isn’t one', () => {
     const { run } = harness({ me: 'ryan' })
     const out = text((await run('say good to be here', { room: 'commons' })).lines)
 
-    expect(out).toBe('said.')
-    // `go 26` in commons answers "there's nothing to open here", so naming 26
-    // was pointing at a door that is not there.
-    expect(out).not.toMatch(/post \d+/)
+    // Nothing at all now, rather than `said.` — there is no address here, and
+    // an address is the only thing success prints. `go 26` in commons answers
+    // "there's nothing to open here", so naming 26 pointed at a door that is
+    // not there.
+    expect(out).toBe('')
+    expect(out).not.toMatch(/\d/)
   })
 
-  it('announces it in a room that keeps things, and says what it is for', async () => {
+  it('prints the address in a room that keeps things, and nothing else', async () => {
     const { run } = harness({ me: 'ryan' })
-    const out = text((await run('say found my dad’s records', { room: 'music' })).lines)
+    const lines = (await run('say found my dad’s records', { room: 'music' })).lines
 
-    expect(out).toMatch(/it’s post \d+/)
-    // The half that was missing. On its own the number reads as a receipt;
-    // it is an address, and this is the sentence that says so.
-    expect(out).toMatch(/go \d+ opens it/)
-    expect(out).toContain('replies land')
+    // The first line is the address and only the address — no verb, no status
+    // word. `said.` was a delivery receipt, and success does not need one.
+    expect(lines[0].text).toBe('music/42')
+    expect(text(lines)).not.toMatch(/said/)
+  })
+
+  it('prints the whole address, not a bare number', async () => {
+    // A lone `42` under a sentence is cryptic, and `go 42` only works while you
+    // are standing in the room it belongs to. What is printed is what `go`
+    // takes from anywhere, which is what every other listing prints too.
+    const { run } = harness({ me: 'ryan' })
+    const lines = (await run('say hello', { room: 'music' })).lines
+    expect(lines[0].text).toBe('music/42')
+    expect(lines[0].text).not.toBe('42')
   })
 
   it('explains what the number is for once, and then stops', async () => {
@@ -589,13 +600,13 @@ describe('what a post number is for, and where there isn’t one', () => {
     const second = text((await run('say and a working turntable', { room: 'music' })).lines)
     const third = text((await run('say two of them actually', { room: 'music' })).lines)
 
-    expect(first).toMatch(/opens it, which is where replies land/)
+    expect(first).toMatch(/that’s where it lives/)
     expect(second).not.toMatch(/opens it/)
     expect(third).not.toMatch(/opens it/)
 
     // The address itself is not the part that was clutter. It stays.
-    expect(second).toMatch(/it’s post \d+/)
-    expect(third).toMatch(/it’s post \d+/)
+    expect(second).toMatch(/music\/\d+/)
+    expect(third).toMatch(/music\/\d+/)
   })
 
   it('counts a wall post as having explained it too', async () => {
@@ -622,8 +633,10 @@ describe('what a post number is for, and where there isn’t one', () => {
     await run('ryan', { room: 'commons' })
     const out = text((await run('ryan@example.com', { room: 'commons' })).lines)
 
-    expect(out).toContain('said.')
-    expect(out).not.toMatch(/it’s post \d+/)
+    // The held sentence landed in commons, so there is no address to print —
+    // and the line above it has to still read as finished on its own.
+    expect(out).toMatch(/the thing you were trying to say is up/)
+    expect(out).not.toMatch(/commons\/\d+/)
   })
 
   it('still gives the address when the held sentence lands in a keeping room', async () => {
@@ -632,15 +645,15 @@ describe('what a post number is for, and where there isn’t one', () => {
     await run('ryan', { room: 'music' })
     const out = text((await run('ryan@example.com', { room: 'music' })).lines)
 
-    expect(out).toMatch(/it’s post \d+/)
-    expect(out).toMatch(/go \d+ opens it/)
+    expect(out).toMatch(/music\/\d+/)
+    expect(out).toMatch(/that’s where it lives/)
   })
 
   it('says nothing about numbers when the thing said was a reply', async () => {
     // A reply has no address of its own (§4.3), so there is none to give.
     const { run } = harness({ me: 'ryan' })
     const out = text((await run('say i agree', { room: 'music', postId: 12 })).lines)
-    expect(out).toBe('said.')
+    expect(out).toBe('')
   })
 })
 

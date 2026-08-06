@@ -135,7 +135,7 @@ test('your own wall is the one profile you can say something on', async ({ page 
 
   await type(page, 'say putting this on my own wall')
   await expect(scrollback(page)).not.toContainText('only they can put things on it')
-  await expect(scrollback(page)).toContainText('said')
+  await expect(scrollback(page)).toContainText('~wallwalker/')
 })
 
 test('a name that is not there says so the way a missing room does', async ({ page }) => {
