@@ -124,6 +124,14 @@ export class Session {
   private pendingName: string | null = null
   private pending: OneQuestion | null = null
   private who: string | null = null
+  /**
+   * Whether "what the post number is for" has been said yet in this sitting.
+   *
+   * Deliberately not persisted. A reload is a new sitting and costs one extra
+   * line; a `localStorage` key would be a second place the answer to "have they
+   * seen this" lives, and the cheaper wrong answer is the one that repeats.
+   */
+  private explainedAddresses = false
 
   constructor(
     private readonly api: SignupApi,
@@ -548,16 +556,27 @@ export class Session {
        */
       const address = location.room.startsWith('~') ? `${location.room}/${postNo}` : `${postNo}`
 
-      return {
-        lines: [
-          { text: `said — it’s post ${postNo}.`, tone: 'faint' },
-          // What the number is *for*. On its own it reads as a receipt; the
-          // point of it is that it is the address replies arrive at, and that
-          // it is the same number in the URL (§3.4).
-          { text: `go ${address} opens it, which is where replies land.`, tone: 'faint' },
-        ],
-        failed: false,
+      /*
+       * The explanation is said once, and then never again.
+       *
+       * "Why do I even need to know what the number is if I'm sending it?" is a
+       * fair question, and the answer — it is the address, it is where replies
+       * arrive, it is the same number in the URL (§3.4) — is worth a line the
+       * first time somebody posts. It is worth nothing the fourth time, and by
+       * then it is two lines of furniture under every sentence they write.
+       *
+       * A thing you need told once and a thing you need told always are
+       * different lines, and printing the first as though it were the second is
+       * how an interface that explains itself turns into one that nags. The
+       * address itself stays on every post: it is information, not teaching.
+       */
+      const lines: Line[] = [{ text: `said — it’s post ${postNo}.`, tone: 'faint' }]
+      if (!this.explainedAddresses) {
+        this.explainedAddresses = true
+        lines.push({ text: `go ${address} opens it, which is where replies land.`, tone: 'faint' })
       }
+
+      return { lines, failed: false }
     } catch (error) {
       return {
         lines: [

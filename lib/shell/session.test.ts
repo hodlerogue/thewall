@@ -573,6 +573,43 @@ describe('what a post number is for, and where there isn’t one', () => {
     expect(out).toContain('replies land')
   })
 
+  it('explains what the number is for once, and then stops', async () => {
+    /*
+     * "When I send a message it says 'go 5 to see the replies' under it, and
+     * it's happening each time — that's cluttering things."
+     *
+     * Both halves of that are right, and they were both caused by one line
+     * doing two jobs. The number is information and belongs on every post; the
+     * sentence explaining what a number is for is teaching, and teaching that
+     * repeats is nagging. It was two lines of furniture under everything
+     * anybody wrote.
+     */
+    const { run } = harness({ me: 'ryan' })
+    const first = text((await run('say found my dad’s records', { room: 'music' })).lines)
+    const second = text((await run('say and a working turntable', { room: 'music' })).lines)
+    const third = text((await run('say two of them actually', { room: 'music' })).lines)
+
+    expect(first).toMatch(/opens it, which is where replies land/)
+    expect(second).not.toMatch(/opens it/)
+    expect(third).not.toMatch(/opens it/)
+
+    // The address itself is not the part that was clutter. It stays.
+    expect(second).toMatch(/it’s post \d+/)
+    expect(third).toMatch(/it’s post \d+/)
+  })
+
+  it('counts a wall post as having explained it too', async () => {
+    // Two branches print the line — a room and a wall — and suppressing only
+    // the one you tested leaves the other saying it forever.
+    const { run } = harness({ me: 'ryan' })
+    const first = text((await run('say hello', { room: '~ryan' })).lines)
+    // Or this passes because the wall post failed and printed nothing at all.
+    expect(first).toMatch(/~ryan\/\d+ opens it/)
+
+    const second = text((await run('say again', { room: 'music' })).lines)
+    expect(second).not.toMatch(/opens it/)
+  })
+
   it('holds that fact with the sentence, across the two signup questions', async () => {
     /*
      * The path the e2e suite caught and this one had missed: the first thing
