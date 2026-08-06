@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { sendDigest, type Digest } from '@/lib/auth/digest'
 import { siteUrl } from '@/lib/auth/links'
@@ -15,6 +16,30 @@ import { createAdminClient } from '@/lib/supabase/server'
  * service-role only. This route is the part that can send email, so it holds
  * the secret and nothing else.
  */
+/**
+ * How many to send in one run.
+ *
+ * This runs inside a serverless function with a hard timeout, and each send is
+ * a network round trip to the mail provider. Past some number the function is
+ * killed part-way through — so the number is chosen rather than discovered, and
+ * whatever is left over is still due on the next run.
+ */
+const MAX_PER_RUN = 200
+
+/** Constant-time, so the response time cannot be used to guess the secret. */
+function sameSecret(offered: string, secret: string): boolean {
+  const a = Buffer.from(offered)
+  const b = Buffer.from(secret)
+  // `timingSafeEqual` throws on a length mismatch, and that error path would
+  // return faster than a comparison — so a mismatched length does an equivalent
+  // amount of work before answering.
+  if (a.length !== b.length) {
+    timingSafeEqual(b, b)
+    return false
+  }
+  return timingSafeEqual(a, b)
+}
+
 export async function POST(request: Request) {
   const secret = process.env.DIGEST_SECRET
 
@@ -29,7 +54,7 @@ export async function POST(request: Request) {
   }
 
   const offered = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? ''
-  if (offered.length !== secret.length || offered !== secret) {
+  if (!sameSecret(offered, secret)) {
     return NextResponse.json({ error: 'no' }, { status: 401 })
   }
 
@@ -55,35 +80,54 @@ export async function POST(request: Request) {
   }
 
   const site = siteUrl(request)
-  const sentTo: string[] = []
+  let sent = 0
+  let stampFailures = 0
 
   /*
-   * One at a time, and stamped by what actually went out.
+   * One at a time, and each stamped the moment its mail is accepted.
    *
-   * Marking everybody the query returned would mean a provider outage costs a
-   * whole day's notifications rather than a minute's, and nobody would hear
-   * about it until tomorrow. Sequential rather than parallel because the
-   * provider rate-limits, and because a digest run is not a place that needs to
-   * be fast.
+   * Collecting the ids and stamping once at the end is fewer round trips and
+   * the wrong trade. This runs in a serverless function with a hard timeout: a
+   * run big enough to be cut off part-way would have sent a pile of email and
+   * stamped none of it, so every one of those people gets a second copy on the
+   * next run. Stamping as it goes costs at most the one send in flight.
+   *
+   * Sequential rather than parallel because the provider rate-limits, and a
+   * digest run is not a place that needs to be fast.
    */
-  for (const row of due) {
+  const batch = due.slice(0, MAX_PER_RUN)
+  for (const row of batch) {
     const digest: Digest = {
       name: row.name,
       email: row.email,
       unread: Number(row.unread),
       token: row.token,
     }
-    if (await sendDigest(digest, site)) sentTo.push(row.profile_id)
-  }
+    if (!(await sendDigest(digest, site))) continue
+    sent += 1
 
-  if (sentTo.length > 0) {
-    const { error: stampError } = await admin.rpc('mark_digested', { p_ids: sentTo })
+    const { error: stampError } = await admin.rpc('mark_digested', { p_ids: [row.profile_id] })
     /*
-     * Loud, because the failure mode is the bad one: the mail is already gone,
-     * so an unstamped row is somebody who gets a second copy on the next run.
+     * Loud, because this is the bad direction: the mail has already gone, so an
+     * unstamped row is somebody who gets a second copy tomorrow.
      */
-    if (stampError) console.error('digest: sent but could not stamp', stampError)
+    if (stampError) {
+      stampFailures += 1
+      console.error('digest: sent but could not stamp', row.profile_id, stampError)
+    }
   }
 
-  return NextResponse.json({ sent: sentTo.length, due: due.length })
+  // No silent caps. Whoever is past the limit is still due and goes out on the
+  // next run, but a run that quietly did half its work reads as one that
+  // finished.
+  if (due.length > MAX_PER_RUN) {
+    console.warn(`digest: ${due.length} due, sent ${MAX_PER_RUN} this run; the rest are still due`)
+  }
+
+  return NextResponse.json({
+    sent,
+    due: due.length,
+    ...(stampFailures > 0 ? { stampFailures } : {}),
+    ...(due.length > MAX_PER_RUN ? { deferred: due.length - MAX_PER_RUN } : {}),
+  })
 }

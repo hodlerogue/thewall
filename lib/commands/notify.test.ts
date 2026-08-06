@@ -212,10 +212,30 @@ describe('what keeps a mailing job from being anybody else’s to run', () => {
     expect(code).toContain('503')
   })
 
-  it('stamps only the people it actually sent to', () => {
-    // Stamping the whole query means a provider outage costs a day of
-    // notifications instead of a minute of them.
-    expect(code).toContain('sentTo')
-    expect(code).toMatch(/mark_digested.*sentTo|p_ids: sentTo/s)
+  it('stamps each send as it happens, not the whole batch at the end', () => {
+    /*
+     * This runs in a serverless function with a hard timeout. Collecting ids
+     * and stamping once at the end means a run big enough to be cut off has
+     * sent a pile of email and stamped none of it — so every one of those
+     * people gets a second copy on the next run. The stamp has to be inside the
+     * loop.
+     */
+    const loop = /for \(const row of batch\)[\s\S]*?\n  \}/.exec(code)?.[0] ?? ''
+    expect(loop).toContain('mark_digested')
+    expect(loop).toContain('p_ids: [row.profile_id]')
+  })
+
+  it('bounds a run, and says out loud when it did not finish', () => {
+    // A run that quietly did half its work reads as a run that finished.
+    expect(code).toContain('MAX_PER_RUN')
+    expect(code).toMatch(/console\.warn/)
+    expect(code).toContain('deferred')
+  })
+
+  it('compares the secret in constant time', () => {
+    // The response time should not be a way to guess it one character at a
+    // time, and the error path must not leak the length either.
+    expect(code).toContain('timingSafeEqual')
+    expect(code).not.toMatch(/offered !== secret/)
   })
 })

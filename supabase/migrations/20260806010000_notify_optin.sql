@@ -149,8 +149,24 @@ as $$
      and rm.hidden_at is null
      and r.author_id <> p.id
      and r.created_at > p.mail_seen_at
-   group by p.id, p.name, u.email, n.token
-  having count(r.*) > 0;
+   group by p.id, p.name, u.email, n.token, n.notified_at
+  /*
+   * Two different questions, and the first version answered only one.
+   *
+   * `unread` is everything waiting, so the number in the email is the number in
+   * the badge. Whether to send at all is a different question: has anything
+   * arrived *since the last email*. Gating on unread alone meant somebody who
+   * got a digest and never read their mail was sent the identical email every
+   * day for as long as the pile sat there — which is precisely the daily nag
+   * this feature is written to not be, and it contradicted the sentence the
+   * command itself prints.
+   *
+   * `greatest` ignores nulls, so a first-ever send compares against
+   * `mail_seen_at` alone and everything unread counts as new.
+   */
+  having count(*) filter (
+    where r.created_at > greatest(p.mail_seen_at, n.notified_at)
+  ) > 0;
 $$;
 
 -- Stamped after the send, never before -----------------------------------------
@@ -213,3 +229,82 @@ revoke all on function public.unsubscribe (uuid) from public, anon, authenticate
 insert into public.reserved_slugs (slug, reason)
 values ('unsubscribe', 'that is a route')
 on conflict (slug) do nothing;
+
+-- The daily-email settings go with the account, and this is why `forget` is
+-- rewritten here rather than left where it was.
+--
+-- Erasure anonymises rather than deletes — see the migration this is copied
+-- from — so `on delete cascade` never fires and a table added afterwards
+-- survives it. `notify_settings` would have been left holding a preference, a
+-- last-sent timestamp and an unsubscribe token belonging to somebody who asked
+-- to be gone. No mail would have reached them (`pending_digests` skips banned
+-- and unverified accounts, and erasure sets both), so this is not a leak of
+-- messages — it is a row about a person that outlived their erasure, and the
+-- privacy policy names it as something held.
+--
+-- Recreated in full because that is what `create or replace` requires, and the
+-- only line that differs is the delete. If `forget` changes again, this is the
+-- copy that is live.
+create or replace function public.forget (p_name citext)
+returns citext
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  v_id       uuid;
+  v_tombname citext;
+begin
+  select id into v_id from public.profiles where name = p_name;
+  if v_id is null then
+    raise exception 'no one called %', p_name using errcode = 'no_data_found';
+  end if;
+
+  -- Short and random rather than sequential: `deleted_1` next to `deleted_2`
+  -- tells you the order people left, which is information about them.
+  --
+  -- md5 rather than gen_random_bytes because pgcrypto lives in the `extensions`
+  -- schema on a hosted project and this function pins search_path to public.
+  v_tombname := 'deleted_' || substr(md5(random()::text || clock_timestamp()::text), 1, 8);
+
+  -- Every handle they have ever held goes, including the ones in the history
+  -- table. Leaving those behind would let name_changed_hands point back at a
+  -- person who asked to be gone.
+  delete from public.name_history where profile_id = v_id;
+
+  -- Added with the daily email. Anything keyed on a profile has to be listed
+  -- here, because the cascade this schema would otherwise rely on never runs.
+  delete from public.notify_settings where profile_id = v_id;
+
+  update public.profiles
+     set name          = v_tombname,
+         name_since    = now(),
+         banned_at     = now(),
+         banned_reason = 'account closed',
+         verified_at   = null
+   where id = v_id;
+
+  -- The address is the personal datum that matters most, and it lives in
+  -- auth.users rather than here. Overwritten rather than nulled: GoTrue reads
+  -- these columns as non-nullable strings, and a null breaks sign-in for
+  -- everybody rather than just this row.
+  --
+  -- On a hosted project auth.users is owned by supabase_auth_admin, which may
+  -- refuse this. A half-finished erasure that reported success would be the
+  -- worst outcome available, so it warns loudly and names the other route
+  -- rather than failing silently or rolling the anonymisation back.
+  begin
+    update auth.users
+       set email              = v_tombname || '@deleted.invalid',
+           raw_user_meta_data = '{}'::jsonb,
+           raw_app_meta_data  = '{}'::jsonb
+     where id = v_id;
+  exception
+    when insufficient_privilege then
+      raise warning 'THE ADDRESS WAS NOT ERASED: this role may not write auth.users. Delete user % through the Auth admin API to finish.', v_id;
+  end;
+
+  return v_tombname;
+end;
+$$;

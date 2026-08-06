@@ -1755,6 +1755,62 @@ select tests.ok(
   'but they are tomorrow'
 );
 
+-- The same pile does not get emailed about twice ------------------------------
+--
+-- The one that made this a nag rather than a notification. Somebody who is sent
+-- a digest and never reads their mail still has those replies waiting
+-- tomorrow — and the first version of `pending_digests` gated only on unread,
+-- so it sent the identical email every day for as long as the pile sat there.
+-- That is exactly what `notify`'s own output promises it does not do.
+--
+-- Its own person, because everybody in the seed has replies at assorted recent
+-- ages and none of the ones above could isolate this. The first three attempts
+-- at this assertion all passed against the broken function.
+insert into auth.users (id, email)
+values ('77777777-7777-4777-8777-777777777777', 'quiet@seed.invalid')
+on conflict (id) do nothing;
+insert into public.profiles (id, name, verified_at, mail_seen_at)
+values ('77777777-7777-4777-8777-777777777777', 'quiet', now(), now() - interval '10 days')
+on conflict (id) do nothing;
+insert into public.posts (room_slug, post_no, author_id, body, created_at)
+values ('music', 950, '77777777-7777-4777-8777-777777777777', 'a post of quiet''s', now() - interval '9 days');
+insert into public.replies (post_id, author_id, body, created_at)
+select id, :'marisol'::uuid, 'answered days ago, never read', now() - interval '3 days'
+  from public.posts where room_slug = 'music' and post_no = 950;
+
+-- Emailed yesterday, about that reply.
+insert into public.notify_settings (profile_id, daily, notified_at)
+values ('77777777-7777-4777-8777-777777777777', true, now() - interval '25 hours');
+
+select tests.ok(
+  not exists (
+    select 1 from public.pending_digests()
+     where profile_id = '77777777-7777-4777-8777-777777777777'::uuid
+  ),
+  'a pile nobody has added to is not emailed about a second time'
+);
+
+-- Somebody answers again today. Now there is something to say.
+insert into public.replies (post_id, author_id, body)
+select id, :'marisol'::uuid, 'and again today'
+  from public.posts where room_slug = 'music' and post_no = 950;
+
+select tests.ok(
+  exists (
+    select 1 from public.pending_digests()
+     where profile_id = '77777777-7777-4777-8777-777777777777'::uuid
+  ),
+  'and a new reply is'
+);
+select tests.ok(
+  (select unread from public.pending_digests()
+    where profile_id = '77777777-7777-4777-8777-777777777777'::uuid) = 2,
+  'and the number is everything waiting, not just what is new — it has to match the badge'
+);
+
+delete from public.posts where room_slug = 'music' and post_no = 950;
+delete from public.notify_settings where profile_id = '77777777-7777-4777-8777-777777777777'::uuid;
+
 -- Hiding reaches this too. It is the surface that taps somebody on the
 -- shoulder, so §6's lever has to arrive here as well as in the badge.
 update public.replies set hidden_at = now()
@@ -1811,6 +1867,27 @@ select tests.ok(
 select tests.ok(
   (select daily from public.notify_settings where profile_id = :'jameson'::uuid) = false,
   'and there is no token that turns it on'
+);
+
+-- Erasure takes it with the account ---------------------------------------------
+--
+-- `forget` anonymises rather than deletes, so `on delete cascade` never fires
+-- and a table added after it was written survives an erasure untouched. No mail
+-- would reach them either way — the query above skips banned and unverified
+-- accounts — but a row about somebody who asked to be gone is a row that should
+-- not be there, and the privacy policy names this one as data held.
+insert into public.notify_settings (profile_id, daily)
+values (:'marisol'::uuid, true)
+on conflict (profile_id) do update set daily = true;
+
+select tests.ok(
+  exists (select 1 from public.notify_settings where profile_id = :'marisol'::uuid),
+  'the setting is there to begin with'
+);
+select public.forget('marisol');
+select tests.ok(
+  not exists (select 1 from public.notify_settings where profile_id = :'marisol'::uuid),
+  'and erasing the account takes the email setting and its token with it'
 );
 
 delete from public.notify_settings;

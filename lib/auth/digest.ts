@@ -66,6 +66,14 @@ export async function sendDigest(digest: Digest, siteUrl: string): Promise<boole
          * these, and somebody who uses it never sees the site's page at all —
          * which is the point. An unsubscribe that is easier through Gmail's
          * button than through our link is an unsubscribe that works.
+         *
+         * One-click means the client sends a POST to that URL, and the URL is a
+         * page rather than a route handler. That works — Next renders a dynamic
+         * page for any method, so the token is acted on and a 200 comes back —
+         * but it works by a property of the framework rather than by design, so
+         * `e2e/order-and-login.spec.ts` pins it: a POST to that URL answers 200.
+         * That the token is then acted on is covered by the database suite,
+         * because the fixture build has no database to act on.
          */
         headers: {
           'List-Unsubscribe': `<${unsubscribeUrl(siteUrl, digest.token)}>`,

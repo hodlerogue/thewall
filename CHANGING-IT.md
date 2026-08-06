@@ -85,6 +85,15 @@ Terminal.tsx ──typed text──> run.ts ──parse──> registry.ts ─�
 | `lib/data/live.ts` | realtime: presence, and posts arriving while you stand there |
 | `lib/supabase/{client,server,reader}.ts` | the three clients: browser, route handler, and unauthenticated read |
 
+**Erasure anonymises, so `on delete cascade` never fires.** `forget` renames the
+profile to a tombstone and blanks the address; it does not delete the row,
+because deleting it would take every reply other people wrote under that
+person's posts. The consequence catches every table added afterwards: a new
+table keyed on `profile_id` survives an erasure untouched unless `forget`
+deletes from it by name. `notify_settings` was written without that and held a
+preference, a last-sent timestamp and an unsubscribe token for somebody who had
+asked to be gone. **Adding a table keyed on a profile means editing `forget`.**
+
 **A column on `profiles` is public.** `grant select on public.profiles` is
 table-wide and always has been, so anything added there is readable by anybody
 holding the anon key — which ships in the browser bundle. That is right for a
@@ -371,6 +380,17 @@ the channel so the screen does not otherwise change. And the tone was `dim`:
 both tones clear 4.5:1, so it was never legibility, it was hierarchy. `dim` is
 what this interface uses for things you skim past, so the one line saying "that
 happened" was in the skim-past colour.
+
+**"Is there anything waiting" and "is there anything new" are different
+questions.** The daily digest gated on the first and had to gate on the second:
+somebody who is emailed and never reads their mail still has the same pile
+tomorrow, so the first version sent the identical email every day for as long as
+it sat there — the exact daily nag the feature is written not to be, and a
+contradiction of the sentence `notify` itself prints. It sends on *new since the
+last email* and reports *everything unread*, so the number still matches the
+badge. Three attempts at the test for this passed against the broken function,
+because everybody in the seed has replies at assorted recent ages; it needed its
+own person with every timestamp controlled.
 
 **Success prints a value, or it prints nothing. Never a status word.** `cp`
 says nothing when it works, and a prompt that answers `said.` under every

@@ -237,3 +237,31 @@ test.describe('the daily email is a thing you switch on', () => {
     await expect(scrollback(page)).toContainText('reading as a guest')
   })
 })
+
+test.describe('the unsubscribe link in the email', () => {
+  test('answers a one-click POST, which is what RFC 8058 clients send', async ({ request }) => {
+    /*
+     * The `List-Unsubscribe-Post` header tells a mail client it may POST to the
+     * unsubscribe URL, and that URL is a page rather than a route handler. It
+     * works because Next renders a dynamic page for any method — a property of
+     * the framework rather than something the code asks for, which is exactly
+     * the kind of thing that changes under you in a minor version.
+     */
+    const response = await request.post('/unsubscribe?t=00000000-0000-4000-8000-000000000000')
+    expect(response.status()).toBe(200)
+  })
+
+  test('a GET works too, for the link in the body of the message', async ({ page }) => {
+    await page.goto('/unsubscribe?t=00000000-0000-4000-8000-000000000000')
+    // Fixtures have no database, so the honest answer is "that link doesn't
+    // match anything" — and it is still a page rather than a crash.
+    await expect(page.locator('main')).toContainText('thewall.social')
+  })
+
+  test('says how to stop it without this page, in case this page is the thing broken', async ({
+    page,
+  }) => {
+    await page.goto('/unsubscribe?t=00000000-0000-4000-8000-000000000000')
+    await expect(page.locator('main')).toContainText('notify off')
+  })
+})
