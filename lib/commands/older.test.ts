@@ -318,3 +318,40 @@ describe('the fixtures obey the rule the allocator enforces', () => {
     }
   })
 })
+
+describe('the demo lobby is the same building as the real one', () => {
+  /*
+   * The fixture Env lists rooms in array order; the database lists them by
+   * `sort_order`. Nothing tied the two together, so adding crypto and movies
+   * put them after `feed` in the demo and before it on the site — the same
+   * lobby, in two different orders, which is precisely what §3.11's "the
+   * building has to look the same each time" is about.
+   *
+   * Read out of `seed.sql` rather than written down here, so there is one
+   * answer to "what order is the lobby in" instead of two that agree today.
+   */
+  const seed = readFileSync(join(__dirname, '..', '..', 'supabase', 'seed.sql'), 'utf8')
+
+  /** `('commons', 0), ('music', 1), …` from the seed's ordering block. */
+  function seedOrder(): string[] {
+    const block = /update public\.rooms set sort_order = v\.sort_order[\s\S]*?as v \(slug, sort_order\)/.exec(seed)
+    const pairs = [...(block?.[0] ?? '').matchAll(/\('([a-z]+)',\s*(\d+)\)/g)]
+    return pairs.sort((a, b) => Number(a[2]) - Number(b[2])).map((m) => m[1])
+  }
+
+  it('found the ordering block, so this is comparing against something', () => {
+    expect(seedOrder().length).toBeGreaterThan(5)
+    expect(seedOrder()[0]).toBe('commons')
+  })
+
+  it('lists the lobby in the order the seed sets', () => {
+    // Walls are excluded on both sides: they are rooms, and never in the lobby.
+    const fixtures = FIXTURE_ROOMS.filter((room) => room.owner === undefined).map((r) => r.slug)
+    expect(fixtures).toEqual(seedOrder())
+  })
+
+  it('has every room the seed does, and no others', () => {
+    const fixtures = new Set(FIXTURE_ROOMS.filter((r) => r.owner === undefined).map((r) => r.slug))
+    expect([...fixtures].sort()).toEqual([...seedOrder()].sort())
+  })
+})

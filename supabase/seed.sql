@@ -67,17 +67,22 @@ on conflict (id) do nothing;
 insert into public.rooms (slug, gloss, ephemeral, sort_order) values
   ('commons',   'everything, briefly',        true,  0),
   ('music',     'what you are listening to',  false, 1),
-  ('poker',     'bad beats and good folds',   false, 2),
+  ('builders',  'what you are making',        false, 2),
+  -- builders was added after launch. §4.2 leans "fixed set at launch" and the number was
+  -- never the point — 40 rooms with three people each is. A handful with
+  -- something recent in all of them is still a building rather than a
+  -- directory, and this is the room the earliest people here are most likely
+  -- to have something to put in.
+  ('poker',     'bad beats and good folds',   false, 3),
   ('kitchen',   'what you cooked',            false, 4),
   -- §5 — one room should be a mood, not a topic. Mood rooms are what make this
   -- feel like a place rather than a forum.
   ('latenight', 'quiet hours only',           false, 5),
-  -- Sixth, added after launch. §4.2 leans "fixed set at launch" and the number
-  -- was never the point — 40 rooms with three people each is. Six with
-  -- something recent in all of them is still a building rather than a
-  -- directory, and this is the room the earliest people here are most likely
-  -- to have something to put in.
-  ('builders',  'what you are making',        false, 2)
+  -- §5 again: a room is an invitation to tell somebody something, not a
+  -- category. "what you are holding" gets a story where "cryptocurrency" gets
+  -- a subject line.
+  ('crypto',    'what you are holding',       false, 6),
+  ('movies',    'what you watched',           false, 7)
 on conflict (slug) do nothing;
 
 -- feed is inserted by its own migration, not here: it holds no posts of its own
@@ -96,7 +101,8 @@ update public.rooms set curated = true where owner_id is null and created_by is 
 -- undefined.
 update public.rooms set sort_order = v.sort_order
   from (values ('commons', 0), ('music', 1), ('builders', 2),
-               ('poker', 3), ('kitchen', 4), ('latenight', 5))
+               ('poker', 3), ('kitchen', 4), ('latenight', 5),
+               ('crypto', 6), ('movies', 7), ('feed', 8))
        as v (slug, sort_order)
  where rooms.slug = v.slug::citext;
 

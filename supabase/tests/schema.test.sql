@@ -162,10 +162,24 @@ commit;
 \echo ''
 \echo '§3.9 — reading is anonymous, writing is accountable'
 
+-- Counted as postgres first, then compared as anon.
+--
+-- This was `= 7`, which is the same sentence as "sees every room" right up
+-- until a room is added — and then it is a failing test about nothing, which
+-- teaches whoever added the room to edit assertions without reading them. A
+-- session setting rather than a temp table, because anon would need a grant on
+-- the table and needs nothing to read a GUC.
+select set_config(
+  'tests.room_count',
+  (select count(*)::text from public.rooms where owner_id is null),
+  false
+);
+
 begin;
   set local role anon;
   select tests.ok(
-    (select count(*) from public.rooms where owner_id is null) = 7,
+    (select count(*) from public.rooms where owner_id is null)
+      = current_setting('tests.room_count')::int,
     'anonymous readers see every room');
   -- Including the ones that are somebody's wall: a wall is not private, it is
   -- just not in the lobby.
@@ -1217,9 +1231,18 @@ select tests.ok(
 -- from an un-archived building rather than inheriting that one.
 update public.rooms set archived_at = null;
 
+-- The furniture, by name.
+--
+-- This counted them (`= 7`), which meant adding a room made a passing test fail
+-- for no reason and a *removed* one could be hidden by a newly added one. The
+-- set is what matters: these exact rooms are the ones that are always there,
+-- and the lobby reading the same each time you walk in is the whole of §3.11's
+-- argument.
 select tests.ok(
-  (select count(*) from public.room_overview where curated) = 7,
-  'the curated rooms are all in the lobby'
+  (select array_agg(slug::text order by sort_order) from public.room_overview where curated)
+    = array['commons', 'music', 'builders', 'poker', 'kitchen', 'latenight',
+            'crypto', 'movies', 'feed'],
+  'the curated rooms are all in the lobby, in the order the seed sets'
 );
 select tests.ok(
   (select count(*) from public.room_overview where not curated) = 3,
@@ -1242,7 +1265,8 @@ select tests.ok(
   'and search still finds it, saying it is quiet'
 );
 select tests.ok(
-  (select count(*) from public.room_overview where curated) = 7,
+  (select count(*) from public.room_overview where curated)
+    = (select count(*) from public.rooms where curated and hidden_at is null),
   'a curated room never fades, however quiet'
 );
 
