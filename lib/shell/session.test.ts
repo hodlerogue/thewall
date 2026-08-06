@@ -556,11 +556,18 @@ describe('what a post number is for, and where there isn’t one', () => {
     const { run } = harness({ me: 'ryan' })
     const out = text((await run('say good to be here', { room: 'commons' })).lines)
 
-    // Nothing at all now, rather than `said.` — there is no address here, and
-    // an address is the only thing success prints. `go 26` in commons answers
-    // "there's nothing to open here", so naming 26 pointed at a door that is
-    // not there.
-    expect(out).toBe('')
+    /*
+     * A word, and only here — commons is the one place with no address to give
+     * instead. It went to nothing at all for a while, on the rule that success
+     * prints a value or prints nothing; from real use, "instead of just LOOKING
+     * like it's sent" is what nothing reads as, and commons is where that bites
+     * hardest because your own words never arrive back down the live channel
+     * either.
+     *
+     * Still no number: `go 26` in commons answers "there's nothing to open
+     * here", so naming 26 would point at a door that is not there.
+     */
+    expect(out).toBe('said.')
     expect(out).not.toMatch(/\d/)
   })
 
@@ -649,11 +656,16 @@ describe('what a post number is for, and where there isn’t one', () => {
     expect(out).toMatch(/that’s where it lives/)
   })
 
-  it('says nothing about numbers when the thing said was a reply', async () => {
-    // A reply has no address of its own (§4.3), so there is none to give.
+  it('answers a reply with the address of the post it is under', async () => {
+    /*
+     * §4.3 gives a reply no address of its own, and the post's is the true
+     * answer to "where did that go" — it is also what you would type to come
+     * back and read the thread. Printing nothing was the previous version, and
+     * nothing is exactly what "it doesn't look like it sent" is made of.
+     */
     const { run } = harness({ me: 'ryan' })
     const out = text((await run('say i agree', { room: 'music', postId: 12 })).lines)
-    expect(out).toBe('')
+    expect(out).toBe('music/12')
   })
 })
 

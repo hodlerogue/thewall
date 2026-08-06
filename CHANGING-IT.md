@@ -326,7 +326,13 @@ syntax". If an error names an address, resolve one that exists rather than
 inventing a number.
 
 **An error's suggested fix has to be one the site will accept.** Stronger than
-the rule above, and learned the expensive way. Every individual message in the
+the rule above, learned the expensive way, and then broken again one commit
+after being written down here — the message added to close the loop below said
+"if it's taken by you, type login ryan", and mid-signup everything typed is an
+answer, so `login ryan` went to the name check, failed for containing a space,
+and offered `login_ryan`. Typing what the screen says has to work. Where an
+instruction is printed inside a question, the question has to honour it: see the
+`login <name>` escape beside `cancel` in `answer()`. Every individual message in the
 loop below was true, helpful in tone, and named a next step:
 
 ```
@@ -340,6 +346,21 @@ Followed end to end, that walked a returning person into a **second account**,
 and the first name's history stayed on the name they had abandoned. Nothing was
 wrong at any single step; the advice was wrong as a path. When you write an
 error that says "try X", type X into the thing and see what it answers.
+
+**Every contribution answers with exactly one line, in `accent`.** A room post
+gives its new address, a wall post gives `~name/7`, a reply gives the address of
+the post it is under (§4.3 — it has none of its own, and the post's is what you
+would type to come back), and commons gives the one surviving word, `said.`,
+because it is the only place with no address to give.
+
+Two things this went through, both worth not repeating. It printed `said.`
+everywhere, which is a delivery receipt under every sentence. Then it printed
+nothing at all where there was no address — and "instead of just LOOKING like
+it's sent" is what nothing reads as, because `live.ts` drops your own words from
+the channel so the screen does not otherwise change. And the tone was `dim`:
+both tones clear 4.5:1, so it was never legibility, it was hierarchy. `dim` is
+what this interface uses for things you skim past, so the one line saying "that
+happened" was in the skim-past colour.
 
 **Success prints a value, or it prints nothing. Never a status word.** `cp`
 says nothing when it works, and a prompt that answers `said.` under every

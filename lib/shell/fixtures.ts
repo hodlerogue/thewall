@@ -270,6 +270,38 @@ export const ROOMS: Room[] = [  {
   },
   {
     /*
+     * The room about the site itself. Not a support inbox — it is an ordinary
+     * room, so a complaint gets answered by whoever is around rather than
+     * disappearing into somebody's mail.
+     */
+    slug: 'feedback',
+    gloss: 'what is broken, and what should be here',
+    ephemeral: false,
+    posts: [
+      {
+        id: 2,
+        author: 'ren',
+        body: 'took me three goes to work out that go 12 opens a post rather than a room. once you know it is obvious, which is the problem.',
+        createdAt: minutes(75),
+        replies: [
+          {
+            author: 'marisol',
+            body: 'same. the number being an address is the bit nobody says out loud',
+            createdAt: minutes(40),
+          },
+        ],
+      },
+      {
+        id: 1,
+        author: 'tuck',
+        body: 'wanted a room for cycling and did not realise i could just make one. the lobby looks like a fixed list.',
+        createdAt: minutes(260),
+        replies: [],
+      },
+    ],
+  },
+  {
+    /*
      * `feed` — every wall in one place.
      *
      * A room with no posts of its own, on purpose: walls are kept out of the

@@ -82,7 +82,10 @@ insert into public.rooms (slug, gloss, ephemeral, sort_order) values
   -- category. "what you are holding" gets a story where "cryptocurrency" gets
   -- a subject line.
   ('crypto',    'what you are holding',       false, 6),
-  ('movies',    'what you watched',           false, 7)
+  ('movies',    'what you watched',           false, 7),
+  -- The room about the site itself. There is no support address on the page and
+  -- no form; a bug nobody can report is a bug that gets left.
+  ('feedback',  'what is broken, and what should be here', false, 8)
 on conflict (slug) do nothing;
 
 -- feed is inserted by its own migration, not here: it holds no posts of its own
@@ -102,7 +105,7 @@ update public.rooms set curated = true where owner_id is null and created_by is 
 update public.rooms set sort_order = v.sort_order
   from (values ('commons', 0), ('music', 1), ('builders', 2),
                ('poker', 3), ('kitchen', 4), ('latenight', 5),
-               ('crypto', 6), ('movies', 7), ('feed', 8))
+               ('crypto', 6), ('movies', 7), ('feedback', 8), ('feed', 9))
        as v (slug, sort_order)
  where rooms.slug = v.slug::citext;
 

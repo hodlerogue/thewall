@@ -162,3 +162,41 @@ test.describe('reading a room to the end', () => {
     await expect(scrollback(page)).toContainText('nothing to walk back through')
   })
 })
+
+test.describe('the instruction printed mid-signup can be typed', () => {
+  test('login <name> at the name question is a command, not a name', async ({ page }) => {
+    await page.goto('/commons')
+    await type(page, 'say hello again')
+    await type(page, 'marisol')
+    await expect(scrollback(page)).toContainText('login marisol')
+
+    // The exact thing the screen just told them to type.
+    await type(page, 'login marisol')
+    await expect(scrollback(page)).not.toContainText('login_marisol')
+    await expect(scrollback(page)).not.toContainText('letters, numbers and underscores')
+
+    // And they are out of the signup, not still being asked for a name.
+    await type(page, 'look')
+    await expect(scrollback(page)).toContainText('commons keeps nothing')
+  })
+})
+
+test.describe('a contribution says where it went', () => {
+  test('a reply answers with the address of the post it is under', async ({ page }) => {
+    await page.goto('/music/12')
+    await type(page, 'say warped ones are the best ones')
+    await type(page, 'replier')
+    await type(page, 'replier@example.com')
+    await expect(scrollback(page)).toContainText('music/12')
+  })
+
+  test('and the line is accent, not the colour used for things you skim past', async ({ page }) => {
+    await page.goto('/music')
+    await type(page, 'say found a second turntable')
+    await type(page, 'toner')
+    await type(page, 'toner@example.com')
+
+    const line = scrollback(page).locator('p', { hasText: /^music\/\d+$/ }).last()
+    await expect(line).toHaveClass(/line-accent/)
+  })
+})

@@ -299,3 +299,76 @@ describe('what makes an unauthenticated mail route safe to expose', () => {
     expect(code).toContain('that account was closed')
   })
 })
+
+describe('the instruction printed mid-signup is one you can actually type', () => {
+  /*
+   * Reported from real use: "you type login ryan and it still thinks you're
+   * trying to set your name."
+   *
+   * It did. Mid-signup everything typed is an answer — that is deliberate, and
+   * it is what stops accounts being called `look` — so `login ryan` went to the
+   * name check, which rejected it for containing a space and offered
+   * `login_ryan`. The site printed an instruction it would not accept, and the
+   * fix it then offered was a third wrong account.
+   */
+  it('takes login <name> as a command, not as a name', async () => {
+    const { session, asked } = harness()
+    session.begin({ location: { room: 'commons' }, body: 'hello' })
+    await session.answer('ryan')
+
+    const out = text((await session.answer('login ryan')).lines)
+
+    expect(asked).toEqual(['ryan'])
+    expect(out).toContain('sent a key')
+    expect(out).not.toMatch(/login_ryan/)
+    expect(out).not.toMatch(/letters, numbers and underscores/)
+  })
+
+  it('is out of the signup afterwards, not still waiting for a name', async () => {
+    const { session } = harness()
+    session.begin({ location: { room: 'commons' }, body: 'hello' })
+    await session.answer('ryan')
+    await session.answer('login ryan')
+
+    expect(session.isAsking()).toBe(false)
+    expect(session.name()).toBe(null)
+  })
+
+  it('says the held sentence went with it, rather than dropping it silently', async () => {
+    const { session } = harness()
+    session.begin({ location: { room: 'commons' }, body: 'hello' })
+    const out = text((await session.answer('login ryan')).lines)
+    expect(out).toMatch(/nothing sent/)
+  })
+
+  it('works at the email question too, which is just as reachable', async () => {
+    const { session, asked } = harness()
+    session.begin({ location: { room: 'commons' }, body: 'hello' })
+    await session.answer('freshname')
+
+    const out = text((await session.answer('login marisol')).lines)
+    expect(asked).toEqual(['marisol'])
+    expect(out).toContain('sent a key')
+  })
+
+  it('still lets somebody be called login, because that is a real name', async () => {
+    /*
+     * Only the two-word form escapes. A bare `login` has no space and is a
+     * perfectly good name; `login ryan` cannot be a name at all, which is why
+     * there is nothing ambiguous to resolve.
+     */
+    const { session, asked } = harness()
+    session.begin({ location: { room: 'commons' }, body: 'hello' })
+    const out = text((await session.answer('login')).lines)
+
+    expect(asked).toEqual([])
+    expect(out).toMatch(/where should i send your key/)
+  })
+
+  it('does not fire on a name that merely starts with those letters', async () => {
+    const { session, asked } = harness()
+    session.begin({ location: { room: 'commons' }, body: 'hello' })
+    await session.answer('loginperson')
+    expect(asked).toEqual([])
+  })
+})

@@ -1241,7 +1241,7 @@ update public.rooms set archived_at = null;
 select tests.ok(
   (select array_agg(slug::text order by sort_order) from public.room_overview where curated)
     = array['commons', 'music', 'builders', 'poker', 'kitchen', 'latenight',
-            'crypto', 'movies', 'feed'],
+            'crypto', 'movies', 'feedback', 'feed'],
   'the curated rooms are all in the lobby, in the order the seed sets'
 );
 select tests.ok(

@@ -15,8 +15,13 @@
 -- watched" rather than "cryptocurrency" and "film".
 
 insert into public.rooms (slug, gloss, ephemeral, sort_order, curated) values
-  ('crypto', 'what you are holding', false, 6, true),
-  ('movies', 'what you watched',     false, 7, true)
+  ('crypto',   'what you are holding',                    false, 6, true),
+  ('movies',   'what you watched',                        false, 7, true),
+  -- The room about the site itself. Somewhere obvious to put "this is broken"
+  -- matters more here than on most things: there is no support address on the
+  -- page, no form, and no other way in — and a bug nobody can report is a bug
+  -- that gets left rather than one that gets found.
+  ('feedback', 'what is broken, and what should be here', false, 8, true)
 on conflict (slug) do nothing;
 
 -- `on conflict do nothing` means an existing row keeps whatever it had, which
@@ -25,10 +30,13 @@ on conflict (slug) do nothing;
 -- which of those two happened.
 update public.rooms
    set curated = true, ephemeral = false
- where slug in ('crypto', 'movies');
+ where slug in ('crypto', 'movies', 'feedback');
 
 update public.rooms set gloss = 'what you are holding', sort_order = 6 where slug = 'crypto';
 update public.rooms set gloss = 'what you watched',    sort_order = 7 where slug = 'movies';
+update public.rooms
+   set gloss = 'what is broken, and what should be here', sort_order = 8
+ where slug = 'feedback';
 
 -- The order, set out in full ---------------------------------------------------
 --
@@ -50,8 +58,8 @@ update public.rooms set sort_order = 2 where slug = 'builders';
 update public.rooms set sort_order = 3 where slug = 'poker';
 update public.rooms set sort_order = 4 where slug = 'kitchen';
 update public.rooms set sort_order = 5 where slug = 'latenight';
--- crypto 6 and movies 7 are set above.
-update public.rooms set sort_order = 8 where slug = 'feed';
+-- crypto 6, movies 7 and feedback 8 are set above.
+update public.rooms set sort_order = 9 where slug = 'feed';
 
 -- Every seeded room is curated. The column defaults to false, which is right
 -- for a room somebody opens and wrong for every room in this list — and a

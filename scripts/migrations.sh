@@ -31,7 +31,7 @@ MIGRATION_PROBES=(
   "20260805040000_feed.sql|select to_regproc('public.wall_feed') is not null"
   "20260805050000_insert_grants.sql|select not has_table_privilege('authenticated', 'public.profiles', 'insert')"
   # No new object again — two rows and a re-ordering. Probed by the rows.
-  "20260806000000_crypto_and_movies.sql|select count(*) = 2 from public.rooms where slug in ('crypto', 'movies') and curated"
+  "20260806000000_three_more_rooms.sql|select count(*) = 3 from public.rooms where slug in ('crypto', 'movies', 'feedback') and curated"
 )
 
 probe_for() {

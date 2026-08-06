@@ -228,6 +228,35 @@ export class Session {
       return { lines: this.cancel() }
     }
 
+    /*
+     * `login ryan`, mid-question, because that is what the site just told them
+     * to type.
+     *
+     * The trap this closes, in full: somebody comes back on a new phone, says
+     * something, is asked what to call them, and answers with their own name.
+     * They are told "ryan is taken. if it's taken by you, type login ryan."
+     * They type it — and mid-signup everything typed is an answer, so it went
+     * to the name check, which rejected `login ryan` for having a space and
+     * helpfully offered them `login_ryan`. The one instruction on screen could
+     * not be followed, and the suggestion on offer was a third wrong account.
+     *
+     * That is CHANGING-IT's own rule — a suggested fix has to be one the site
+     * will accept — broken one commit after writing it down, in the message
+     * added to fix the previous version of the same trap.
+     *
+     * Only the two-word form. A bare `login` is a perfectly good name and has
+     * to stay answerable as one; `login ryan` cannot be a name at all, because
+     * names have no spaces, so there is nothing to be ambiguous about.
+     *
+     * It cancels first, exactly as typing `cancel` then `login ryan` would —
+     * the held sentence goes, and `cancel` says so.
+     */
+    const escape = /^login\s+(\S+)$/i.exec(text)
+    if (escape) {
+      const cancelled = this.cancel()
+      return { lines: [...cancelled, ...(await this.signIn(escape[1]))] }
+    }
+
     if (this.mode === 'ask-one') {
       const pending = this.pending
       this.pending = null
@@ -592,10 +621,23 @@ export class Session {
      */
     try {
       if (location.postId !== undefined) {
-        // §4.3 — a reply has no address of its own, so there is nothing to
-        // print. Your words are on the echo line; that is the receipt.
         await this.writer.reply(location.room, location.postId, body)
-        return { lines: [], failed: false }
+        /*
+         * The post's address, not silence.
+         *
+         * §4.3 gives a reply no address of its own, and the first version of
+         * this printed nothing at all on that basis. From actually using it:
+         * "instead of just LOOKING like it's sent" — and nothing on screen is
+         * the strongest possible version of that, because `live.ts` drops your
+         * own words from the channel, so the thread you are staring at does not
+         * visibly gain your reply either.
+         *
+         * The post's address is the true and useful thing: it is where your
+         * words now live, and it is what you would type to come back and read
+         * the thread. Every contribution now answers with one line and the
+         * same shape.
+         */
+        return { lines: [{ text: `${location.room}/${location.postId}`, tone: 'accent' }], failed: false }
       }
       const postNo = await this.writer.post(location.room, body)
 
@@ -606,7 +648,13 @@ export class Session {
        * no address, so there is no output.
        */
       if (options.addressed === false) {
-        return { lines: [], failed: false }
+        /*
+         * The one place a word survives, because it is the one place with no
+         * address to give instead. Accent, like every other confirmation — the
+         * complaint that started this was not that a word existed, it was that
+         * it was faint enough to read as "that didn't send".
+         */
+        return { lines: [{ text: 'said.', tone: 'accent' }], failed: false }
       }
 
       /*
@@ -636,7 +684,18 @@ export class Session {
        * different lines, and printing the first as though it were the second is
        * how an interface that explains itself turns into one that nags.
        */
-      const lines: Line[] = [{ text: address, tone: 'dim' }]
+      /*
+       * Accent, not dim.
+       *
+       * Both tokens clear 4.5:1 against the ground, so this was never a
+       * legibility failure — it was a hierarchy one. `dim` is the tone this
+       * interface uses for context you skim past: post headers, timestamps,
+       * the body of a room listing. Rendering the one line that says "that
+       * happened" in the skim-past colour is how it came to read as though it
+       * had not. Accent is what room names, the prompt and mail's addresses
+       * already use: the colour of a thing you can act on, which an address is.
+       */
+      const lines: Line[] = [{ text: address, tone: 'accent' }]
       if (!this.explainedAddresses) {
         this.explainedAddresses = true
         lines.push({
