@@ -363,6 +363,31 @@ Two things make this safe, and both are load-bearing:
   see this — the lines were all individually correct. It was found by
   screenshotting the three cases at 380×740 and looking at them.
 
+**A fixture may be small. It may not be a different shape.** `fixtureEnv.getRoom`
+returned every post a room had while `supabaseEnv` capped it, so a 500-post room
+came back with 500 posts in every suite and 60 on the real site. Truncation
+therefore did not exist anywhere a test could see it, which is how a room
+silently showing a slice — no notice, no way back — survived to be found by
+hand. Both Envs now page against the exported `ROOM_PAGE`, and
+`lib/commands/older.test.ts` opens by asserting they agree. This is the third
+time this session that a fixture disagreeing with the database produced a green
+suite over broken behaviour; when you add an Env method, write the fixture and
+the real one in the same sitting and pin them together.
+
+**"I asked for N and got N" does not mean there are more.** It is the same
+answer for "exactly N" and "ten thousand". Fetch `N + 1`, show `N`, and report
+whether the extra arrived — `Room.more` is that, and without it a room holding
+exactly one page would advertise an `older` that finds nothing.
+
+**Don't let a render loop make a product decision.** A room showed 30 posts
+because `MAX_LINES` was 600, and `MAX_LINES` was 600 because `input` is state on
+`Terminal`, so every keystroke re-rendered every line — measured at ~0.007ms per
+line per keystroke, a few ms on desktop and several times that on a phone. The
+number nobody could justify was the render loop's, not the product's. The
+scrollback is memoised now, the cap is 1500, and the page size is set by what is
+useful. When a constant looks arbitrary, find out what is actually holding it
+down before arguing about the value.
+
 **Time runs down the screen, once.** `Terminal` sets `scrollTop = scrollHeight`
 after every command, so the view lands on the **last line printed**, not the
 first. Anything time-ordered must therefore print oldest-first, or the screen

@@ -133,6 +133,36 @@ export class Session {
    */
   private explainedAddresses = false
 
+  /**
+   * How far back through a room you have walked, as the oldest address shown.
+   *
+   * Held here rather than threaded through `Location` — a page position is not
+   * part of an address, and putting it in one would put it in the URL, where
+   * §3.4 says the path and the prompt are the same value.
+   *
+   * `null` means "you are looking at the newest page", which is true after
+   * arriving, after `look`, and after `go`. `older` is the only thing that
+   * moves it, and it resets whenever a fresh listing is printed — otherwise
+   * typing `look` to get your bearings would leave `older` continuing from
+   * wherever you had wandered to, which is not where you are looking.
+   */
+  private paging: { room: string; oldest: number } | null = null
+
+  /** Where `older` should continue from, or null if it has to work it out. */
+  pagedFrom(room: string): number | null {
+    return this.paging && this.paging.room === room ? this.paging.oldest : null
+  }
+
+  /** Called by `older` once it knows what it just printed. */
+  paged(room: string, oldest: number): void {
+    this.paging = { room, oldest }
+  }
+
+  /** Called wherever a fresh listing is printed, which is the newest page. */
+  resetPaging(): void {
+    this.paging = null
+  }
+
   constructor(
     private readonly api: SignupApi,
     private readonly writer: Writer,

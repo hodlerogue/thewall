@@ -40,15 +40,19 @@ export const ROOMS: Room[] = [
     gloss: 'everything, briefly',
     ephemeral: true,
     posts: [
+      // Newest first, and the higher address is the newer post — which is what
+      // `create_post` guarantees and what anything paging by address relies on.
+      // These two were the wrong way round: id 1 was the *newest*, so `older`
+      // walking back by address walked forwards in time here and nowhere else.
       {
-        id: 1,
+        id: 2,
         author: 'marisol',
         body: 'the AC in my building has been out for three days and the super keeps saying "tomorrow"',
         createdAt: minutes(20),
         replies: [],
       },
       {
-        id: 2,
+        id: 1,
         author: 'dev',
         body: 'four pounds of tomatoes from one plant. i have no plan for any of them.',
         createdAt: minutes(64),

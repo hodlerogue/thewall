@@ -13,9 +13,16 @@
  */
 
 import { parseFlags, parseSince, splitStages } from '@/lib/commands/pipeline'
-import type { Env } from '@/lib/shell/env'
+import { ROOM_PAGE, type Env } from '@/lib/shell/env'
 import { formatAgo, type PostHit, type PostQuery, type RoomHit } from '@/lib/shell/model'
-import { renderFeed, renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
+import {
+  renderFeed,
+  renderPost,
+  renderPosts,
+  renderProfile,
+  renderRoom,
+  renderRoomList,
+} from '@/lib/shell/render'
 import type { Session } from '@/lib/shell/session'
 import { ABOUT_SUMMARY } from '@/lib/guide/about'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
@@ -137,7 +144,11 @@ export const COMMANDS: readonly Command[] = [
       'shows you what’s around you. at the lobby that’s the rooms, inside a room it’s the posts, inside a post it’s the replies.',
     insert: () => 'look',
     wrongContext: () => '',
-    async run({ context, location, env }) {
+    async run({ context, location, env, session }) {
+      // A fresh listing is the newest page, so `older` starts from the top
+      // again. Without this, `look` to get your bearings would leave `older`
+      // continuing from wherever you had already walked back to.
+      session.resetPaging()
       if (context === 'lobby') return { lines: renderRoomList(await env.listRooms()) }
 
       if (context === 'person') {
@@ -177,7 +188,9 @@ export const COMMANDS: readonly Command[] = [
       'moves you. at the lobby, go music. inside a room, go 12 opens that post. a whole address works from anywhere — go music/12 — and so does go ~marisol, which shows you somebody: their page, and their wall.',
     insert: () => 'go ',
     wrongContext: () => '',
-    async run({ arg, context, location, env, hint }) {
+    async run({ arg, context, location, env, hint, session }) {
+      // Walking anywhere lands you on the newest page of wherever you land.
+      session.resetPaging()
       if (arg === '') {
         return error(
           context === 'lobby' || context === 'commons'
@@ -599,6 +612,91 @@ export const COMMANDS: readonly Command[] = [
         return { lines: renderRoom(room), location: { room: room.slug } }
       }
       return { lines: renderRoomList(await env.listRooms()), location: {} }
+    },
+  },
+
+  {
+    /*
+     * The verb that makes the site's own claim true.
+     *
+     * /about says "it cannot scroll forever. A room holds what people said in
+     * it, and when you have read it you have read it." For any room past a
+     * page that was false: you got the newest page, nothing said so, and the
+     * only way to anything older was `go 5` for a number you had no way to
+     * know. A room quietly became write-only past its first page.
+     *
+     * Not `more`, which reads as "more of the same kind of thing" and is what
+     * a feed's button says. `older` names the direction, which is the whole
+     * information — you are walking backwards through time, and the site is
+     * finite in that direction.
+     */
+    verb: 'older',
+    // Not `back`: that is `leave`'s, and the signup flow says "type back to
+    // change the name" out loud. Two meanings for one word in a shell whose
+    // whole promise is that typing a word does the obvious thing.
+    aliases: ['earlier', 'previous', 'more'],
+    contexts: ['room', 'commons'],
+    gloss: () => 'the page before this one',
+    detail: () =>
+      'walks back through a room a page at a time. a room shows its newest 60; older shows the 60 before those, and again after that, until you reach the start of the room.',
+    insert: () => 'older',
+    wrongContext: (_c, hint) => `there’s nothing to walk back through here. try: go ${hint}`,
+    async run({ context, location, env, session }) {
+      const slug = location.room!
+
+      /*
+       * The cursor, or a round trip to find one.
+       *
+       * `older` straight after arriving has nothing stored, because arriving
+       * does not tell the session which addresses it printed — six places
+       * render a room and keeping all six in step is the kind of bookkeeping
+       * that goes wrong quietly. Asking the room for its newest page again is
+       * one indexed query, and it happens once per room rather than per step.
+       */
+      let from = session.pagedFrom(slug)
+      if (from === null) {
+        const room = await env.getRoom(slug)
+        if (!room) return error(`${slug} isn’t there anymore. try: leave`)
+        if (room.posts.length === 0) {
+          return { lines: [{ text: 'nothing here yet, so there is nothing before it.', tone: 'faint' }] }
+        }
+        /*
+         * The lowest address on the page, not the last element of it.
+         *
+         * The cursor is an address, so the starting point has to be one too.
+         * Taking `posts[length - 1]` assumed the array arrived newest-first,
+         * which is true of the query and was not true of every fixture — and
+         * where it was not, `older` fetched the *newest* post and printed it
+         * back as though it were history.
+         */
+        from = room.posts.reduce((low, post) => Math.min(low, post.id), Infinity)
+      }
+
+      const posts = await env.olderPosts(slug, from)
+      if (posts.length === 0) {
+        // §3.7 — and it is a real answer rather than a failure: reaching the
+        // start of a room is the thing this verb exists to let you do.
+        return {
+          lines: [
+            { text: 'that’s the start of the room — there’s nothing before it.', tone: 'faint' },
+          ],
+        }
+      }
+
+      const oldest = posts.reduce((low, post) => Math.min(low, post.id), Infinity)
+      session.paged(slug, oldest)
+
+      // The context is the authority on whether this room keeps anything —
+      // it is what §3.10 splits commons out by, and it is already resolved.
+      const lines = renderPosts(posts, context === 'commons')
+      lines.push({
+        text:
+          posts.length < ROOM_PAGE
+            ? 'that’s the start of the room.'
+            : 'older again for the page before this one.',
+        tone: 'faint',
+      })
+      return { lines }
     },
   },
 

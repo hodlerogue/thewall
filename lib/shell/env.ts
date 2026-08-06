@@ -73,6 +73,15 @@ export interface Env {
    */
   readFeed(): Promise<PostHit[]>
   getRoom(slug: string): Promise<Room | undefined>
+  /**
+   * The page before the one you are looking at, oldest-first like every other
+   * listing. Empty when you have reached the start of the room.
+   *
+   * A cursor rather than an offset: `beforePostNo` is the oldest address you
+   * can currently see. Offsets shift under you when somebody posts while you
+   * are reading back, which silently skips or repeats a post.
+   */
+  olderPosts(slug: string, beforePostNo: number): Promise<Post[]>
   getPost(slug: string, id: number): Promise<Post | undefined>
   who(roomSlug: string | undefined): Promise<Presence>
   /** §4.8 — the pipe's source. Crosses rooms, so hits carry their address. */
@@ -129,6 +138,24 @@ export const RESERVED_SLUGS = new Map([
 const FADE_MS = 14 * 24 * 60 * 60 * 1000
 
 /**
+ * How much of a room you get at once.
+ *
+ * It was 30, hard-coded in `supabaseEnv` and nowhere else — and the fixture
+ * applied no limit at all, so a 500-post room came back with all 500 posts in
+ * tests and 30 on the real site. Nothing at any level could see the truncation,
+ * which is why the missing "there is more" line went unnoticed for the life of
+ * the project. One constant, used by both, is the fix for that class.
+ *
+ * 60 rather than 30 because the number was never chosen on merit: the ceiling
+ * came from `MAX_LINES`, which came from the scrollback re-rendering on every
+ * keystroke. That cost is gone (see components/Terminal.tsx), so this is now
+ * set by what is useful — roughly 200 lines, eight screens on a phone, and
+ * about seven pages inside the scrollback cap so `older` can walk a long way
+ * back without trimming away where you started.
+ */
+export const ROOM_PAGE = 60
+
+/**
  * In-memory Env over the §5 seed content, for tests and the mobile gate.
  *
  * `people` is read at call time rather than copied, so the demo can hand in an
@@ -182,7 +209,37 @@ export function fixtureEnv(
     },
     async getRoom(slug) {
       const room = rooms.find((r) => r.slug === slug)
-      return room ? { ...room, posts: visiblePosts(room) } : undefined
+      if (!room) return undefined
+
+      /*
+       * The page, and only the page.
+       *
+       * This returned every post a room had, while `supabaseEnv` has always
+       * capped it. A 500-post room therefore came back with 500 posts in every
+       * test and 60 on the real site, so no suite at any level could see
+       * truncation — which is exactly why a room silently showing a slice, with
+       * no way back and nothing saying so, survived to be noticed by hand.
+       *
+       * Fixtures are allowed to be small. They are not allowed to be a
+       * different shape from the thing they stand in for.
+       */
+      const visible = visiblePosts(room)
+      return {
+        ...room,
+        posts: visible.slice(0, ROOM_PAGE),
+        more: visible.length > ROOM_PAGE,
+      }
+    },
+
+    async olderPosts(slug, beforePostNo) {
+      const room = rooms.find((r) => r.slug === slug)
+      if (!room) return []
+      // Newest-first, like the query — the renderer is what reverses it. And
+      // keyed on the address rather than a position, for the same reason.
+      return visiblePosts(room)
+        .filter((post) => post.id < beforePostNo)
+        .sort((a, b) => b.id - a.id)
+        .slice(0, ROOM_PAGE)
     },
     async getPost(slug, id) {
       const room = rooms.find((r) => r.slug === slug)

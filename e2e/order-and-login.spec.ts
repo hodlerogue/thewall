@@ -126,3 +126,39 @@ test.describe('a browser that has never been signed in', () => {
     await expect(scrollback(page)).toContainText('login marisol')
   })
 })
+
+test.describe('reading a room to the end', () => {
+  test('older is offered where somebody stuck at the top of a room would look', async ({
+    page,
+  }) => {
+    await page.goto('/music')
+    await type(page, 'help')
+    await expect(scrollback(page)).toContainText('older — the page before this one')
+  })
+
+  test('a room that fits says so rather than paging into nothing', async ({ page }) => {
+    /*
+     * The fixture rooms are small on purpose — the demo lobby is not the place
+     * for a 500-post room — so what this proves is the wiring and the honest
+     * answer at the boundary. The paging itself is walked end to end against a
+     * 250-post room in lib/commands/older.test.ts.
+     */
+    await page.goto('/music')
+    await type(page, 'older')
+    await expect(scrollback(page)).toContainText('nothing before it')
+  })
+
+  test('a small room is not told there is more to see', async ({ page }) => {
+    await page.goto('/music')
+    await type(page, 'look')
+    await expect(scrollback(page)).not.toContainText('older — the page before')
+  })
+
+  test('older from the lobby names somewhere it would work', async ({ page }) => {
+    // `/` lands in commons, not the lobby — the demo drops you somewhere with
+    // people in it. The lobby is its own path.
+    await page.goto('/lobby')
+    await type(page, 'older')
+    await expect(scrollback(page)).toContainText('nothing to walk back through')
+  })
+})

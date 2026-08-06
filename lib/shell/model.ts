@@ -43,7 +43,18 @@ export interface Room {
   madeBy?: string
   /** §3.10 — commons keeps nothing. Posts expire, no IDs, no threads. */
   ephemeral: boolean
+  /** The newest page of them, oldest-first once rendered. */
   posts: Post[]
+  /**
+   * Whether there are older posts than the ones in `posts`.
+   *
+   * Not derivable from `posts.length === ROOM_PAGE`: asking for a page and
+   * getting a full one is the same answer whether there is one more post or
+   * ten thousand, and a room with exactly a page in it would be told it had
+   * extras it does not. Both Envs answer this by fetching one more than they
+   * intend to show and reporting whether it arrived.
+   */
+  more?: boolean
 }
 
 /** §3.11 — what the lobby shows so it reads as a building, not a list of doors. */

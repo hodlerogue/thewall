@@ -146,16 +146,51 @@ export function renderRoom(room: Room, now = new Date()): Line[] {
     return lines
   }
 
-  for (const post of oldestFirst(room.posts)) {
+  /*
+   * No silent caps — the rule this listing was the last place to break.
+   *
+   * `mail` says "these are the newest 100" and the lobby says "4 more rooms".
+   * A room said nothing at all: it showed a page and stopped on a blank line,
+   * indistinguishable from the whole room, with no way to reach the rest. That
+   * is the site's own claim — "when you have read it you have read it" — being
+   * quietly false in every busy room.
+   *
+   * At the top, because that is where the cut is: the listing runs oldest-first
+   * now, so everything missing is older than the first line under this.
+   */
+  if (room.more) {
+    lines.push({ text: 'older — the page before this one.', tone: 'faint' })
+    lines.push({ text: '' })
+  }
+
+  lines.push(...renderPosts(room.posts, room.ephemeral, now))
+  return lines
+}
+
+/**
+ * The posts themselves, shared by a room listing and by `older`.
+ *
+ * Extracted rather than duplicated: a second copy of this loop is a second
+ * place to forget the reply count, the ephemeral branch, or which way round
+ * time runs — and `older` prints into the same scrollback, directly under a
+ * block produced by the other one.
+ */
+export function renderPosts(
+  posts: readonly Post[],
+  ephemeral: boolean,
+  now = new Date(),
+): Line[] {
+  const lines: Line[] = []
+  for (const post of oldestFirst(posts)) {
     // The number comes first because it is the address, and it is permanent.
     lines.push({
-      text: room.ephemeral
+      text: ephemeral
         ? `${post.author}, ${formatAgo(post.createdAt, now)}`
         : `${post.id}  ${post.author}, ${formatAgo(post.createdAt, now)}`,
       tone: 'dim',
     })
     lines.push({ text: post.body, depth: 1 })
-    if (!room.ephemeral && post.replies.length > 0) {
+    if (!ephemeral && post.replies.length > 0) {
       lines.push({
         text: `${post.replies.length} ${post.replies.length === 1 ? 'reply' : 'replies'} — go ${post.id}`,
         tone: 'faint',
