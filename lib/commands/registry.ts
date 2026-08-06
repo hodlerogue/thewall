@@ -584,14 +584,28 @@ export const COMMANDS: readonly Command[] = [
   {
     verb: 'leave',
     aliases: ['back', 'exit', 'up'],
-    // §3.1 — backs out one level, always, from anywhere.
-    contexts: ALL,
-    gloss: (c) => (c === 'post' ? 'back to the room' : 'back to the lobby'),
-    detail: () => 'backs you out one level, from anywhere. from somebody’s page, back to the lobby.',
+    /*
+     * §3.1 — backs out one level. Not from *anywhere*, which is what this
+     * claimed and what put it in `help` at the lobby, described as "back to the
+     * lobby" to somebody already standing in it. A list of what you can type
+     * that includes something you cannot is worse than a shorter list.
+     */
+    contexts: ['room', 'commons', 'post', 'person'],
+    /*
+     * "back to the room" was right for a post in a room and wrong for a post on
+     * a wall, which backs out to the person whose wall it is — the same context,
+     * two destinations, and `gloss` only sees the context. So it stops promising
+     * a destination it cannot always name, and `detail` spells out both.
+     */
+    gloss: (c) => (c === 'post' ? 'back one step' : 'back to the lobby'),
+    detail: () =>
+      'backs you out one level. from a post, to the room it is in — or to somebody’s page, if the post is on their wall. from a room or a page, back to the lobby.',
     insert: () => 'leave',
-    wrongContext: () => '',
+    wrongContext: () => 'you’re already at the lobby.',
     async run({ context, location, env }) {
       if (context === 'lobby') {
+        // Unreachable through `run`, which sends a wrong-context verb to the
+        // message above. Kept because `leave` is also called directly.
         return { lines: [{ text: 'you’re already at the lobby.', tone: 'faint' }] }
       }
       if (context === 'post') {

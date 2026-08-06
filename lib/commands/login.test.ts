@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createRunner } from '@/lib/commands/run'
+import { findCommand } from '@/lib/commands/registry'
 import { suggestAlternates } from '@/lib/auth/names'
 import { fixtureEnv } from '@/lib/shell/env'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
@@ -370,5 +371,58 @@ describe('the instruction printed mid-signup is one you can actually type', () =
     session.begin({ location: { room: 'commons' }, body: 'hello' })
     await session.answer('loginperson')
     expect(asked).toEqual([])
+  })
+})
+
+describe('leave says where it will actually put you', () => {
+  /*
+   * Reported: "help says 'leave is back to lobby' but it's also just back in
+   * general." Two things were wrong, and both were the gloss describing a
+   * destination it does not always reach.
+   *
+   * At the lobby it was listed at all, described as "back to the lobby" to
+   * somebody standing in it, and did nothing when typed. And in a post it
+   * promised "back to the room" — true for a post in a room, false for a post
+   * on a wall, which backs out to the person whose wall it is. Same context,
+   * two destinations, and `gloss` only ever sees the context.
+   */
+  const leave = findCommand('leave')!
+
+  it('is not offered at the lobby, where it cannot do anything', async () => {
+    expect(leave.contexts).not.toContain('lobby')
+    const out = text((await harness().run('help', LOBBY)).lines)
+    expect(out).not.toMatch(/^leave — /m)
+  })
+
+  it('still answers plainly if somebody types it there anyway', async () => {
+    const out = text((await harness().run('leave', LOBBY)).lines)
+    expect(out).toContain('already at the lobby')
+  })
+
+  it('promises the lobby only where the lobby is where you land', async () => {
+    const { run } = harness()
+    for (const at of [{ room: 'music' }, { room: 'commons' }, { person: 'marisol' }] as Location[]) {
+      const context = at.person ? 'person' : at.room === 'commons' ? 'commons' : 'room'
+      expect(leave.gloss(context)).toContain('the lobby')
+      expect((await run('leave', at)).location).toEqual({})
+    }
+  })
+
+  it('promises no particular destination from a post, because there are two', async () => {
+    const { run } = harness()
+    expect(leave.gloss('post')).not.toContain('the room')
+
+    // A post in a room backs out to the room…
+    expect((await run('leave', { room: 'music', postId: 12 })).location).toEqual({ room: 'music' })
+    // …and a post on a wall backs out to whose wall it is.
+    expect((await run('leave', { room: '~marisol', postId: 2 })).location).toEqual({
+      person: 'marisol',
+    })
+  })
+
+  it('names both of those in detail, since the gloss no longer can', async () => {
+    const out = text((await harness().run('what leave', { room: 'music' })).lines)
+    expect(out).toMatch(/room it is in/)
+    expect(out).toMatch(/wall/)
   })
 })
