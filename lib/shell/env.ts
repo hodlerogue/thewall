@@ -91,6 +91,15 @@ export interface Env {
   /** §4.1 — the replies themselves. Reading them marks them read. */
   readMail(): Promise<MailItem[]>
   /**
+   * §4.1, decided differently — whether a daily email is switched on.
+   *
+   * Reading and writing are separate calls rather than one toggle, because
+   * `notify` with no argument has to be able to answer "am I?" without changing
+   * it. A toggle makes the answer to a question a side effect.
+   */
+  notifyState(): Promise<boolean>
+  setNotify(on: boolean): Promise<{ ok: true; on: boolean } | { ok: false; reason: string }>
+  /**
    * §3.10 — somebody, as a view. The posts come back as hits, carrying their
    * real addresses, because a profile is a way back into rooms and not a room.
    */
@@ -132,6 +141,7 @@ export const RESERVED_SLUGS = new Map([
   ['apple-icon', 'that is a route'],
   ['opengraph-image', 'that is a route'],
   ['feed', 'that is the wall feed'],
+  ['unsubscribe', 'that is a route'],
 ])
 
 /** §4.2's fade, matching the interval in the lobby query. */
@@ -173,6 +183,9 @@ export function fixtureEnv(
     room.ephemeral
       ? room.posts.filter((p) => Date.now() - p.createdAt.getTime() < 24 * 60 * 60 * 1000)
       : room.posts
+
+  // Demo-only, and per session: nothing is stored and nothing is sent.
+  let notifying = false
 
   // Named rather than returned inline, so getProfile can reuse searchPosts
   // instead of restating the query that decides what a person's posts are.
@@ -352,6 +365,20 @@ export function fixtureEnv(
 
     async readMail() {
       return []
+    },
+
+    /*
+     * The demo remembers it for the session and sends nothing, which is the
+     * whole truth of what the fixture build can do. Answering a flat `false` to
+     * `setNotify` would make `notify on` look broken; answering `true` and
+     * forgetting would make it look like it had not saved.
+     */
+    async notifyState() {
+      return notifying
+    },
+    async setNotify(on: boolean) {
+      notifying = on
+      return { ok: true as const, on }
     },
 
     async searchPosts(query) {

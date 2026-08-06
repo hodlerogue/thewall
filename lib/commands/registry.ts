@@ -792,6 +792,7 @@ export const COMMANDS: readonly Command[] = [
         'about',
         'login',
         'mail',
+        'notify',
         'rename',
         'theme',
         'install',
@@ -918,7 +919,7 @@ export const COMMANDS: readonly Command[] = [
     contexts: ALL,
     gloss: () => 'replies waiting for you',
     detail: () =>
-      'shows replies to things you said, each with the address to walk to — oldest at the top, so the newest is the one nearest the prompt. reading them clears the count. nothing is pushed and nothing is emailed — it waits until you ask.',
+      'shows replies to things you said, each with the address to walk to — oldest at the top, so the newest is the one nearest the prompt. reading them clears the count. nothing is pushed and nothing chases you; notify on adds one email a day if you want one.',
     insert: () => 'mail',
     wrongContext: () => '',
     async run({ env, session }) {
@@ -983,6 +984,75 @@ export const COMMANDS: readonly Command[] = [
       })
 
       return { lines, mail: 0 }
+    },
+  },
+
+  {
+    /*
+     * §4.1, decided differently — and the difference is consent.
+     *
+     * The document's lean is "pull-only, no push, no email", in the same
+     * section that calls notifications the highest-priority unsolved item
+     * because "no notification means no reason to return". Both are right, and
+     * what reconciles them is that nobody is emailed who did not ask.
+     *
+     * Off for everybody. On is a thing you type. One a day at most, and only
+     * when something is actually waiting — so an empty day is a day with no
+     * email, rather than a daily reminder that nothing happened.
+     */
+    verb: 'notify',
+    aliases: ['notifications', 'email', 'digest'],
+    contexts: ALL,
+    gloss: () => 'email me when replies are waiting',
+    detail: () =>
+      'notify on sends you one email a day, but only on days somebody answered you. notify off stops it, and so does the link at the bottom of any of them. it is off until you turn it on, nothing else is ever sent to you, and your address is still never shown to anybody.',
+    insert: () => 'notify ',
+    wrongContext: () => '',
+    async run({ arg, env, session }) {
+      if (session.name() === null) {
+        return {
+          lines: [
+            { text: 'you’re reading as a guest, so there’s nowhere to send anything.', tone: 'faint' },
+            { text: 'say something first and i’ll ask who you are.', tone: 'faint' },
+          ],
+        }
+      }
+
+      const word = arg.trim().toLowerCase()
+
+      // No argument is a question, not a toggle. Somebody typing `notify` to
+      // find out where they stand should not have changed where they stand.
+      if (word === '') {
+        const on = await env.notifyState()
+        return {
+          lines: on
+            ? [
+                { text: 'on — one email a day, only when something is waiting.', tone: 'accent' },
+                { text: 'notify off stops it.', tone: 'faint' },
+              ]
+            : [
+                { text: 'off. nothing is emailed to you.', tone: 'faint' },
+                { text: 'notify on sends one a day, but only on days somebody answered you.', tone: 'faint' },
+              ],
+        }
+      }
+
+      if (!/^(on|off|yes|no|stop)$/.test(word)) {
+        return error(`notify on, or notify off. not "${arg}".`)
+      }
+
+      const on = word === 'on' || word === 'yes'
+      const result = await env.setNotify(on)
+      if (!result.ok) return error(result.reason)
+
+      return {
+        lines: on
+          ? [
+              { text: 'on. one email a day, and only when somebody has answered you.', tone: 'accent' },
+              { text: 'every one of them has a link that turns this off, and notify off does too.', tone: 'faint' },
+            ]
+          : [{ text: 'off. nothing more will be sent.', tone: 'accent' }],
+      }
     },
   },
 

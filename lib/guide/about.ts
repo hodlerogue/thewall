@@ -53,7 +53,7 @@ export const ABOUT: readonly GuideSection[] = [
     heading: 'Where you are',
     body: [
       'The lobby is the list of rooms. Type look to see it, then go roomname to walk into one — go music.',
-      'A room holds posts. look shows them, each with a number in front: that number is its permanent address and is never reused. go 12 opens it and puts you inside the conversation, where the replies are. leave backs you out one step.',
+      'A room holds posts. look shows them, each with a number in front: that number is its permanent address and is never reused. go 12 opens it and puts you inside the conversation. leave backs you out one step.',
       'The path in the prompt is also the web address: if it says music/12, then thewall.social/music/12 is that post, and a link you can send somebody.',
     ],
   },
@@ -61,7 +61,7 @@ export const ABOUT: readonly GuideSection[] = [
     heading: 'Saying something',
     body: [
       'say, and then what you want to say. In a room that starts a new post; inside a post it adds a reply, as does reply.',
-      'You do not need an account to read. The first time you try to say something, you are asked what to call you and where to send a sign-in link — and then the sentence you already typed is posted for you. You never type it twice.',
+      'You do not need an account to read. The first time you try to say something, you are asked what to call you and where to send a sign-in link — and the sentence you already typed is posted for you. You never type it twice.',
       'There are no passwords; signing in is a link. Your address is never shown to anybody and never sold. You can say one thing before following that link — after that it asks you to check your email, because an address nobody has proved they can read is no way back in.',
       'And that is what it is a way back in for. On a new phone, or after clearing your browser, type login and your name: a key goes to the address that name signed up with, and clicking it makes this browser you again. Never make a second account to get back in — your posts stay with the first name.',
     ],
@@ -78,7 +78,7 @@ export const ABOUT: readonly GuideSection[] = [
     body: [
       'go ~yourname — with the tilde — shows somebody: when they arrived, and what they have said lately, each with the address it lives at.',
       'Your own page is also your wall. Say something there and it goes on the wall rather than into a room. Only you can start something there; anybody can answer it.',
-      'Walls never appear in the lobby — a room for every person would turn a building into a directory. go feed is where they all are instead: everything anybody has put on their own wall, each with the address to walk to. Say something there and it goes on your wall.',
+      'Walls never appear in the lobby — a room for every person would turn a building into a directory. go feed is where they all are instead: everything anybody has put on their own wall, each with its address. Say something there and it goes on your wall.',
     ],
   },
   {
@@ -99,7 +99,8 @@ export const ABOUT: readonly GuideSection[] = [
   {
     heading: 'Replies to you',
     body: [
-      'When somebody answers something you said, a count appears above the prompt. mail lists them, each with the address to go and answer. Nothing is pushed and nothing is emailed — it waits until you ask, and reading it clears the count.',
+      'When somebody answers something you said, a count appears above the prompt. mail lists them, each with the address to go and answer. Nothing chases you — it waits until you ask, and reading it clears the count.',
+      'notify on adds one email a day, only on days somebody answered you. Off unless you turn it on, and every one carries a link that stops it.',
     ],
   },
   {

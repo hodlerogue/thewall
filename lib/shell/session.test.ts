@@ -277,11 +277,19 @@ describe('§4.1 — mail is the reason to come back', () => {
     expect(out).toMatch(/mail — /)
   })
 
-  it('explains that nothing is pushed (§4.1 is pull-only)', async () => {
+  it('explains that nothing arrives uninvited (§4.1, as revised)', async () => {
+    /*
+     * This asserted that `what mail` says nothing is "emailed", which was true
+     * until email existed. It is now off-by-default rather than absent, so the
+     * claim worth pinning is the one that survived: mail itself still waits to
+     * be asked, and the thing that does arrive is named as something you switch
+     * on. Leaving the old assertion would have meant the documentation was
+     * checked for a sentence that had become false.
+     */
     const { run } = harness()
     const out = text((await run('what mail', { room: 'music' })).lines)
     expect(out).toMatch(/nothing is pushed/)
-    expect(out).toMatch(/emailed/)
+    expect(out).toMatch(/notify on/)
   })
 })
 

@@ -1649,4 +1649,172 @@ commit;
 select public.hide_post('~walled', 1, false);
 
 \echo ''
+\echo '§4.1, decided differently — one email a day, only if asked'
+
+\set jameson '11111111-1111-4111-8111-111111111111'
+\set marisol '22222222-2222-4222-8222-222222222222'
+
+-- A post of jameson's and a fresh reply to it, rather than the seeded pair.
+-- `mail_seen_at` defaults to when the profile row was made, and the seed
+-- backdates its content, so everything shipped with the site is already read —
+-- which is right, and makes it useless for testing "waiting".
+insert into public.posts (room_slug, post_no, author_id, body)
+select 'music', 900, :'jameson'::uuid, 'a post with something waiting on it'
+ where not exists (select 1 from public.posts where room_slug = 'music' and post_no = 900);
+
+insert into public.replies (post_id, author_id, body)
+select id, :'marisol'::uuid, 'a reply that has not been read'
+  from public.posts where room_slug = 'music' and post_no = 900;
+
+select tests.ok(
+  (select count(*) from public.notify_settings) = 0,
+  'nobody is signed up for email until somebody asks'
+);
+select tests.ok(
+  not exists (select 1 from public.pending_digests()),
+  'and nothing is due to be sent'
+);
+
+-- The table is not readable from a browser. Every column in it is one somebody
+-- would rather not publish, and the unsubscribe token is one nobody else may
+-- have at all.
+select tests.ok(
+  not has_table_privilege('anon', 'public.notify_settings', 'select'),
+  'anon cannot read who gets email, or their unsubscribe token'
+);
+select tests.ok(
+  not has_table_privilege('authenticated', 'public.notify_settings', 'select'),
+  'and neither can a signed-in reader'
+);
+select tests.ok(
+  not has_table_privilege('authenticated', 'public.notify_settings', 'update'),
+  'nor turn it on for somebody else by writing the row directly'
+);
+select tests.ok(
+  not has_function_privilege('authenticated', 'public.pending_digests()', 'execute'),
+  'and cannot ask the site for every address on it'
+);
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'jameson';
+
+  select tests.ok(public.notify_state() = false, 'it is off before you ask');
+  select tests.ok(public.set_notify(true) = true, 'and on once you do');
+  select tests.ok(public.notify_state() = true, 'which sticks');
+commit;
+
+select tests.ok(
+  (select count(*) from public.pending_digests() where profile_id = :'jameson'::uuid) = 1,
+  'somebody with replies waiting is due an email'
+);
+select tests.ok(
+  (select unread from public.pending_digests() where profile_id = :'jameson'::uuid) > 0,
+  'and it says how many'
+);
+
+-- The number in the email and the number in the badge are the same number, or
+-- an email saying "3 replies" opens onto an empty `mail`.
+-- Read as postgres, compared as jameson. `pending_digests` is service-role
+-- only, so calling it inside the role block is exactly what the revoke above
+-- forbids — which is how the first version of this assertion failed, and is
+-- worth leaving written down: the guard caught its own test.
+select set_config(
+  'tests.digest_unread',
+  (select unread::text from public.pending_digests() where profile_id = :'jameson'::uuid),
+  false
+);
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'jameson';
+  select tests.ok(
+    public.mail_count() = current_setting('tests.digest_unread')::int,
+    'the digest count is the badge count, filter for filter'
+  );
+commit;
+
+-- Nobody else was opted in, so nobody else is in the list.
+select tests.ok(
+  (select count(*) from public.pending_digests()) = 1,
+  'and nobody who did not ask is in the list'
+);
+
+-- One a day, and the stamp is what enforces it.
+select tests.ok(
+  public.mark_digested(array[:'jameson'::uuid]) = 1,
+  'sending stamps the person who was sent to'
+);
+select tests.ok(
+  not exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  'and they are not due again the same day'
+);
+update public.notify_settings set notified_at = now() - interval '25 hours';
+select tests.ok(
+  exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  'but they are tomorrow'
+);
+
+-- Hiding reaches this too. It is the surface that taps somebody on the
+-- shoulder, so §6's lever has to arrive here as well as in the badge.
+update public.replies set hidden_at = now()
+ where post_id = (select id from public.posts where room_slug = 'music' and post_no = 900);
+select tests.ok(
+  not exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  'a hidden reply is not something anybody is emailed about'
+);
+update public.replies set hidden_at = null
+ where post_id = (select id from public.posts where room_slug = 'music' and post_no = 900);
+
+-- Banned, and it stops. Emailing somebody who has been removed is the site
+-- keeping in touch with a person it has just shown the door.
+update public.profiles set banned_at = now() where id = :'jameson'::uuid;
+select tests.ok(
+  not exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  'a banned account is not emailed'
+);
+update public.profiles set banned_at = null where id = :'jameson'::uuid;
+
+-- Unverified means an address nobody has proved they can read, which probably
+-- belongs to somebody else.
+update public.profiles set verified_at = null where id = :'jameson'::uuid;
+select tests.ok(
+  not exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  'an unproven address is never written to'
+);
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'jameson';
+  select tests.raises(
+    $$select public.set_notify(true)$$,
+    'an unproven address cannot turn email on in the first place'
+  );
+commit;
+update public.profiles set verified_at = now() where id = :'jameson'::uuid;
+
+-- Unsubscribing works with no session at all, because the link is followed on
+-- whatever device the email was opened on.
+select tests.ok(
+  public.unsubscribe((select token from public.notify_settings where profile_id = :'jameson'::uuid)),
+  'the token in the email turns it off, with nobody signed in'
+);
+select tests.ok(
+  (select daily from public.notify_settings where profile_id = :'jameson'::uuid) = false,
+  'and it is really off'
+);
+select tests.ok(
+  not public.unsubscribe('00000000-0000-4000-8000-000000000000'::uuid),
+  'a token nobody was issued does nothing, and says so'
+);
+
+-- It only ever turns things off. A leaked token is a nuisance, never a way in.
+select tests.ok(
+  (select daily from public.notify_settings where profile_id = :'jameson'::uuid) = false,
+  'and there is no token that turns it on'
+);
+
+delete from public.notify_settings;
+delete from public.posts where room_slug = 'music' and post_no = 900;
+
+\echo ''
 \echo 'all schema tests passed'

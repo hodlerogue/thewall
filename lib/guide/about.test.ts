@@ -90,9 +90,23 @@ describe('the rundown', () => {
 
   it('is short enough to read in one sitting', () => {
     const words = prose.split(/\s+/).length
-    // A rundown, not a manual. Past about a thousand words nobody finishes it,
-    // and the parts that matter are at the end.
-    expect(words).toBeLessThan(1100)
+    /*
+     * A rundown, not a manual. Past about this nobody finishes it, and the
+     * parts that matter are at the end.
+     *
+     * Raised once, from 1100, and worth writing down rather than doing
+     * quietly: the page now explains `login`, `older`, the feed and `notify`,
+     * none of which existed when 1100 was picked, and the four rounds of
+     * shaving sentences to get back under it were tightening prose to protect a
+     * number rather than protecting the reader. 1200 words is about five
+     * minutes, which is what "one sitting" was always standing for.
+     *
+     * It does not move again. The next thing worth explaining should displace
+     * something here, not extend it — that is the constraint doing its job, and
+     * this note exists so the next person to hit it raises the limit only if
+     * they can make the same argument.
+     */
+    expect(words).toBeLessThan(1200)
     expect(words).toBeGreaterThan(400)
   })
 })

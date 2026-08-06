@@ -169,6 +169,31 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
       return (data ?? []).map(toPost)
     },
 
+    async notifyState(): Promise<boolean> {
+      const { data, error } = await client.rpc('notify_state')
+      // A guest has no setting and no way to have one. False is the answer,
+      // not a failure.
+      if (error) return false
+      return data === true
+    },
+
+    async setNotify(on: boolean) {
+      const { error } = await client.rpc('set_notify', { p_on: on })
+      /*
+       * The refusal that matters here is "follow the link in your email first",
+       * raised by the function when somebody unverified tries to turn it on. It
+       * is already a sentence written for a person to read (§3.7), so it is
+       * passed through rather than translated into something vaguer.
+       */
+      if (error) {
+        // Already a sentence for a person; the fall-through is for anything
+        // the database says that nobody has written a human version of yet.
+        const said = error.message.replace(/^.*?:\s*/, '')
+        return { ok: false as const, reason: said || 'couldn’t change that just now.' }
+      }
+      return { ok: true as const, on }
+    },
+
     async getPost(slug: string, id: number): Promise<Post | undefined> {
       const { data, error } = await client
         .from('posts')

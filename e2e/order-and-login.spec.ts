@@ -200,3 +200,40 @@ test.describe('a contribution says where it went', () => {
     await expect(line).toHaveClass(/line-accent/)
   })
 })
+
+test.describe('the daily email is a thing you switch on', () => {
+  test('is off, and says so, without turning anything on to find out', async ({ page }) => {
+    await page.goto('/commons')
+    await type(page, 'say hello there')
+    await type(page, 'notifier')
+    await type(page, 'notifier@example.com')
+
+    await type(page, 'notify')
+    await expect(scrollback(page)).toContainText('off. nothing is emailed to you')
+    await expect(scrollback(page)).toContainText('notify on')
+  })
+
+  test('turning it on names the bound and the way out together', async ({ page }) => {
+    await page.goto('/commons')
+    await type(page, 'say hello there')
+    await type(page, 'switcher')
+    await type(page, 'switcher@example.com')
+
+    await type(page, 'notify on')
+    await expect(scrollback(page)).toContainText('one email a day')
+    await expect(scrollback(page)).toContainText('only when somebody has answered you')
+    await expect(scrollback(page)).toContainText('notify off')
+  })
+
+  test('is findable in help, since a setting nobody can see is not a choice', async ({ page }) => {
+    await page.goto('/lobby')
+    await type(page, 'help')
+    await expect(scrollback(page)).toContainText('notify — email me when replies are waiting')
+  })
+
+  test('a guest is told there is nowhere to send anything', async ({ page }) => {
+    await page.goto('/lobby')
+    await type(page, 'notify on')
+    await expect(scrollback(page)).toContainText('reading as a guest')
+  })
+})

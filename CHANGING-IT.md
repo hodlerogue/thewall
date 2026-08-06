@@ -85,6 +85,14 @@ Terminal.tsx ──typed text──> run.ts ──parse──> registry.ts ─�
 | `lib/data/live.ts` | realtime: presence, and posts arriving while you stand there |
 | `lib/supabase/{client,server,reader}.ts` | the three clients: browser, route handler, and unauthenticated read |
 
+**A column on `profiles` is public.** `grant select on public.profiles` is
+table-wide and always has been, so anything added there is readable by anybody
+holding the anon key — which ships in the browser bundle. That is right for a
+name and wrong for a preference, a timestamp or a token, which is why the
+notification settings are their own table with no grants and no policies,
+reached only through `security definer` functions. Before adding a column to
+`profiles`, ask whether you would publish it, because you are.
+
 **Getting in and back in.** Four routes, and they are easy to confuse because
 three of them mint magic links for different reasons.
 
@@ -94,6 +102,8 @@ three of them mint magic links for different reasons.
 | `app/api/verify/resend/route.ts` | another key for **this** session, when the first expired |
 | `app/api/login/route.ts` | a key for a name, for a browser with **no** session — the way back in |
 | `app/auth/callback/route.ts` | the only thing that has ever made somebody signed in |
+| `app/api/digest/route.ts` | the daily email, POST + shared secret, off when unconfigured |
+| `app/unsubscribe/page.tsx` | stopping it with no session, from the link in the email |
 
 `login` and `resend` are not variants of each other. `resend` reads the address
 off `auth.getUser()`, so it cannot work without a session; `login` exists
