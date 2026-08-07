@@ -1894,4 +1894,198 @@ delete from public.notify_settings;
 delete from public.posts where room_slug = 'music' and post_no = 900;
 
 \echo ''
+\echo 'rooms that grew out of a room — a label, never a nesting'
+
+-- Nesting was asked for ("can you create a room within a room, 3-5 deep, for
+-- subtopics") and argued down: an address that grows a segment per level stops
+-- being typable, and `go` would need to mean two different things. What was
+-- built instead is one nullable column. Everything below is about keeping it
+-- one nullable column — a label for discovery that no address, permission or
+-- listing is allowed to start depending on.
+--
+-- Each block rolls back rather than commits. Room creation is capped at three
+-- a week per account and these blocks make more than three between them; a
+-- committed room would also change the quota arithmetic of any test added
+-- after this one, which is a fine way to hand somebody a failure that has
+-- nothing to do with what they wrote.
+
+\set ren '44444444-4444-4444-8444-444444444444'
+\set tuck '33333333-3333-4333-8333-333333333333'
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'ren';
+
+  select tests.ok(
+    public.create_room('bebop'::citext, 'the fast stuff', 'music'::citext) = 'bebop',
+    'a room made while standing in another one is made'
+  );
+  select tests.ok(
+    (select from_room from public.rooms where slug = 'bebop') = 'music'::citext,
+    'and records where the person was standing'
+  );
+  -- The whole of the argument against nesting, in one assertion: the address is
+  -- `bebop`, not `music/bebop`, and it is reachable without going through the
+  -- parent at all.
+  select tests.ok(
+    exists (select 1 from public.rooms where slug = 'bebop'),
+    'under its own plain top-level name'
+  );
+  select tests.ok(
+    (select owner_id from public.rooms where slug = 'bebop') is null,
+    'and it belongs to nobody, exactly like a room made from the lobby'
+  );
+
+  select tests.ok(
+    public.create_room('ska'::citext, 'offbeat', null) = 'ska',
+    'a room made from the lobby is made with no parent'
+  );
+  select tests.ok(
+    (select from_room from public.rooms where slug = 'ska') is null,
+    'and records none'
+  );
+rollback;
+
+-- A parent the caller made up ------------------------------------------------
+--
+-- `p_from` arrives from a browser, so it is a claim rather than a fact. The
+-- rule is that a bad claim is dropped and the room is still made: refusing here
+-- would lose the sentence somebody typed over a label they never asked for,
+-- which is the worst trade available.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'tuck';
+
+  select tests.ok(
+    public.create_room('dub'::citext, 'heavy on the bass', 'no-such-room'::citext) = 'dub',
+    'a made-up parent does not stop the room being made'
+  );
+  select tests.ok(
+    (select from_room from public.rooms where slug = 'dub') is null,
+    'it is just dropped'
+  );
+
+  select tests.ok(
+    public.create_room('jungle'::citext, 'breakbeats', 'jungle'::citext) = 'jungle',
+    'nor does a room naming itself as its own parent'
+  );
+  select tests.ok(
+    (select from_room from public.rooms where slug = 'jungle') is null,
+    'which is also dropped, rather than making a room point at itself'
+  );
+rollback;
+
+-- A wall as a parent ---------------------------------------------------------
+--
+-- Checked separately because it has to fail for the *right* reason. A wall that
+-- does not exist is dropped by the existence check, which would let a broken
+-- `~` check pass this unnoticed — so the wall is real here.
+begin;
+  insert into public.rooms (slug, gloss, ephemeral, sort_order, owner_id)
+  values ('~ren', 'ren’s wall', false, 900, :'ren'::uuid)
+  on conflict (slug) do nothing;
+
+  select tests.ok(
+    exists (select 1 from public.rooms where slug = '~ren'),
+    'the wall is really there, so the next assertion is about ~ and not absence'
+  );
+
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'tuck';
+
+  select tests.ok(
+    public.create_room('garage'::citext, 'two-step', '~ren'::citext) = 'garage',
+    'a wall named as a parent does not stop the room being made'
+  );
+  -- "garage grew out of ~ren" is not a thing anybody means, and a wall is one
+  -- person's — it is the one place lineage would read as ownership.
+  select tests.ok(
+    (select from_room from public.rooms where slug = 'garage') is null,
+    'and is dropped: a wall is nobody’s parent'
+  );
+rollback;
+
+-- What the parent room lists -------------------------------------------------
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'ren';
+  select public.create_room('bebop'::citext, 'the fast stuff', 'music'::citext);
+  set local role postgres;
+
+  select tests.ok(
+    (select count(*) from public.rooms_from('music'::citext)) = 1,
+    'the parent room lists what grew out of it'
+  );
+  select tests.ok(
+    (select slug from public.rooms_from('music'::citext)) = 'bebop'::citext,
+    'by name'
+  );
+  select tests.ok(
+    (select gloss from public.rooms_from('music'::citext)) = 'the fast stuff',
+    'and with the gloss, which is what makes the line worth reading'
+  );
+  select tests.ok(
+    (select count(*) from public.rooms_from('poker'::citext)) = 0,
+    'and a room nobody branched off lists nothing'
+  );
+
+  -- §6's lever reaches this listing too. A room hidden by the operator that
+  -- stayed visible as a child of somewhere busy would be the one place hiding
+  -- did not hide.
+  update public.rooms set hidden_at = now() where slug = 'bebop';
+  select tests.ok(
+    (select count(*) from public.rooms_from('music'::citext)) = 0,
+    'a hidden room drops out of its parent’s listing'
+  );
+rollback;
+
+-- Who may read the lineage, and who may write it ------------------------------
+select tests.ok(
+  has_function_privilege('anon', 'public.rooms_from(citext)', 'execute'),
+  'a signed-out reader can see what grew out of a room'
+);
+-- The column is on `rooms`, whose select grant is column-scoped — so adding a
+-- column there is a decision about what the browser can read, and this is that
+-- decision written down. `from_room` is public: it is on the screen.
+select tests.ok(
+  has_column_privilege('anon', 'public.rooms', 'from_room', 'select'),
+  'and can read the column the listing is built from'
+);
+-- Lineage is set once, by `create_room`, from where the person was standing.
+-- Table-wide UPDATE is the exact shape of the two console bypasses closed
+-- earlier; a writable `from_room` would let anybody hang their room off the
+-- busiest room on the site.
+select tests.ok(
+  not has_column_privilege('authenticated', 'public.rooms', 'from_room', 'update'),
+  'and nobody can reparent a room from the browser'
+);
+select tests.ok(
+  not has_column_privilege('authenticated', 'public.rooms', 'from_room', 'insert'),
+  'nor set it by writing the row directly'
+);
+
+-- The old two-argument signature is gone -------------------------------------
+--
+-- `create or replace function` cannot change an argument list, so this was a
+-- drop and a create. If the drop were ever dropped, both signatures would exist
+-- and PostgREST would resolve to whichever matched — silently ignoring `p_from`
+-- forever, with every test above still passing.
+select tests.ok(
+  to_regprocedure('public.create_room(citext, text)') is null,
+  'the two-argument create_room is gone, not shadowed'
+);
+select tests.ok(
+  to_regprocedure('public.create_room(citext, text, citext)') is not null,
+  'and the three-argument one is what is there'
+);
+select tests.ok(
+  has_function_privilege('authenticated', 'public.create_room(citext, text, citext)', 'execute'),
+  'with its grants reapplied — a drop takes them with it'
+);
+select tests.ok(
+  not has_function_privilege('anon', 'public.create_room(citext, text, citext)', 'execute'),
+  'and still closed to signed-out callers'
+);
+
+\echo ''
 \echo 'all schema tests passed'

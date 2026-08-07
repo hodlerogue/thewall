@@ -227,6 +227,21 @@ and how often is unroutable-around rather than a policy somebody has to get
 right twice. Walls are the other narrow path: `create_post` makes a room only
 when the slug starts with `~` **and** matches the caller's own name.
 
+**A room made from inside another room records where it was made** — that is
+`rooms.from_room`, set by `create_room`'s third argument, and it is a label for
+discovery and nothing else. No address contains it (`bebop`, never
+`music/bebop`), no permission reads it, and the lobby ignores it. The parent
+lists its children at the bottom of the room listing via `rooms_from()`; that
+line is the entire feature. Nesting was asked for and argued down: an address
+that grows a segment per level stops being typable on a phone, `go` would have
+to mean two things, and a tree of near-empty rooms is §5's "an empty room is
+worse than no room" once per level.
+
+The claim is checked in `create_room` rather than trusted, because `p_from`
+comes from a browser: a parent that does not exist, is a wall, or is the room
+being made is dropped — **and the room is still made**. Refusing there would
+lose somebody's sentence over a label they never asked for.
+
 **Adding a route to `app/` means adding a row to `reserved_slugs`.** Every entry
 there is a real path. A room called `terms` would be shadowed by `/terms`
 forever — `go terms` would work, `thewall.social/terms` would not, and §3.4
@@ -481,8 +496,28 @@ the shape of code rather than its behaviour, because the failure they catch is
 invisible to anything that runs — a PostgREST embed, a redirect origin, a
 caching service worker. Every one of those files explains the bug it used to
 have, quoting the broken expression, and a raw text scan makes that explanation
-fail the check for the thing it explains. It has happened twice. Strip
-`/* */` and `//` before matching.
+fail the check for the thing it explains.
+
+It has now happened four times, and the fourth is the one worth reading. The
+rule had been applied to the TypeScript half of `lib/data/rpc.test.ts` and not
+to the SQL half, so a `--` comment sitting inside a parameter list —
+
+```sql
+create or replace function public.create_room (
+  p_slug  citext,
+  p_gloss text,
+  -- Where the person was standing.
+  p_from  citext default null
+)
+```
+
+— was split on the comma with the rest of that line and read as a parameter
+called `--`. `p_from` vanished, the scanner fell back to the older
+two-parameter signature, and the test reported a *correct* call site as wrong.
+A comment near the thing you match is not an edge case; it is where the
+reasoning lives in this codebase. Strip `/* */` and `//` on the TypeScript
+side and `/* */` and `--` on the SQL side, before matching, in every scanner —
+both halves, not the one that broke.
 
 **`request.url` is not the address anybody typed.** Behind a proxy — Netlify,
 here — a route handler sees an internal deploy URL. Reading the query string off

@@ -33,6 +33,7 @@ MIGRATION_PROBES=(
   # No new object again — two rows and a re-ordering. Probed by the rows.
   "20260806000000_three_more_rooms.sql|select count(*) = 3 from public.rooms where slug in ('crypto', 'movies', 'feedback') and curated"
   "20260806010000_notify_optin.sql|select to_regclass('public.notify_settings') is not null"
+  "20260806020000_rooms_grew_out_of.sql|select to_regproc('public.rooms_from') is not null"
 )
 
 probe_for() {

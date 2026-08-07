@@ -52,6 +52,33 @@ function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
 }
 
+/**
+ * The same rule, for the other half of this test.
+ *
+ * Stripping was applied to the TypeScript side and not to the SQL side, and the
+ * SQL side then made the identical mistake the moment a parameter list got a
+ * comment in it:
+ *
+ *     create or replace function public.create_room (
+ *       p_slug  citext,
+ *       p_gloss text,
+ *       -- Where the person was standing.
+ *       p_from  citext default null
+ *     )
+ *
+ * The list is split on commas and the first word of each piece taken, so the
+ * piece holding `p_from` began with `--` and the parameter vanished. The test
+ * then failed against the *older* two-parameter signature — reporting a real
+ * call site as wrong because of prose sitting next to the answer.
+ *
+ * `$…$`-quoted function bodies are left alone: only the parameter list between
+ * the first parentheses is ever parsed, and a `--` inside a body cannot reach
+ * it.
+ */
+function stripSqlComments(sql: string): string {
+  return sql.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '')
+}
+
 function callSites(): Call[] {
   const calls: Call[] = []
   // `.rpc('name')` or `.rpc('name', { p_a: …, p_b: … })`. The argument object is
@@ -79,7 +106,7 @@ function declared(): Map<string, Set<string>> {
   const dir = join(ROOT, 'supabase', 'migrations')
 
   for (const name of readdirSync(dir).sort()) {
-    const sql = readFileSync(join(dir, name), 'utf8')
+    const sql = stripSqlComments(readFileSync(join(dir, name), 'utf8'))
     const pattern = /create\s+(?:or\s+replace\s+)?function\s+public\.([a-z_]+)\s*\(([^)]*)\)/gi
     for (const match of sql.matchAll(pattern)) {
       const params = new Set(
@@ -103,6 +130,21 @@ describe('the client and the schema agree', () => {
   it('finds the call sites at all, so a passing suite means something', () => {
     expect(calls.length).toBeGreaterThan(5)
     expect(schema.size).toBeGreaterThan(5)
+  })
+
+  it('reads a parameter list that has a comment in it', () => {
+    // The specific shape that broke it: `p_from` is the third parameter and the
+    // line above it is a `--` comment, so the comma-delimited piece holding it
+    // starts with prose. Named rather than generic because a generic "no
+    // parameter looks like a comment" assertion passes trivially the moment the
+    // parameter is dropped — which is exactly what happened.
+    expect([...(schema.get('create_room') ?? [])]).toContain('p_from')
+
+    for (const [fn, params] of schema) {
+      for (const param of params) {
+        expect(param, `${fn}(${param}) is not an identifier`).toMatch(/^p_[a-z_]+$/)
+      }
+    }
   })
 
   it('calls only functions the migrations create', () => {

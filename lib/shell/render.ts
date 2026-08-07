@@ -143,6 +143,10 @@ export function renderRoom(room: Room, now = new Date()): Line[] {
       text: 'nothing here yet. say something and it will be the first thing.',
       tone: 'faint',
     })
+    // Still listed. This branch returned early, which would have hidden the
+    // subtopics of exactly the room most likely to have them — an empty one
+    // that people walked out of into something more specific.
+    lines.push(...renderGrewOut(room))
     return lines
   }
 
@@ -164,6 +168,45 @@ export function renderRoom(room: Room, now = new Date()): Line[] {
   }
 
   lines.push(...renderPosts(room.posts, room.ephemeral, now))
+  lines.push(...renderGrewOut(room))
+  return lines
+}
+
+/**
+ * Subtopics, without a tree.
+ *
+ * Nesting was asked for and argued down — see the migration — so a room that
+ * grew out of this one is an ordinary room with an ordinary address, and this
+ * line is the only thing connecting them. It sits at the bottom because that is
+ * where the eye lands, and because it is navigation rather than content: read
+ * the room, then see where else it went.
+ */
+const GREW_OUT_LIMIT = 8
+
+function renderGrewOut(room: Room): Line[] {
+  const grew = room.grewOut ?? []
+  if (grew.length === 0) return []
+
+  const lines: Line[] = [{ text: '' }]
+  const shown = grew.slice(0, GREW_OUT_LIMIT)
+
+  lines.push({
+    text: `${grew.length === 1 ? 'a room' : 'rooms'} that grew out of here:`,
+    tone: 'faint',
+  })
+  for (const child of shown) {
+    lines.push({ text: `${child.slug} — ${child.gloss}`, tone: 'dim', depth: 1 })
+  }
+
+  // No silent caps, here as everywhere. A room that spawned forty is not going
+  // to list forty on a 380px screen, and the ones cut off are still findable.
+  if (grew.length > shown.length) {
+    lines.push({
+      text: `and ${grew.length - shown.length} more — find --rooms <word> reaches them.`,
+      tone: 'faint',
+      depth: 1,
+    })
+  }
   return lines
 }
 

@@ -85,8 +85,9 @@ export const ABOUT: readonly GuideSection[] = [
   {
     heading: 'Rooms people make',
     body: [
-      'make garden asks what the room is for, then opens it and walks you in. You need to have followed your sign-in link, and you can make three in any seven days.',
+      'make garden asks what the room is for, then walks you into it. You need to have followed your sign-in link, and you can make three in any seven days.',
       'A room you make is not yours. No owner and no moderator — inside it you are another person in a room, like anywhere else.',
+      'Make one from inside another room and that room lists it at the bottom, as having grown out of it. That line is the whole of the connection: the new room has an ordinary name and is not inside anything. It is a signpost for whoever reads the room a subject wandered out of.',
       'It sits in the lobby while people are talking in it, and drops out of the listing after a fortnight of silence — not deleted, just unlisted. Search still finds it, and it returns the moment somebody says something in it.',
     ],
   },

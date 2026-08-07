@@ -104,11 +104,13 @@ test('make is in help from everywhere, and explains itself', async ({ page }) =>
   for (const path of ['/lobby', '/music', '/commons']) {
     await page.goto(path)
     await type(page, 'help')
-    await expect(scrollback(page), path).toContainText('make — start a new room')
+    await expect(scrollback(page), path).toContainText('make — create a new room')
   }
 
   await type(page, 'what make')
   await expect(scrollback(page)).toContainText('three a week')
+  // The alias, named where a terminal-literate reader goes looking for it.
+  await expect(scrollback(page)).toContainText('create')
 })
 
 test('find --rooms searches names and what rooms are for', async ({ page }) => {
@@ -211,4 +213,47 @@ test('what you say on the feed comes back with an address that works there', asy
   // `go 7` is refused on the feed, so telling somebody to type it would be an
   // instruction that fails when followed.
   await expect(scrollback(page)).toContainText('~addressee/')
+})
+
+test('a room made from inside a room is listed at the bottom of that room', async ({ page }) => {
+  /*
+   * "Can you create a room within a room? Maybe 3-5 deep, for subtopics." This
+   * is what got built instead of nesting, and this is the walk that proves it:
+   * the new room's address has no parent in it, and the parent has one line
+   * saying where people went.
+   */
+  await withName(page)
+
+  await type(page, 'make bebop the fast stuff')
+  // A plain top-level address. Not /music/bebop — nothing is inside anything.
+  await expect(page).toHaveURL(/\/bebop$/)
+  await expect(label(page)).toHaveText('roommaker:bebop$')
+
+  await type(page, 'go music')
+  await expect(scrollback(page)).toContainText('grew out of here')
+  await expect(scrollback(page)).toContainText('bebop — the fast stuff')
+
+  // The line is navigation: typing what it shows walks you there.
+  await type(page, 'go bebop')
+  await expect(label(page)).toHaveText('roommaker:bebop$')
+})
+
+test('a room made from the lobby is nobody’s subtopic', async ({ page }) => {
+  await withName(page)
+  await type(page, 'leave')
+  await type(page, 'make garden what you are growing')
+
+  await type(page, 'go music')
+  await expect(scrollback(page)).not.toContainText('grew out of here')
+})
+
+test('create is on the help list, under the word somebody would look for', async ({ page }) => {
+  // Reported as "create doesn't appear to be showing in the help menu". It was
+  // there, glossed "start a new room" — the right verb and the wrong word.
+  await page.goto('/music')
+  await type(page, 'help')
+
+  const lines = (await scrollback(page).innerText()).split('\n')
+  const make = lines.find((line) => line.startsWith('make —'))
+  expect(make).toContain('create')
 })

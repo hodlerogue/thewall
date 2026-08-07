@@ -41,8 +41,24 @@ export interface Room {
    * else in it has.
    */
   madeBy?: string
+  /**
+   * The room somebody was standing in when they made this one, if any.
+   *
+   * A label for discovery, never part of an address and never a permission —
+   * see `20260806020000_rooms_grew_out_of.sql` for why nesting was not the
+   * answer. Fixture-side counterpart of `rooms.from_room`.
+   */
+  fromRoom?: string
   /** §3.10 — commons keeps nothing. Posts expire, no IDs, no threads. */
   ephemeral: boolean
+  /**
+   * Rooms somebody opened while standing in this one.
+   *
+   * Subtopics without a tree: they are ordinary rooms with ordinary addresses,
+   * and this is the only thing connecting them. Present but empty for a room
+   * nobody has branched off.
+   */
+  grewOut?: { slug: string; gloss: string }[]
   /** The newest page of them, oldest-first once rendered. */
   posts: Post[]
   /**

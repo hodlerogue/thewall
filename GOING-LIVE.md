@@ -11,11 +11,16 @@ these fail silently — the site keeps loading and one feature is quietly dead.
 
 ## 1. The database
 
-Your project was set up when there were three migrations. There are now fifteen.
-The five that came after add: the column-scoped grants that close two console
-bypasses, mail, the kill switch, rename, and erasure. **None of their features
-work until they are applied**, and none of them fail at build time — they fail
-in somebody's browser.
+Your project was set up when there were three migrations. There are now
+eighteen. What the rest add: the column-scoped grants that close two console
+bypasses, mail, the kill switch, rename, erasure, walls, rooms people make, the
+feed, three more rooms, the opt-in daily email, and rooms that grew out of a
+room. **None of their features work until they are applied**, and none of them
+fail at build time — they fail in somebody's browser.
+
+The one to apply first if you apply nothing else is
+`20260805050000_insert_grants.sql`. It is the security fix: without it a browser
+can insert rows into `profiles` directly.
 
 Find out what you actually have:
 
@@ -37,7 +42,7 @@ This is safe to run repeatedly now. On its first run against an existing project
 it probes for each migration, records the ones already there, and applies only
 the rest — nothing runs twice and nothing is skipped.
 
-**Worked when:** `db-check.sh` shows all eight as `applied`, every room has
+**Worked when:** `db-check.sh` shows all eighteen as `applied`, every room has
 something in the last two columns, and the anon role reads all five objects.
 
 ---

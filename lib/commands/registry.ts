@@ -324,14 +324,50 @@ export const COMMANDS: readonly Command[] = [
     verb: 'make',
     aliases: ['create', 'new', 'mkdir', 'open-room'],
     contexts: ALL,
-    gloss: () => 'start a new room',
+    /*
+     * "create doesn't appear to be showing in the help menu."
+     *
+     * It was showing — as `make — start a new room`, which is the right verb by
+     * §3.5 and the wrong word to go looking for. `create` is an alias, so it
+     * works when typed and is listed under `what make`, and neither of those
+     * helps somebody scanning a list for the word they already have in mind.
+     *
+     * Swapping the verb was the other option and is worse: `make` is shorter,
+     * it is what the palette and every error message already say, and moving it
+     * renames a verb people have learned. Putting the word in the gloss costs
+     * one word and makes the line findable by either name.
+     */
+    gloss: () => 'create a new room',
     detail: () =>
-      'makes a room: make garden what you are growing. the first word is its name, the rest says what it is for and shows under it in the lobby. you need a verified account, and you can make three a week. a room has no owner — once it exists it is everybody\u2019s.',
+      'makes a room: make garden what you are growing (create works too). the first word is its name, the rest says what it is for and shows under it in the lobby. you need a verified account, and you can make three a week. a room has no owner — once it exists it is everybody\u2019s. made from inside another room, that room lists it at the bottom as having grown out of it — it is still an ordinary room with an ordinary name, not something inside anything.',
     insert: () => 'make ',
     wrongContext: () => '',
-    async run({ arg, env, session }) {
+    async run({ arg, context, location, env, session }) {
       const [slug = '', ...rest] = arg.trim().split(/\s+/)
       const gloss = rest.join(' ')
+
+      /*
+       * Where you were standing, so a room made from inside one is recorded as
+       * having grown out of it — and shows up in a line at the bottom of that
+       * room. Subtopics without nesting; see the migration for why not nesting.
+       *
+       * From a post, the room the post is in: `make` from inside `music/12` is
+       * still `make` from music, and reading a thread is the commonest moment
+       * to want a room for the tangent.
+       *
+       * Never the feed (it holds nothing and is nobody's parent) and never a
+       * wall — "jazz grew out of ~marisol" is not a thing anybody means. The
+       * lobby has no room to be from. `create_room` checks all of this again
+       * rather than trusting it.
+       */
+      const from =
+        context === 'lobby' ||
+        context === 'person' ||
+        location.room === undefined ||
+        location.room === FEED ||
+        location.room.startsWith('~')
+          ? undefined
+          : location.room
 
       if (slug === '') {
         return error('make what? try: make garden')
@@ -341,7 +377,7 @@ export const COMMANDS: readonly Command[] = [
       }
 
       const open = async (line: string): Promise<RunResult> => {
-        const made = await env.makeRoom(slug, line)
+        const made = await env.makeRoom(slug, line, from)
         if (!made.ok) return error(made.reason)
 
         const room = await env.getRoom(made.slug)
