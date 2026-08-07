@@ -301,9 +301,28 @@ function takeKeyOutcome(): Line[] {
   }
 
   if (outcome === 'expired') {
+    /*
+     * `login <name>`, not `resend` — because the commonest way to arrive here
+     * is in a browser with no session, and `resend` reads the address off
+     * `auth.getUser()`. With nothing to read it answers "say something first
+     * and i'll ask who you are", saying something asks for a name, and your own
+     * name comes back taken. Three steps to a dead end, from the one line of
+     * advice on the screen.
+     *
+     * That is exactly the trap `/api/login` was built to end, still reachable
+     * through this message. And it breaks the rule written down for it: a
+     * suggested fix has to be one the site will accept.
+     *
+     * The route here is walked more than it looks. Gmail's app opens links in
+     * its own browser, which has its own cookies — so the key is spent over
+     * there, and the same link opened in Safari afterwards lands on this line
+     * with no session behind it. `login <name>` is the one instruction that
+     * works whether or not there is one; signed in already, it says so and
+     * costs nothing.
+     */
     return [
       { text: 'that key had already been used, or it expired.', tone: 'error' },
-      { text: 'type resend and i’ll send you another one.', tone: 'faint' },
+      { text: 'type login and your name — login ryan — and i’ll send another.', tone: 'faint' },
       { text: '' },
     ]
   }

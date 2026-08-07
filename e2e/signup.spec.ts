@@ -206,8 +206,30 @@ test('a spent or missing key says so rather than doing nothing', async ({ page }
   await expect(page.getByTestId('prompt-label')).toBeVisible()
 
   await expect(scrollback(page)).toContainText('already been used, or it expired')
-  await expect(scrollback(page)).toContainText('type resend')
   expect(page.url()).not.toContain('key=')
+
+  /*
+   * The advice has to be advice this browser can take. There is no session here
+   * — that is the whole point of the route — and `resend` reads the address off
+   * the session, so it was telling a signed-out person to type the one command
+   * that cannot work for them.
+   */
+  await expect(scrollback(page)).toContainText('type login and your name')
+  await expect(scrollback(page)).not.toContainText('type resend')
+
+  // Followed, it does something. Not "nothing to send yet — say something
+  // first", which is where the old advice led.
+  await page.getByTestId('prompt-input').fill('resend')
+  await page.getByTestId('prompt-input').press('Enter')
+  await expect(scrollback(page)).toContainText('say something first')
+
+  // Accepted as an instruction rather than refused. The demo Env says out loud
+  // that it sends nothing, which is the fixture being honest — what matters is
+  // that it is not "that's not a name" or a suggestion of `login_marisol`.
+  await page.getByTestId('prompt-input').fill('login marisol')
+  await page.getByTestId('prompt-input').press('Enter')
+  await expect(scrollback(page)).toContainText('a key would be in that account')
+  await expect(scrollback(page)).not.toContainText('would work')
 })
 
 
