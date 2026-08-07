@@ -38,6 +38,9 @@ function harness(options: { me?: string; accounts?: string[] } = {}) {
     async create(name) {
       return { ok: true as const, name }
     },
+    async logout() {
+      return { ok: true as const }
+    },
     async login(name) {
       asked.push(name)
       if (!accounts.has(name)) {

@@ -90,6 +90,15 @@ export function httpSignupApi(): SignupApi {
       return { ok: true as const, name: payload.name, note: payload.note }
     },
 
+    async logout() {
+      const response = await fetch('/api/logout', { method: 'POST' })
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string }
+        return { ok: false as const, reason: payload.error ?? 'couldn’t sign you out just now.' }
+      }
+      return { ok: true as const }
+    },
+
     async create(name: string, email: string) {
       const response = await fetch('/api/signup', {
         method: 'POST',

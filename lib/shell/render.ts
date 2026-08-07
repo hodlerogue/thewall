@@ -278,18 +278,24 @@ export function renderProfile(profile: Profile, now = new Date()): Line[] {
     lines.push({ text: post.body, depth: 1 })
   }
 
-  // Still the newest — `profile.posts` arrives newest-first and only the
-  // printing was reversed, so this is the one now sitting directly above.
+  /*
+   * One instruction, and it is true of every line above it.
+   *
+   * This used to give a two-step recipe built from a single post: "these live
+   * in rooms — go poker, then go 4". Somebody who has posted in music and poker
+   * reads that as general advice, and it is only ever right for whichever post
+   * happens to be newest. Reported exactly that way: "that's true for the most
+   * recent post but not for any of the others, so it's just confusing."
+   *
+   * A whole address works from anywhere — `go` has taken them for a while — so
+   * the one-step form needs no branch, applies to every line, and collapses the
+   * wall case and the room case into the same sentence. The newest is used as
+   * the example because it is the one directly above.
+   */
   const newest = profile.posts[0]
   lines.push({ text: '' })
   lines.push({
-    // Two closing lines because there are now two kinds of address on this
-    // page, and the old one — "go to the room first" — is a wrong instruction
-    // for a post on their wall: you are already standing where that opens.
-    text:
-      newest.room === `~${profile.name}`
-        ? `the ~${profile.name} ones are here — go ${newest.id} opens that one.`
-        : `these live in rooms — go ${newest.room}, then go ${newest.id}.`,
+    text: `each of those is an address — go ${newest.room}/${newest.id} opens that one.`,
     tone: 'faint',
   })
   return lines

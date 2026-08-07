@@ -435,6 +435,11 @@ function fixtureSignup(people: FixturePerson[]): SignupApi {
     async resend() {
       return { note: 'nothing to send — this is a demo.' }
     },
+    async logout() {
+      // Nothing to end — the demo never had a session. Answering `ok` is the
+      // truth of it: after this you are a guest here, same as the real site.
+      return { ok: true as const }
+    },
     async login(name: string) {
       // Both branches, not a single cheerful one. `login` is reachable from
       // `help` here as it is anywhere, so the fixture build is where somebody

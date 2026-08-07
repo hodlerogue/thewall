@@ -14,6 +14,7 @@ const EPHEMERAL = ['commons']
 const signedIn = new Session(
   { async checkName() { return { available: true, alternates: [] } },
     async create(name) { return { ok: true as const, name } },
+    async logout() { return { ok: true as const } },
     async login(name: string) { return { ok: true as const, name, note: 'sent' } },
     async resend() { return { note: 'sent' } } },
   { async post() { return 1 }, async reply() {},
@@ -350,6 +351,9 @@ describe('§3.6 — help is a glossary, not a wall', () => {
       },
       async create(name) {
         return { ok: true as const, name }
+      },
+      async logout() {
+        return { ok: true as const }
       },
       async login(name: string) {
         return { ok: true as const, name, note: 'sent' }

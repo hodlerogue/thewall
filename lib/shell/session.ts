@@ -57,6 +57,8 @@ export interface SignupApi {
    * for the case where there is no session to read an address off.
    */
   login(name: string): Promise<{ ok: true; name: string; note: string } | { ok: false; reason: string }>
+  /** Ends the session on this device. Nothing anywhere else changes. */
+  logout(): Promise<{ ok: true } | { ok: false; reason: string }>
 }
 
 export interface Writer {
@@ -482,6 +484,48 @@ export class Session {
     }
     const { note } = await this.api.resend()
     return [{ text: note, tone: 'faint' }]
+  }
+
+  /**
+   * Leaving this device, and nothing else.
+   *
+   * The name goes from the prompt, the held sentence goes with it, and the
+   * posts stay exactly where they are — which is the part worth saying out
+   * loud, because "log out" reads as "remove me" to plenty of people.
+   */
+  async signOut(): Promise<{ lines: Line[]; identity: string | null }> {
+    if (this.who === null) {
+      return {
+        lines: [{ text: 'you’re already reading as a guest.', tone: 'faint' }],
+        identity: null,
+      }
+    }
+
+    const was = this.who
+    const result = await this.api.logout()
+    if (!result.ok) {
+      // Still signed in, and told so. Saying "you're out" while the cookie is
+      // there is the one answer that could actually hurt somebody, on the
+      // shared machine this command exists for.
+      return { lines: [{ text: result.reason, tone: 'error' }], identity: was }
+    }
+
+    // Everything the session was holding on this person's behalf.
+    this.who = null
+    this.mode = 'command'
+    this.held = null
+    this.pendingName = null
+    this.pending = null
+    this.explainedAddresses = false
+    this.paging = null
+
+    return {
+      lines: [
+        { text: `signed out. this browser isn’t ${was} anymore.`, tone: 'accent' },
+        { text: `everything ${was} said is still there — login ${was} comes back.`, tone: 'faint' },
+      ],
+      identity: null,
+    }
   }
 
   /**

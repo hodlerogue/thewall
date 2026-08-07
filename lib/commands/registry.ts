@@ -791,6 +791,7 @@ export const COMMANDS: readonly Command[] = [
       const ELSEWHERE = [
         'about',
         'login',
+        'logout',
         'mail',
         'notify',
         'rename',
@@ -1254,6 +1255,36 @@ export const COMMANDS: readonly Command[] = [
         }
       }
       return { lines: await session.signIn(arg) }
+    },
+  },
+
+  {
+    /*
+     * Leaving a device.
+     *
+     * There was no way to do this at all, on a site whose session cookie lasts
+     * four hundred days. Signing in on a borrowed phone was therefore a
+     * four-hundred-day decision, taken by somebody who thought they were
+     * reading a website, with no way to undo it from inside.
+     *
+     * Not hidden, for the same reason `login` is not: the person who needs it
+     * is standing at somebody else's machine wanting to leave, and a verb they
+     * have to already know is a verb that is not there.
+     */
+    verb: 'logout',
+    aliases: ['signout', 'bye'],
+    contexts: ALL,
+    gloss: () => 'leave this device',
+    detail: () =>
+      'signs this browser out. everything you have said stays exactly where it is — login <yourname> comes back to it. only this device: anything else you are signed in on is untouched.',
+    insert: () => 'logout',
+    wrongContext: () => '',
+    async run({ session }) {
+      const { lines, identity } = await session.signOut()
+      // `identity` rather than nothing: the prompt says who you are, and it has
+      // to stop saying it in the same breath. Returning `null` is what makes it
+      // read `guest` again.
+      return { lines, identity }
     },
   },
 

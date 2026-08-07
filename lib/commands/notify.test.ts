@@ -45,6 +45,9 @@ function harness(options: { me?: string | null; refuse?: string } = {}) {
     async create(name) {
       return { ok: true as const, name }
     },
+    async logout() {
+      return { ok: true as const }
+    },
     async login(name) {
       return { ok: true as const, name, note: 'sent' }
     },

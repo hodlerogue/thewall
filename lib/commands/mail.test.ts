@@ -27,6 +27,9 @@ function harness(items: MailItem[]) {
     async create(name) {
       return { ok: true as const, name }
     },
+    async logout() {
+      return { ok: true as const }
+    },
     async login(name: string) {
       return { ok: true as const, name, note: 'sent' }
     },

@@ -85,6 +85,15 @@ Terminal.tsx ──typed text──> run.ts ──parse──> registry.ts ─�
 | `lib/data/live.ts` | realtime: presence, and posts arriving while you stand there |
 | `lib/supabase/{client,server,reader}.ts` | the three clients: browser, route handler, and unauthenticated read |
 
+**An instruction printed under a list has to be true of the whole list.** A
+profile closed with "these live in rooms — go poker, then go 4", built from
+whichever post was newest and printed under posts spanning several rooms. It was
+right for one line and wrong for the rest, which is worse than saying nothing:
+somebody who follows it once and finds it works learns a rule that then fails.
+A whole address works from anywhere, so the one-step form is true of every line
+and needs no branch for walls either. When a closing line names an example, make
+sure it is an example of a rule rather than a route.
+
 **Never decorate a value before comparing it.** Live arrivals suppress your own
 posts by comparing the author to your name — and the caller built the display
 string first, `20  ryan`, and passed that as the author. So the comparison asked
@@ -124,6 +133,7 @@ three of them mint magic links for different reasons.
 | `app/api/verify/resend/route.ts` | another key for **this** session, when the first expired |
 | `app/api/login/route.ts` | a key for a name, for a browser with **no** session — the way back in |
 | `app/auth/callback/route.ts` | the only thing that has ever made somebody signed in |
+| `app/api/logout/route.ts` | ending it on this device, `scope: 'local'` |
 | `app/api/digest/route.ts` | the daily email, POST + shared secret, off when unconfigured |
 | `app/unsubscribe/page.tsx` | stopping it with no session, from the link in the email |
 

@@ -64,6 +64,7 @@ export const ABOUT: readonly GuideSection[] = [
       'You do not need an account to read. The first time you try to say something, you are asked what to call you and where to send a sign-in link — and the sentence you already typed is posted for you. You never type it twice.',
       'There are no passwords; signing in is a link. Your address is never shown to anybody and never sold. You can say one thing before following that link — after that it asks you to check your email, because an address nobody has proved they can read is no way back in.',
       'And that is what it is a way back in for. On a new phone, or after clearing your browser, type login and your name: a key goes to the address that name signed up with, and clicking it makes this browser you again. Never make a second account to get back in — your posts stay with the first name.',
+      'logout ends it on the device you are holding, and nothing else. On a borrowed phone that matters: signing in lasts over a year otherwise. Everything you said stays where it is.',
     ],
   },
   {

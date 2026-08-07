@@ -265,3 +265,36 @@ test.describe('the unsubscribe link in the email', () => {
     await expect(page.locator('main')).toContainText('notify off')
   })
 })
+
+test.describe('leaving a device', () => {
+  test('logout drops you back to guest, and the prompt says so', async ({ page }) => {
+    await page.goto('/commons')
+    await type(page, 'say hello there')
+    await type(page, 'leaver')
+    await type(page, 'leaver@example.com')
+    await expect(page.getByTestId('prompt-label')).toHaveText('leaver:commons$')
+
+    await type(page, 'logout')
+    // The prompt is the thing that says who you are. If it still said `leaver`
+    // after this, the message would be the only evidence and it would be wrong.
+    await expect(page.getByTestId('prompt-label')).toHaveText('guest:commons$')
+    await expect(scrollback(page)).toContainText('isn’t leaver anymore')
+  })
+
+  test('says the posts stay and names the way back', async ({ page }) => {
+    await page.goto('/commons')
+    await type(page, 'say hello there')
+    await type(page, 'stayer')
+    await type(page, 'stayer@example.com')
+    await type(page, 'logout')
+
+    await expect(scrollback(page)).toContainText('still there')
+    await expect(scrollback(page)).toContainText('login stayer')
+  })
+
+  test('is in help, where somebody at a borrowed machine would look', async ({ page }) => {
+    await page.goto('/lobby')
+    await type(page, 'help')
+    await expect(scrollback(page)).toContainText('logout — leave this device')
+  })
+})
