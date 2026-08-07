@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Palette } from '@/components/Palette'
 import { describeError } from '@/lib/shell/errors'
 import type { Chip, Line, Location, Runner } from '@/lib/shell/types'
@@ -21,16 +21,55 @@ function withKey(line: Line): Keyed {
 type Keyed = Line & { key: number }
 
 /**
+ * The scrollback, rendered apart from everything that changes while you type.
+ *
+ * `input` is state on `Terminal`, so every keystroke re-rendered the component
+ * — and with it every line ever printed. Measured at 380×740: about 0.007ms
+ * per line per keystroke, so the 600-line cap was costing ~4ms on a desktop
+ * container and several times that on a phone, on every letter. That cost is
+ * what set the cap, and the cap is what limited how much of a room could be
+ * shown at once. A product decision was being made by a render loop.
+ *
+ * Memoised, `lines` only changes when something is actually printed, so typing
+ * no longer touches this at all and the cap is free to be about memory and
+ * usefulness instead of latency.
+ */
+const Scrollback = memo(function Scrollback({ lines }: { lines: readonly Keyed[] }) {
+  return (
+    <>
+      {lines.map((line) => (
+        <p
+          key={line.key}
+          className={[
+            'line',
+            line.tone && line.tone !== 'default' ? `line-${line.tone}` : '',
+            line.depth ? `depth-${line.depth}` : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          {line.text === '' ? ' ' : line.text}
+        </p>
+      ))}
+    </>
+  )
+})
+
+/**
  * How much scrollback to keep.
  *
  * It grew without bound: no cap, no clear, no virtualisation, and every append
- * copies the array, re-renders every line and forces a layout read for the
- * autoscroll. A `look` in a busy room emits well over a hundred lines, and
- * commons is explicitly meant to be left open — §3.10 calls it a hallway. A
- * tab left overnight became a typing-latency problem and then a tab mobile
- * Safari reloads out from under you, taking a held sentence with it.
+ * copies the array and forces a layout read for the autoscroll. A tab left
+ * overnight — commons is explicitly meant to be left open, §3.10 calls it a
+ * hallway — became a typing-latency problem and then a tab mobile Safari
+ * reloads out from under you, taking a held sentence with it.
+ *
+ * Raised from 600 once typing stopped re-rendering it. It now holds roughly
+ * seven pages of a busy room, so `older` can walk back a long way without the
+ * page you started on being trimmed out from under you — which at 600 it
+ * would have been, after one step.
  */
-const MAX_LINES = 600
+const MAX_LINES = 1500
 
 function append(previous: Keyed[], incoming: readonly Line[]): Keyed[] {
   const next = [...previous, ...incoming.map(withKey)]
@@ -450,20 +489,7 @@ export function Terminal({
           pinnedToBottom.current = el.scrollHeight - el.clientHeight - el.scrollTop < 40
         }}
       >
-        {lines.map((line) => (
-          <p
-            key={line.key}
-            className={[
-              'line',
-              line.tone && line.tone !== 'default' ? `line-${line.tone}` : '',
-              line.depth ? `depth-${line.depth}` : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-          >
-            {line.text === '' ? ' ' : line.text}
-          </p>
-        ))}
+        <Scrollback lines={lines} />
       </div>
 
       <div className="composer">

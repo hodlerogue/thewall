@@ -85,6 +85,23 @@ Terminal.tsx ──typed text──> run.ts ──parse──> registry.ts ─�
 | `lib/data/live.ts` | realtime: presence, and posts arriving while you stand there |
 | `lib/supabase/{client,server,reader}.ts` | the three clients: browser, route handler, and unauthenticated read |
 
+**Erasure anonymises, so `on delete cascade` never fires.** `forget` renames the
+profile to a tombstone and blanks the address; it does not delete the row,
+because deleting it would take every reply other people wrote under that
+person's posts. The consequence catches every table added afterwards: a new
+table keyed on `profile_id` survives an erasure untouched unless `forget`
+deletes from it by name. `notify_settings` was written without that and held a
+preference, a last-sent timestamp and an unsubscribe token for somebody who had
+asked to be gone. **Adding a table keyed on a profile means editing `forget`.**
+
+**A column on `profiles` is public.** `grant select on public.profiles` is
+table-wide and always has been, so anything added there is readable by anybody
+holding the anon key — which ships in the browser bundle. That is right for a
+name and wrong for a preference, a timestamp or a token, which is why the
+notification settings are their own table with no grants and no policies,
+reached only through `security definer` functions. Before adding a column to
+`profiles`, ask whether you would publish it, because you are.
+
 **Getting in and back in.** Four routes, and they are easy to confuse because
 three of them mint magic links for different reasons.
 
@@ -94,6 +111,8 @@ three of them mint magic links for different reasons.
 | `app/api/verify/resend/route.ts` | another key for **this** session, when the first expired |
 | `app/api/login/route.ts` | a key for a name, for a browser with **no** session — the way back in |
 | `app/auth/callback/route.ts` | the only thing that has ever made somebody signed in |
+| `app/api/digest/route.ts` | the daily email, POST + shared secret, off when unconfigured |
+| `app/unsubscribe/page.tsx` | stopping it with no session, from the link in the email |
 
 `login` and `resend` are not variants of each other. `resend` reads the address
 off `auth.getUser()`, so it cannot work without a session; `login` exists
@@ -326,7 +345,13 @@ syntax". If an error names an address, resolve one that exists rather than
 inventing a number.
 
 **An error's suggested fix has to be one the site will accept.** Stronger than
-the rule above, and learned the expensive way. Every individual message in the
+the rule above, learned the expensive way, and then broken again one commit
+after being written down here — the message added to close the loop below said
+"if it's taken by you, type login ryan", and mid-signup everything typed is an
+answer, so `login ryan` went to the name check, failed for containing a space,
+and offered `login_ryan`. Typing what the screen says has to work. Where an
+instruction is printed inside a question, the question has to honour it: see the
+`login <name>` escape beside `cancel` in `answer()`. Every individual message in the
 loop below was true, helpful in tone, and named a next step:
 
 ```
@@ -340,6 +365,79 @@ Followed end to end, that walked a returning person into a **second account**,
 and the first name's history stayed on the name they had abandoned. Nothing was
 wrong at any single step; the advice was wrong as a path. When you write an
 error that says "try X", type X into the thing and see what it answers.
+
+**Every contribution answers with exactly one line, in `accent`.** A room post
+gives its new address, a wall post gives `~name/7`, a reply gives the address of
+the post it is under (§4.3 — it has none of its own, and the post's is what you
+would type to come back), and commons gives the one surviving word, `said.`,
+because it is the only place with no address to give.
+
+Two things this went through, both worth not repeating. It printed `said.`
+everywhere, which is a delivery receipt under every sentence. Then it printed
+nothing at all where there was no address — and "instead of just LOOKING like
+it's sent" is what nothing reads as, because `live.ts` drops your own words from
+the channel so the screen does not otherwise change. And the tone was `dim`:
+both tones clear 4.5:1, so it was never legibility, it was hierarchy. `dim` is
+what this interface uses for things you skim past, so the one line saying "that
+happened" was in the skim-past colour.
+
+**"Is there anything waiting" and "is there anything new" are different
+questions.** The daily digest gated on the first and had to gate on the second:
+somebody who is emailed and never reads their mail still has the same pile
+tomorrow, so the first version sent the identical email every day for as long as
+it sat there — the exact daily nag the feature is written not to be, and a
+contradiction of the sentence `notify` itself prints. It sends on *new since the
+last email* and reports *everything unread*, so the number still matches the
+badge. Three attempts at the test for this passed against the broken function,
+because everybody in the seed has replies at assorted recent ages; it needed its
+own person with every timestamp controlled.
+
+**Success prints a value, or it prints nothing. Never a status word.** `cp`
+says nothing when it works, and a prompt that answers `said.` under every
+sentence is a chat client with delivery receipts wearing a terminal's clothes.
+What a successful `say` prints is the *address* — `music/7` — because that is
+the one fact about the post which is not already on the screen; your own words
+are on the echo line directly above it. Where there is no address there is no
+output: a reply has none (§4.3) and neither does commons (§3.10).
+
+Two things make this safe, and both are load-bearing:
+
+- `lib/data/live.ts` deliberately drops your own posts from the realtime
+  channel, so nothing arrives to show you. Silence works because the echo line
+  is the receipt — not because the room visibly changed. If own-post
+  suppression ever goes, revisit this.
+- **Any line that introduces the output has to read as finished without it.**
+  "now — the thing you were trying to say." was a heading for a confirmation;
+  the moment the confirmation stopped printing, commons and replies ended on a
+  promise followed by blank, which is worse than the receipt it replaced. It
+  now reads "and the thing you were trying to say is up." Fixture tests cannot
+  see this — the lines were all individually correct. It was found by
+  screenshotting the three cases at 380×740 and looking at them.
+
+**A fixture may be small. It may not be a different shape.** `fixtureEnv.getRoom`
+returned every post a room had while `supabaseEnv` capped it, so a 500-post room
+came back with 500 posts in every suite and 60 on the real site. Truncation
+therefore did not exist anywhere a test could see it, which is how a room
+silently showing a slice — no notice, no way back — survived to be found by
+hand. Both Envs now page against the exported `ROOM_PAGE`, and
+`lib/commands/older.test.ts` opens by asserting they agree. This is the third
+time this session that a fixture disagreeing with the database produced a green
+suite over broken behaviour; when you add an Env method, write the fixture and
+the real one in the same sitting and pin them together.
+
+**"I asked for N and got N" does not mean there are more.** It is the same
+answer for "exactly N" and "ten thousand". Fetch `N + 1`, show `N`, and report
+whether the extra arrived — `Room.more` is that, and without it a room holding
+exactly one page would advertise an `older` that finds nothing.
+
+**Don't let a render loop make a product decision.** A room showed 30 posts
+because `MAX_LINES` was 600, and `MAX_LINES` was 600 because `input` is state on
+`Terminal`, so every keystroke re-rendered every line — measured at ~0.007ms per
+line per keystroke, a few ms on desktop and several times that on a phone. The
+number nobody could justify was the render loop's, not the product's. The
+scrollback is memoised now, the cap is 1500, and the page size is set by what is
+useful. When a constant looks arbitrary, find out what is actually holding it
+down before arguing about the value.
 
 **Time runs down the screen, once.** `Terminal` sets `scrollTop = scrollHeight`
 after every command, so the view lands on the **last line printed**, not the

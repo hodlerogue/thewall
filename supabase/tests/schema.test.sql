@@ -162,10 +162,24 @@ commit;
 \echo ''
 \echo '§3.9 — reading is anonymous, writing is accountable'
 
+-- Counted as postgres first, then compared as anon.
+--
+-- This was `= 7`, which is the same sentence as "sees every room" right up
+-- until a room is added — and then it is a failing test about nothing, which
+-- teaches whoever added the room to edit assertions without reading them. A
+-- session setting rather than a temp table, because anon would need a grant on
+-- the table and needs nothing to read a GUC.
+select set_config(
+  'tests.room_count',
+  (select count(*)::text from public.rooms where owner_id is null),
+  false
+);
+
 begin;
   set local role anon;
   select tests.ok(
-    (select count(*) from public.rooms where owner_id is null) = 7,
+    (select count(*) from public.rooms where owner_id is null)
+      = current_setting('tests.room_count')::int,
     'anonymous readers see every room');
   -- Including the ones that are somebody's wall: a wall is not private, it is
   -- just not in the lobby.
@@ -1217,9 +1231,18 @@ select tests.ok(
 -- from an un-archived building rather than inheriting that one.
 update public.rooms set archived_at = null;
 
+-- The furniture, by name.
+--
+-- This counted them (`= 7`), which meant adding a room made a passing test fail
+-- for no reason and a *removed* one could be hidden by a newly added one. The
+-- set is what matters: these exact rooms are the ones that are always there,
+-- and the lobby reading the same each time you walk in is the whole of §3.11's
+-- argument.
 select tests.ok(
-  (select count(*) from public.room_overview where curated) = 7,
-  'the curated rooms are all in the lobby'
+  (select array_agg(slug::text order by sort_order) from public.room_overview where curated)
+    = array['commons', 'music', 'builders', 'poker', 'kitchen', 'latenight',
+            'crypto', 'movies', 'feedback', 'feed'],
+  'the curated rooms are all in the lobby, in the order the seed sets'
 );
 select tests.ok(
   (select count(*) from public.room_overview where not curated) = 3,
@@ -1242,7 +1265,8 @@ select tests.ok(
   'and search still finds it, saying it is quiet'
 );
 select tests.ok(
-  (select count(*) from public.room_overview where curated) = 7,
+  (select count(*) from public.room_overview where curated)
+    = (select count(*) from public.rooms where curated and hidden_at is null),
   'a curated room never fades, however quiet'
 );
 
@@ -1623,6 +1647,251 @@ begin;
   );
 commit;
 select public.hide_post('~walled', 1, false);
+
+\echo ''
+\echo '§4.1, decided differently — one email a day, only if asked'
+
+\set jameson '11111111-1111-4111-8111-111111111111'
+\set marisol '22222222-2222-4222-8222-222222222222'
+
+-- A post of jameson's and a fresh reply to it, rather than the seeded pair.
+-- `mail_seen_at` defaults to when the profile row was made, and the seed
+-- backdates its content, so everything shipped with the site is already read —
+-- which is right, and makes it useless for testing "waiting".
+insert into public.posts (room_slug, post_no, author_id, body)
+select 'music', 900, :'jameson'::uuid, 'a post with something waiting on it'
+ where not exists (select 1 from public.posts where room_slug = 'music' and post_no = 900);
+
+insert into public.replies (post_id, author_id, body)
+select id, :'marisol'::uuid, 'a reply that has not been read'
+  from public.posts where room_slug = 'music' and post_no = 900;
+
+select tests.ok(
+  (select count(*) from public.notify_settings) = 0,
+  'nobody is signed up for email until somebody asks'
+);
+select tests.ok(
+  not exists (select 1 from public.pending_digests()),
+  'and nothing is due to be sent'
+);
+
+-- The table is not readable from a browser. Every column in it is one somebody
+-- would rather not publish, and the unsubscribe token is one nobody else may
+-- have at all.
+select tests.ok(
+  not has_table_privilege('anon', 'public.notify_settings', 'select'),
+  'anon cannot read who gets email, or their unsubscribe token'
+);
+select tests.ok(
+  not has_table_privilege('authenticated', 'public.notify_settings', 'select'),
+  'and neither can a signed-in reader'
+);
+select tests.ok(
+  not has_table_privilege('authenticated', 'public.notify_settings', 'update'),
+  'nor turn it on for somebody else by writing the row directly'
+);
+select tests.ok(
+  not has_function_privilege('authenticated', 'public.pending_digests()', 'execute'),
+  'and cannot ask the site for every address on it'
+);
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'jameson';
+
+  select tests.ok(public.notify_state() = false, 'it is off before you ask');
+  select tests.ok(public.set_notify(true) = true, 'and on once you do');
+  select tests.ok(public.notify_state() = true, 'which sticks');
+commit;
+
+select tests.ok(
+  (select count(*) from public.pending_digests() where profile_id = :'jameson'::uuid) = 1,
+  'somebody with replies waiting is due an email'
+);
+select tests.ok(
+  (select unread from public.pending_digests() where profile_id = :'jameson'::uuid) > 0,
+  'and it says how many'
+);
+
+-- The number in the email and the number in the badge are the same number, or
+-- an email saying "3 replies" opens onto an empty `mail`.
+-- Read as postgres, compared as jameson. `pending_digests` is service-role
+-- only, so calling it inside the role block is exactly what the revoke above
+-- forbids — which is how the first version of this assertion failed, and is
+-- worth leaving written down: the guard caught its own test.
+select set_config(
+  'tests.digest_unread',
+  (select unread::text from public.pending_digests() where profile_id = :'jameson'::uuid),
+  false
+);
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'jameson';
+  select tests.ok(
+    public.mail_count() = current_setting('tests.digest_unread')::int,
+    'the digest count is the badge count, filter for filter'
+  );
+commit;
+
+-- Nobody else was opted in, so nobody else is in the list.
+select tests.ok(
+  (select count(*) from public.pending_digests()) = 1,
+  'and nobody who did not ask is in the list'
+);
+
+-- One a day, and the stamp is what enforces it.
+select tests.ok(
+  public.mark_digested(array[:'jameson'::uuid]) = 1,
+  'sending stamps the person who was sent to'
+);
+select tests.ok(
+  not exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  'and they are not due again the same day'
+);
+update public.notify_settings set notified_at = now() - interval '25 hours';
+select tests.ok(
+  exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  'but they are tomorrow'
+);
+
+-- The same pile does not get emailed about twice ------------------------------
+--
+-- The one that made this a nag rather than a notification. Somebody who is sent
+-- a digest and never reads their mail still has those replies waiting
+-- tomorrow — and the first version of `pending_digests` gated only on unread,
+-- so it sent the identical email every day for as long as the pile sat there.
+-- That is exactly what `notify`'s own output promises it does not do.
+--
+-- Its own person, because everybody in the seed has replies at assorted recent
+-- ages and none of the ones above could isolate this. The first three attempts
+-- at this assertion all passed against the broken function.
+insert into auth.users (id, email)
+values ('77777777-7777-4777-8777-777777777777', 'quiet@seed.invalid')
+on conflict (id) do nothing;
+insert into public.profiles (id, name, verified_at, mail_seen_at)
+values ('77777777-7777-4777-8777-777777777777', 'quiet', now(), now() - interval '10 days')
+on conflict (id) do nothing;
+insert into public.posts (room_slug, post_no, author_id, body, created_at)
+values ('music', 950, '77777777-7777-4777-8777-777777777777', 'a post of quiet''s', now() - interval '9 days');
+insert into public.replies (post_id, author_id, body, created_at)
+select id, :'marisol'::uuid, 'answered days ago, never read', now() - interval '3 days'
+  from public.posts where room_slug = 'music' and post_no = 950;
+
+-- Emailed yesterday, about that reply.
+insert into public.notify_settings (profile_id, daily, notified_at)
+values ('77777777-7777-4777-8777-777777777777', true, now() - interval '25 hours');
+
+select tests.ok(
+  not exists (
+    select 1 from public.pending_digests()
+     where profile_id = '77777777-7777-4777-8777-777777777777'::uuid
+  ),
+  'a pile nobody has added to is not emailed about a second time'
+);
+
+-- Somebody answers again today. Now there is something to say.
+insert into public.replies (post_id, author_id, body)
+select id, :'marisol'::uuid, 'and again today'
+  from public.posts where room_slug = 'music' and post_no = 950;
+
+select tests.ok(
+  exists (
+    select 1 from public.pending_digests()
+     where profile_id = '77777777-7777-4777-8777-777777777777'::uuid
+  ),
+  'and a new reply is'
+);
+select tests.ok(
+  (select unread from public.pending_digests()
+    where profile_id = '77777777-7777-4777-8777-777777777777'::uuid) = 2,
+  'and the number is everything waiting, not just what is new — it has to match the badge'
+);
+
+delete from public.posts where room_slug = 'music' and post_no = 950;
+delete from public.notify_settings where profile_id = '77777777-7777-4777-8777-777777777777'::uuid;
+
+-- Hiding reaches this too. It is the surface that taps somebody on the
+-- shoulder, so §6's lever has to arrive here as well as in the badge.
+update public.replies set hidden_at = now()
+ where post_id = (select id from public.posts where room_slug = 'music' and post_no = 900);
+select tests.ok(
+  not exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  'a hidden reply is not something anybody is emailed about'
+);
+update public.replies set hidden_at = null
+ where post_id = (select id from public.posts where room_slug = 'music' and post_no = 900);
+
+-- Banned, and it stops. Emailing somebody who has been removed is the site
+-- keeping in touch with a person it has just shown the door.
+update public.profiles set banned_at = now() where id = :'jameson'::uuid;
+select tests.ok(
+  not exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  'a banned account is not emailed'
+);
+update public.profiles set banned_at = null where id = :'jameson'::uuid;
+
+-- Unverified means an address nobody has proved they can read, which probably
+-- belongs to somebody else.
+update public.profiles set verified_at = null where id = :'jameson'::uuid;
+select tests.ok(
+  not exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  'an unproven address is never written to'
+);
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'jameson';
+  select tests.raises(
+    $$select public.set_notify(true)$$,
+    'an unproven address cannot turn email on in the first place'
+  );
+commit;
+update public.profiles set verified_at = now() where id = :'jameson'::uuid;
+
+-- Unsubscribing works with no session at all, because the link is followed on
+-- whatever device the email was opened on.
+select tests.ok(
+  public.unsubscribe((select token from public.notify_settings where profile_id = :'jameson'::uuid)),
+  'the token in the email turns it off, with nobody signed in'
+);
+select tests.ok(
+  (select daily from public.notify_settings where profile_id = :'jameson'::uuid) = false,
+  'and it is really off'
+);
+select tests.ok(
+  not public.unsubscribe('00000000-0000-4000-8000-000000000000'::uuid),
+  'a token nobody was issued does nothing, and says so'
+);
+
+-- It only ever turns things off. A leaked token is a nuisance, never a way in.
+select tests.ok(
+  (select daily from public.notify_settings where profile_id = :'jameson'::uuid) = false,
+  'and there is no token that turns it on'
+);
+
+-- Erasure takes it with the account ---------------------------------------------
+--
+-- `forget` anonymises rather than deletes, so `on delete cascade` never fires
+-- and a table added after it was written survives an erasure untouched. No mail
+-- would reach them either way — the query above skips banned and unverified
+-- accounts — but a row about somebody who asked to be gone is a row that should
+-- not be there, and the privacy policy names this one as data held.
+insert into public.notify_settings (profile_id, daily)
+values (:'marisol'::uuid, true)
+on conflict (profile_id) do update set daily = true;
+
+select tests.ok(
+  exists (select 1 from public.notify_settings where profile_id = :'marisol'::uuid),
+  'the setting is there to begin with'
+);
+select public.forget('marisol');
+select tests.ok(
+  not exists (select 1 from public.notify_settings where profile_id = :'marisol'::uuid),
+  'and erasing the account takes the email setting and its token with it'
+);
+
+delete from public.notify_settings;
+delete from public.posts where room_slug = 'music' and post_no = 900;
 
 \echo ''
 \echo 'all schema tests passed'

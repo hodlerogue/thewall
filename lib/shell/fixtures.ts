@@ -34,21 +34,24 @@ export const PEOPLE: readonly {
   { name: 'dev', joinedAt: days(3), verified: false, nameChangedHands: days(2) },
 ]
 
-export const ROOMS: Room[] = [
-  {
+export const ROOMS: Room[] = [  {
     slug: 'commons',
     gloss: 'everything, briefly',
     ephemeral: true,
     posts: [
+      // Newest first, and the higher address is the newer post — which is what
+      // `create_post` guarantees and what anything paging by address relies on.
+      // These two were the wrong way round: id 1 was the *newest*, so `older`
+      // walking back by address walked forwards in time here and nowhere else.
       {
-        id: 1,
+        id: 2,
         author: 'marisol',
         body: 'the AC in my building has been out for three days and the super keeps saying "tomorrow"',
         createdAt: minutes(20),
         replies: [],
       },
       {
-        id: 2,
+        id: 1,
         author: 'dev',
         body: 'four pounds of tomatoes from one plant. i have no plan for any of them.',
         createdAt: minutes(64),
@@ -182,6 +185,122 @@ export const ROOMS: Room[] = [
     ],
   },
   {
+    // §5: one room should be a mood, not a topic. Mood rooms are what make this
+    // feel like a place rather than a forum.
+    slug: 'latenight',
+    gloss: 'quiet hours only',
+    ephemeral: false,
+    posts: [
+      {
+        id: 3,
+        author: 'ren',
+        body: 'anyone else awake or is it just me and the refrigerator',
+        createdAt: minutes(480),
+        replies: [
+          {
+            author: 'marisol',
+            body: 'the refrigerator and i are also here',
+            createdAt: minutes(430),
+          },
+        ],
+      },
+      {
+        id: 2,
+        author: 'tuck',
+        body: 'the 3am version of a problem is never the real size of the problem',
+        createdAt: minutes(1800),
+        replies: [],
+      },
+    ],
+  },
+  {
+    /*
+     * §5 again: a room is an invitation to tell somebody something, not a
+     * category. "what you are holding" gets a story out of people;
+     * "cryptocurrency" gets a subject line, and then a room of subject lines.
+     */
+    slug: 'crypto',
+    gloss: 'what you are holding',
+    ephemeral: false,
+    posts: [
+      {
+        id: 2,
+        author: 'tuck',
+        body: 'bought the top in 2021 and have not looked since. genuinely no idea what it is worth and i think that is the healthiest thing i have ever done.',
+        createdAt: minutes(95),
+        replies: [
+          {
+            author: 'ren',
+            body: 'the not-looking is the strategy. everyone finds this out eventually',
+            createdAt: minutes(60),
+          },
+        ],
+      },
+      {
+        id: 1,
+        author: 'marisol',
+        body: 'explained a wallet to my dad for an hour and he asked which bank it was in. i did not have a good answer.',
+        createdAt: minutes(300),
+        replies: [],
+      },
+    ],
+  },
+  {
+    slug: 'movies',
+    gloss: 'what you watched',
+    ephemeral: false,
+    posts: [
+      {
+        id: 2,
+        author: 'jameson',
+        body: 'watched the same film my dad had on every sunday. it is not a good film. i cried at the credits anyway.',
+        createdAt: minutes(140),
+        replies: [
+          { author: 'tuck', body: 'that is not about the film', createdAt: minutes(100) },
+        ],
+      },
+      {
+        id: 1,
+        author: 'ren',
+        body: 'three minutes into a thriller i realised i had seen it before and kept going anyway, because i could not remember the ending',
+        createdAt: minutes(420),
+        replies: [],
+      },
+    ],
+  },
+  {
+    /*
+     * The room about the site itself. Not a support inbox — it is an ordinary
+     * room, so a complaint gets answered by whoever is around rather than
+     * disappearing into somebody's mail.
+     */
+    slug: 'feedback',
+    gloss: 'what is broken, and what should be here',
+    ephemeral: false,
+    posts: [
+      {
+        id: 2,
+        author: 'ren',
+        body: 'took me three goes to work out that go 12 opens a post rather than a room. once you know it is obvious, which is the problem.',
+        createdAt: minutes(75),
+        replies: [
+          {
+            author: 'marisol',
+            body: 'same. the number being an address is the bit nobody says out loud',
+            createdAt: minutes(40),
+          },
+        ],
+      },
+      {
+        id: 1,
+        author: 'tuck',
+        body: 'wanted a room for cycling and did not realise i could just make one. the lobby looks like a fixed list.',
+        createdAt: minutes(260),
+        replies: [],
+      },
+    ],
+  },
+  {
     /*
      * `feed` — every wall in one place.
      *
@@ -228,35 +347,6 @@ export const ROOMS: Room[] = [
         author: 'marisol',
         body: 'putting things here instead of shouting them into a room feels different and i can’t say why yet',
         createdAt: minutes(220),
-        replies: [],
-      },
-    ],
-  },
-  {
-    // §5: one room should be a mood, not a topic. Mood rooms are what make this
-    // feel like a place rather than a forum.
-    slug: 'latenight',
-    gloss: 'quiet hours only',
-    ephemeral: false,
-    posts: [
-      {
-        id: 3,
-        author: 'ren',
-        body: 'anyone else awake or is it just me and the refrigerator',
-        createdAt: minutes(480),
-        replies: [
-          {
-            author: 'marisol',
-            body: 'the refrigerator and i are also here',
-            createdAt: minutes(430),
-          },
-        ],
-      },
-      {
-        id: 2,
-        author: 'tuck',
-        body: 'the 3am version of a problem is never the real size of the problem',
-        createdAt: minutes(1800),
         replies: [],
       },
     ],

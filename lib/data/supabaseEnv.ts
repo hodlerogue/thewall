@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Live } from '@/lib/data/live'
-import type { Check, Env, MadeRoom, MailItem } from '@/lib/shell/env'
+import { ROOM_PAGE, type Check, type Env, type MadeRoom, type MailItem } from '@/lib/shell/env'
 import type { Post, PostHit, Profile, Room, RoomHit, RoomSummary } from '@/lib/shell/model'
 
 /**
@@ -125,33 +125,73 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
       if (roomError) throw roomError
       if (!room) return undefined
 
+      // One more than we intend to show. Asking for exactly a page and getting
+      // a full one cannot tell "that is the whole room" from "there are nine
+      // hundred more", and the difference is the entire point of `older`.
       const { data: posts, error: postsError } = await client
         .from('posts')
         .select('post_no, body, created_at, author:profiles(name), replies(count)')
         .eq('room_slug', slug)
         .order('created_at', { ascending: false })
-        .limit(30)
+        .limit(ROOM_PAGE + 1)
 
       if (postsError) throw postsError
 
+      const page = posts ?? []
       return {
         slug: room.slug,
         gloss: room.gloss,
         ephemeral: room.ephemeral,
         owner: ownerName(room.owner),
-        posts: (posts ?? []).map((row) => ({
-          id: row.post_no,
-          author: authorName(row.author),
-          body: row.body,
-          createdAt: new Date(row.created_at),
-          // The listing only needs the count; the bodies arrive when you go in.
-          replies: Array.from({ length: replyCount(row.replies) }, () => ({
-            author: '',
-            body: '',
-            createdAt: new Date(0),
-          })),
-        })),
+        more: page.length > ROOM_PAGE,
+        posts: page.slice(0, ROOM_PAGE).map(toPost),
       }
+    },
+
+    async olderPosts(slug: string, beforePostNo: number): Promise<Post[]> {
+      /*
+       * Keyed on `post_no`, not on a row offset.
+       *
+       * The address is allocated by `create_post` and never reused (§3.4), so
+       * it is a stable cursor: somebody posting while you read backwards adds a
+       * *higher* number and cannot disturb where you are. An offset would shift
+       * by one under exactly that, quietly skipping a post.
+       */
+      const { data, error } = await client
+        .from('posts')
+        .select('post_no, body, created_at, author:profiles(name), replies(count)')
+        .eq('room_slug', slug)
+        .lt('post_no', beforePostNo)
+        .order('post_no', { ascending: false })
+        .limit(ROOM_PAGE)
+
+      if (error) throw error
+      return (data ?? []).map(toPost)
+    },
+
+    async notifyState(): Promise<boolean> {
+      const { data, error } = await client.rpc('notify_state')
+      // A guest has no setting and no way to have one. False is the answer,
+      // not a failure.
+      if (error) return false
+      return data === true
+    },
+
+    async setNotify(on: boolean) {
+      const { error } = await client.rpc('set_notify', { p_on: on })
+      /*
+       * The refusal that matters here is "follow the link in your email first",
+       * raised by the function when somebody unverified tries to turn it on. It
+       * is already a sentence written for a person to read (§3.7), so it is
+       * passed through rather than translated into something vaguer.
+       */
+      if (error) {
+        // Already a sentence for a person; the fall-through is for anything
+        // the database says that nobody has written a human version of yet.
+        const said = error.message.replace(/^.*?:\s*/, '')
+        return { ok: false as const, reason: said || 'couldn’t change that just now.' }
+      }
+      return { ok: true as const, on }
     },
 
     async getPost(slug: string, id: number): Promise<Post | undefined> {
@@ -397,4 +437,30 @@ function replyCount(replies: unknown): number {
     return first?.count ?? 0
   }
   return 0
+}
+
+/**
+ * A posts row as the shell's `Post`. Shared by the first page and every page
+ * `older` fetches after it, so the two cannot drift into showing different
+ * things about the same post.
+ */
+function toPost(row: {
+  post_no: number
+  body: string
+  created_at: string
+  author: { name: string } | { name: string }[] | null
+  replies: unknown
+}): Post {
+  return {
+    id: row.post_no,
+    author: authorName(row.author),
+    body: row.body,
+    createdAt: new Date(row.created_at),
+    // The listing only needs the count; the bodies arrive when you go in.
+    replies: Array.from({ length: replyCount(row.replies) }, () => ({
+      author: '',
+      body: '',
+      createdAt: new Date(0),
+    })),
+  }
 }

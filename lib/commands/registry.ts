@@ -13,9 +13,16 @@
  */
 
 import { parseFlags, parseSince, splitStages } from '@/lib/commands/pipeline'
-import type { Env } from '@/lib/shell/env'
+import { ROOM_PAGE, type Env } from '@/lib/shell/env'
 import { formatAgo, type PostHit, type PostQuery, type RoomHit } from '@/lib/shell/model'
-import { renderFeed, renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
+import {
+  renderFeed,
+  renderPost,
+  renderPosts,
+  renderProfile,
+  renderRoom,
+  renderRoomList,
+} from '@/lib/shell/render'
 import type { Session } from '@/lib/shell/session'
 import { ABOUT_SUMMARY } from '@/lib/guide/about'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
@@ -137,7 +144,11 @@ export const COMMANDS: readonly Command[] = [
       'shows you what’s around you. at the lobby that’s the rooms, inside a room it’s the posts, inside a post it’s the replies.',
     insert: () => 'look',
     wrongContext: () => '',
-    async run({ context, location, env }) {
+    async run({ context, location, env, session }) {
+      // A fresh listing is the newest page, so `older` starts from the top
+      // again. Without this, `look` to get your bearings would leave `older`
+      // continuing from wherever you had already walked back to.
+      session.resetPaging()
       if (context === 'lobby') return { lines: renderRoomList(await env.listRooms()) }
 
       if (context === 'person') {
@@ -177,7 +188,9 @@ export const COMMANDS: readonly Command[] = [
       'moves you. at the lobby, go music. inside a room, go 12 opens that post. a whole address works from anywhere — go music/12 — and so does go ~marisol, which shows you somebody: their page, and their wall.',
     insert: () => 'go ',
     wrongContext: () => '',
-    async run({ arg, context, location, env, hint }) {
+    async run({ arg, context, location, env, hint, session }) {
+      // Walking anywhere lands you on the newest page of wherever you land.
+      session.resetPaging()
       if (arg === '') {
         return error(
           context === 'lobby' || context === 'commons'
@@ -571,14 +584,28 @@ export const COMMANDS: readonly Command[] = [
   {
     verb: 'leave',
     aliases: ['back', 'exit', 'up'],
-    // §3.1 — backs out one level, always, from anywhere.
-    contexts: ALL,
-    gloss: (c) => (c === 'post' ? 'back to the room' : 'back to the lobby'),
-    detail: () => 'backs you out one level, from anywhere. from somebody’s page, back to the lobby.',
+    /*
+     * §3.1 — backs out one level. Not from *anywhere*, which is what this
+     * claimed and what put it in `help` at the lobby, described as "back to the
+     * lobby" to somebody already standing in it. A list of what you can type
+     * that includes something you cannot is worse than a shorter list.
+     */
+    contexts: ['room', 'commons', 'post', 'person'],
+    /*
+     * "back to the room" was right for a post in a room and wrong for a post on
+     * a wall, which backs out to the person whose wall it is — the same context,
+     * two destinations, and `gloss` only sees the context. So it stops promising
+     * a destination it cannot always name, and `detail` spells out both.
+     */
+    gloss: (c) => (c === 'post' ? 'back one step' : 'back to the lobby'),
+    detail: () =>
+      'backs you out one level. from a post, to the room it is in — or to somebody’s page, if the post is on their wall. from a room or a page, back to the lobby.',
     insert: () => 'leave',
-    wrongContext: () => '',
+    wrongContext: () => 'you’re already at the lobby.',
     async run({ context, location, env }) {
       if (context === 'lobby') {
+        // Unreachable through `run`, which sends a wrong-context verb to the
+        // message above. Kept because `leave` is also called directly.
         return { lines: [{ text: 'you’re already at the lobby.', tone: 'faint' }] }
       }
       if (context === 'post') {
@@ -599,6 +626,91 @@ export const COMMANDS: readonly Command[] = [
         return { lines: renderRoom(room), location: { room: room.slug } }
       }
       return { lines: renderRoomList(await env.listRooms()), location: {} }
+    },
+  },
+
+  {
+    /*
+     * The verb that makes the site's own claim true.
+     *
+     * /about says "it cannot scroll forever. A room holds what people said in
+     * it, and when you have read it you have read it." For any room past a
+     * page that was false: you got the newest page, nothing said so, and the
+     * only way to anything older was `go 5` for a number you had no way to
+     * know. A room quietly became write-only past its first page.
+     *
+     * Not `more`, which reads as "more of the same kind of thing" and is what
+     * a feed's button says. `older` names the direction, which is the whole
+     * information — you are walking backwards through time, and the site is
+     * finite in that direction.
+     */
+    verb: 'older',
+    // Not `back`: that is `leave`'s, and the signup flow says "type back to
+    // change the name" out loud. Two meanings for one word in a shell whose
+    // whole promise is that typing a word does the obvious thing.
+    aliases: ['earlier', 'previous', 'more'],
+    contexts: ['room', 'commons'],
+    gloss: () => 'the page before this one',
+    detail: () =>
+      'walks back through a room a page at a time. a room shows its newest 60; older shows the 60 before those, and again after that, until you reach the start of the room.',
+    insert: () => 'older',
+    wrongContext: (_c, hint) => `there’s nothing to walk back through here. try: go ${hint}`,
+    async run({ context, location, env, session }) {
+      const slug = location.room!
+
+      /*
+       * The cursor, or a round trip to find one.
+       *
+       * `older` straight after arriving has nothing stored, because arriving
+       * does not tell the session which addresses it printed — six places
+       * render a room and keeping all six in step is the kind of bookkeeping
+       * that goes wrong quietly. Asking the room for its newest page again is
+       * one indexed query, and it happens once per room rather than per step.
+       */
+      let from = session.pagedFrom(slug)
+      if (from === null) {
+        const room = await env.getRoom(slug)
+        if (!room) return error(`${slug} isn’t there anymore. try: leave`)
+        if (room.posts.length === 0) {
+          return { lines: [{ text: 'nothing here yet, so there is nothing before it.', tone: 'faint' }] }
+        }
+        /*
+         * The lowest address on the page, not the last element of it.
+         *
+         * The cursor is an address, so the starting point has to be one too.
+         * Taking `posts[length - 1]` assumed the array arrived newest-first,
+         * which is true of the query and was not true of every fixture — and
+         * where it was not, `older` fetched the *newest* post and printed it
+         * back as though it were history.
+         */
+        from = room.posts.reduce((low, post) => Math.min(low, post.id), Infinity)
+      }
+
+      const posts = await env.olderPosts(slug, from)
+      if (posts.length === 0) {
+        // §3.7 — and it is a real answer rather than a failure: reaching the
+        // start of a room is the thing this verb exists to let you do.
+        return {
+          lines: [
+            { text: 'that’s the start of the room — there’s nothing before it.', tone: 'faint' },
+          ],
+        }
+      }
+
+      const oldest = posts.reduce((low, post) => Math.min(low, post.id), Infinity)
+      session.paged(slug, oldest)
+
+      // The context is the authority on whether this room keeps anything —
+      // it is what §3.10 splits commons out by, and it is already resolved.
+      const lines = renderPosts(posts, context === 'commons')
+      lines.push({
+        text:
+          posts.length < ROOM_PAGE
+            ? 'that’s the start of the room.'
+            : 'older again for the page before this one.',
+        tone: 'faint',
+      })
+      return { lines }
     },
   },
 
@@ -680,6 +792,7 @@ export const COMMANDS: readonly Command[] = [
         'about',
         'login',
         'mail',
+        'notify',
         'rename',
         'theme',
         'install',
@@ -806,7 +919,7 @@ export const COMMANDS: readonly Command[] = [
     contexts: ALL,
     gloss: () => 'replies waiting for you',
     detail: () =>
-      'shows replies to things you said, each with the address to walk to — oldest at the top, so the newest is the one nearest the prompt. reading them clears the count. nothing is pushed and nothing is emailed — it waits until you ask.',
+      'shows replies to things you said, each with the address to walk to — oldest at the top, so the newest is the one nearest the prompt. reading them clears the count. nothing is pushed and nothing chases you; notify on adds one email a day if you want one.',
     insert: () => 'mail',
     wrongContext: () => '',
     async run({ env, session }) {
@@ -871,6 +984,75 @@ export const COMMANDS: readonly Command[] = [
       })
 
       return { lines, mail: 0 }
+    },
+  },
+
+  {
+    /*
+     * §4.1, decided differently — and the difference is consent.
+     *
+     * The document's lean is "pull-only, no push, no email", in the same
+     * section that calls notifications the highest-priority unsolved item
+     * because "no notification means no reason to return". Both are right, and
+     * what reconciles them is that nobody is emailed who did not ask.
+     *
+     * Off for everybody. On is a thing you type. One a day at most, and only
+     * when something is actually waiting — so an empty day is a day with no
+     * email, rather than a daily reminder that nothing happened.
+     */
+    verb: 'notify',
+    aliases: ['notifications', 'email', 'digest'],
+    contexts: ALL,
+    gloss: () => 'email me when replies are waiting',
+    detail: () =>
+      'notify on sends you one email a day, but only on days somebody answered you. notify off stops it, and so does the link at the bottom of any of them. it is off until you turn it on, nothing else is ever sent to you, and your address is still never shown to anybody.',
+    insert: () => 'notify ',
+    wrongContext: () => '',
+    async run({ arg, env, session }) {
+      if (session.name() === null) {
+        return {
+          lines: [
+            { text: 'you’re reading as a guest, so there’s nowhere to send anything.', tone: 'faint' },
+            { text: 'say something first and i’ll ask who you are.', tone: 'faint' },
+          ],
+        }
+      }
+
+      const word = arg.trim().toLowerCase()
+
+      // No argument is a question, not a toggle. Somebody typing `notify` to
+      // find out where they stand should not have changed where they stand.
+      if (word === '') {
+        const on = await env.notifyState()
+        return {
+          lines: on
+            ? [
+                { text: 'on — one email a day, only when something is waiting.', tone: 'accent' },
+                { text: 'notify off stops it.', tone: 'faint' },
+              ]
+            : [
+                { text: 'off. nothing is emailed to you.', tone: 'faint' },
+                { text: 'notify on sends one a day, but only on days somebody answered you.', tone: 'faint' },
+              ],
+        }
+      }
+
+      if (!/^(on|off|yes|no|stop)$/.test(word)) {
+        return error(`notify on, or notify off. not "${arg}".`)
+      }
+
+      const on = word === 'on' || word === 'yes'
+      const result = await env.setNotify(on)
+      if (!result.ok) return error(result.reason)
+
+      return {
+        lines: on
+          ? [
+              { text: 'on. one email a day, and only when somebody has answered you.', tone: 'accent' },
+              { text: 'every one of them has a link that turns this off, and notify off does too.', tone: 'faint' },
+            ]
+          : [{ text: 'off. nothing more will be sent.', tone: 'accent' }],
+      }
     },
   },
 

@@ -73,6 +73,15 @@ export interface Env {
    */
   readFeed(): Promise<PostHit[]>
   getRoom(slug: string): Promise<Room | undefined>
+  /**
+   * The page before the one you are looking at, oldest-first like every other
+   * listing. Empty when you have reached the start of the room.
+   *
+   * A cursor rather than an offset: `beforePostNo` is the oldest address you
+   * can currently see. Offsets shift under you when somebody posts while you
+   * are reading back, which silently skips or repeats a post.
+   */
+  olderPosts(slug: string, beforePostNo: number): Promise<Post[]>
   getPost(slug: string, id: number): Promise<Post | undefined>
   who(roomSlug: string | undefined): Promise<Presence>
   /** §4.8 — the pipe's source. Crosses rooms, so hits carry their address. */
@@ -81,6 +90,15 @@ export interface Env {
   mailCount(): Promise<number>
   /** §4.1 — the replies themselves. Reading them marks them read. */
   readMail(): Promise<MailItem[]>
+  /**
+   * §4.1, decided differently — whether a daily email is switched on.
+   *
+   * Reading and writing are separate calls rather than one toggle, because
+   * `notify` with no argument has to be able to answer "am I?" without changing
+   * it. A toggle makes the answer to a question a side effect.
+   */
+  notifyState(): Promise<boolean>
+  setNotify(on: boolean): Promise<{ ok: true; on: boolean } | { ok: false; reason: string }>
   /**
    * §3.10 — somebody, as a view. The posts come back as hits, carrying their
    * real addresses, because a profile is a way back into rooms and not a room.
@@ -123,10 +141,29 @@ export const RESERVED_SLUGS = new Map([
   ['apple-icon', 'that is a route'],
   ['opengraph-image', 'that is a route'],
   ['feed', 'that is the wall feed'],
+  ['unsubscribe', 'that is a route'],
 ])
 
 /** §4.2's fade, matching the interval in the lobby query. */
 const FADE_MS = 14 * 24 * 60 * 60 * 1000
+
+/**
+ * How much of a room you get at once.
+ *
+ * It was 30, hard-coded in `supabaseEnv` and nowhere else — and the fixture
+ * applied no limit at all, so a 500-post room came back with all 500 posts in
+ * tests and 30 on the real site. Nothing at any level could see the truncation,
+ * which is why the missing "there is more" line went unnoticed for the life of
+ * the project. One constant, used by both, is the fix for that class.
+ *
+ * 60 rather than 30 because the number was never chosen on merit: the ceiling
+ * came from `MAX_LINES`, which came from the scrollback re-rendering on every
+ * keystroke. That cost is gone (see components/Terminal.tsx), so this is now
+ * set by what is useful — roughly 200 lines, eight screens on a phone, and
+ * about seven pages inside the scrollback cap so `older` can walk a long way
+ * back without trimming away where you started.
+ */
+export const ROOM_PAGE = 60
 
 /**
  * In-memory Env over the §5 seed content, for tests and the mobile gate.
@@ -146,6 +183,9 @@ export function fixtureEnv(
     room.ephemeral
       ? room.posts.filter((p) => Date.now() - p.createdAt.getTime() < 24 * 60 * 60 * 1000)
       : room.posts
+
+  // Demo-only, and per session: nothing is stored and nothing is sent.
+  let notifying = false
 
   // Named rather than returned inline, so getProfile can reuse searchPosts
   // instead of restating the query that decides what a person's posts are.
@@ -182,7 +222,37 @@ export function fixtureEnv(
     },
     async getRoom(slug) {
       const room = rooms.find((r) => r.slug === slug)
-      return room ? { ...room, posts: visiblePosts(room) } : undefined
+      if (!room) return undefined
+
+      /*
+       * The page, and only the page.
+       *
+       * This returned every post a room had, while `supabaseEnv` has always
+       * capped it. A 500-post room therefore came back with 500 posts in every
+       * test and 60 on the real site, so no suite at any level could see
+       * truncation — which is exactly why a room silently showing a slice, with
+       * no way back and nothing saying so, survived to be noticed by hand.
+       *
+       * Fixtures are allowed to be small. They are not allowed to be a
+       * different shape from the thing they stand in for.
+       */
+      const visible = visiblePosts(room)
+      return {
+        ...room,
+        posts: visible.slice(0, ROOM_PAGE),
+        more: visible.length > ROOM_PAGE,
+      }
+    },
+
+    async olderPosts(slug, beforePostNo) {
+      const room = rooms.find((r) => r.slug === slug)
+      if (!room) return []
+      // Newest-first, like the query — the renderer is what reverses it. And
+      // keyed on the address rather than a position, for the same reason.
+      return visiblePosts(room)
+        .filter((post) => post.id < beforePostNo)
+        .sort((a, b) => b.id - a.id)
+        .slice(0, ROOM_PAGE)
     },
     async getPost(slug, id) {
       const room = rooms.find((r) => r.slug === slug)
@@ -295,6 +365,20 @@ export function fixtureEnv(
 
     async readMail() {
       return []
+    },
+
+    /*
+     * The demo remembers it for the session and sends nothing, which is the
+     * whole truth of what the fixture build can do. Answering a flat `false` to
+     * `setNotify` would make `notify on` look broken; answering `true` and
+     * forgetting would make it look like it had not saved.
+     */
+    async notifyState() {
+      return notifying
+    },
+    async setNotify(on: boolean) {
+      notifying = on
+      return { ok: true as const, on }
     },
 
     async searchPosts(query) {

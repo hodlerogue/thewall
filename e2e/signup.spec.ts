@@ -58,8 +58,9 @@ test('the first say collects a name and an email, then sends what you typed', as
   await type(page, 'newcomer@example.com')
 
   // The sentence posts itself. The user never retyped it.
-  await expect(scrollback(page)).toContainText('now — the thing you were trying to say')
-  await expect(scrollback(page)).toContainText('said — it’s post')
+  await expect(scrollback(page)).toContainText('the thing you were trying to say is up')
+  // Success prints an address and nothing else — no status word.
+  await expect(scrollback(page)).toContainText('music/')
 
   // And the prompt stops calling them a guest.
   await expect(page.getByTestId('prompt-label')).toHaveText('newcomer:music$')
@@ -88,7 +89,7 @@ test('a mistyped name can be taken back, and the sentence survives it', async ({
   // asked for again — which is the whole of §3.9 and what cancel would have
   // cost them before this existed.
   await expect(page.getByTestId('prompt-label')).toHaveText('newcomer:music$')
-  await expect(scrollback(page)).toContainText('said — it’s post')
+  await expect(scrollback(page)).toContainText('music/')
 })
 
 test('cancel returns to reading with nothing sent', async ({ page }) => {

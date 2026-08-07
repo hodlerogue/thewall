@@ -124,6 +124,44 @@ export class Session {
   private pendingName: string | null = null
   private pending: OneQuestion | null = null
   private who: string | null = null
+  /**
+   * Whether "what the post number is for" has been said yet in this sitting.
+   *
+   * Deliberately not persisted. A reload is a new sitting and costs one extra
+   * line; a `localStorage` key would be a second place the answer to "have they
+   * seen this" lives, and the cheaper wrong answer is the one that repeats.
+   */
+  private explainedAddresses = false
+
+  /**
+   * How far back through a room you have walked, as the oldest address shown.
+   *
+   * Held here rather than threaded through `Location` — a page position is not
+   * part of an address, and putting it in one would put it in the URL, where
+   * §3.4 says the path and the prompt are the same value.
+   *
+   * `null` means "you are looking at the newest page", which is true after
+   * arriving, after `look`, and after `go`. `older` is the only thing that
+   * moves it, and it resets whenever a fresh listing is printed — otherwise
+   * typing `look` to get your bearings would leave `older` continuing from
+   * wherever you had wandered to, which is not where you are looking.
+   */
+  private paging: { room: string; oldest: number } | null = null
+
+  /** Where `older` should continue from, or null if it has to work it out. */
+  pagedFrom(room: string): number | null {
+    return this.paging && this.paging.room === room ? this.paging.oldest : null
+  }
+
+  /** Called by `older` once it knows what it just printed. */
+  paged(room: string, oldest: number): void {
+    this.paging = { room, oldest }
+  }
+
+  /** Called wherever a fresh listing is printed, which is the newest page. */
+  resetPaging(): void {
+    this.paging = null
+  }
 
   constructor(
     private readonly api: SignupApi,
@@ -188,6 +226,35 @@ export class Session {
     // §3.9 — cancel at any point, and it costs nothing.
     if (/^(cancel|nevermind|never mind|quit|stop)$/i.test(text)) {
       return { lines: this.cancel() }
+    }
+
+    /*
+     * `login ryan`, mid-question, because that is what the site just told them
+     * to type.
+     *
+     * The trap this closes, in full: somebody comes back on a new phone, says
+     * something, is asked what to call them, and answers with their own name.
+     * They are told "ryan is taken. if it's taken by you, type login ryan."
+     * They type it — and mid-signup everything typed is an answer, so it went
+     * to the name check, which rejected `login ryan` for having a space and
+     * helpfully offered them `login_ryan`. The one instruction on screen could
+     * not be followed, and the suggestion on offer was a third wrong account.
+     *
+     * That is CHANGING-IT's own rule — a suggested fix has to be one the site
+     * will accept — broken one commit after writing it down, in the message
+     * added to fix the previous version of the same trap.
+     *
+     * Only the two-word form. A bare `login` is a perfectly good name and has
+     * to stay answerable as one; `login ryan` cannot be a name at all, because
+     * names have no spaces, so there is nothing to be ambiguous about.
+     *
+     * It cancels first, exactly as typing `cancel` then `login ryan` would —
+     * the held sentence goes, and `cancel` says so.
+     */
+    const escape = /^login\s+(\S+)$/i.exec(text)
+    if (escape) {
+      const cancelled = this.cancel()
+      return { lines: [...cancelled, ...(await this.signIn(escape[1]))] }
     }
 
     if (this.mode === 'ask-one') {
@@ -385,7 +452,20 @@ export class Session {
       return { lines, identity: this.who }
     }
 
-    lines.push({ text: 'now — the thing you were trying to say.', tone: 'accent' })
+    /*
+     * Past tense, and it has to be.
+     *
+     * This said "now — the thing you were trying to say.", which was a heading
+     * for the confirmation underneath it. Once success stopped printing a
+     * status line, there was nothing underneath it in commons or in a post —
+     * so the last thing on screen was a sentence promising something, followed
+     * by blank. A promise with no payoff reads worse than the receipt it
+     * replaced, and it is not something a fixture test would have shown.
+     *
+     * Said this way it is complete on its own, and still reads correctly in a
+     * room, where the address does follow it.
+     */
+    lines.push({ text: 'and the thing you were trying to say is up.', tone: 'accent' })
     // The wall is named here, because here is the first moment there is a name.
     const target = held.toOwnWall ? { room: `~${this.who}` } : held.location
     const written = await this.write(target, held.body, { addressed: held.addressed })
@@ -515,49 +595,116 @@ export class Session {
       }
     }
 
+    /*
+     * Print the address, or print nothing. Never print a word about whether it
+     * worked.
+     *
+     * "Do you need something to tell you it's said? Shouldn't that be the
+     * assumption unless there's an error?" — yes, and that is the oldest
+     * convention there is: `cp` says nothing on success. `said.` was a status
+     * report, and a status report on a line of its own under every sentence is
+     * how a prompt turns into a chat client with delivery receipts.
+     *
+     * What survives is not a confirmation, it is a value: the address. It is
+     * the one thing about the post that is *not* already on the screen — your
+     * own words are right there on the echo line above — and there is no other
+     * way to get it without walking back into the room. That is exactly the
+     * `git commit` shape: one line, the identifier, no adjectives.
+     *
+     * Silence would have been wrong as a blanket rule for one specific reason:
+     * `lib/data/live.ts` deliberately drops your own posts from the realtime
+     * channel, so nothing arrives to show you. In a real terminal `cp` is
+     * silent and you believe it because the filesystem is right there; here the
+     * room does not visibly change. So the rule is not "say nothing", it is
+     * "say the thing that is not otherwise knowable" — which for a reply and
+     * for commons is nothing at all.
+     */
     try {
       if (location.postId !== undefined) {
         await this.writer.reply(location.room, location.postId, body)
-        return { lines: [{ text: 'said.', tone: 'faint' }], failed: false }
+        /*
+         * The post's address, not silence.
+         *
+         * §4.3 gives a reply no address of its own, and the first version of
+         * this printed nothing at all on that basis. From actually using it:
+         * "instead of just LOOKING like it's sent" — and nothing on screen is
+         * the strongest possible version of that, because `live.ts` drops your
+         * own words from the channel, so the thread you are staring at does not
+         * visibly gain your reply either.
+         *
+         * The post's address is the true and useful thing: it is where your
+         * words now live, and it is what you would type to come back and read
+         * the thread. Every contribution now answers with one line and the
+         * same shape.
+         */
+        return { lines: [{ text: `${location.room}/${location.postId}`, tone: 'accent' }], failed: false }
       }
       const postNo = await this.writer.post(location.room, body)
 
       /*
-       * Commons gets a number from the allocator like everywhere else, and it
+       * Commons gets a number from the allocator like everywhere else and it
        * means nothing there: §3.10 keeps no threads, `go 26` in commons answers
-       * "there's nothing to open here", and the post is gone in a day. Saying
-       * "it's post 26" anyway was an invitation to look for a number that is
-       * not shown next to anything and cannot be used — which is exactly the
-       * question it produced.
+       * "there's nothing to open here", and the post is gone in a day. There is
+       * no address, so there is no output.
        */
       if (options.addressed === false) {
-        return { lines: [{ text: 'said.', tone: 'faint' }], failed: false }
+        /*
+         * The one place a word survives, because it is the one place with no
+         * address to give instead. Accent, like every other confirmation — the
+         * complaint that started this was not that a word existed, it was that
+         * it was faint enough to read as "that didn't send".
+         */
+        return { lines: [{ text: 'said.', tone: 'accent' }], failed: false }
       }
 
       /*
-       * A wall post is named in full, and that is not decoration.
+       * The whole address, never the bare number — and this is now the simpler
+       * rule as well as the correct one.
        *
-       * `go 7` only works while you are standing in the room the 7 belongs to.
-       * Saying something on your own wall can happen from two places that are
-       * not it — your page, and the feed — and on the feed a bare number is
-       * refused outright, because 7 is a different post on every wall. So the
-       * site was handing somebody an instruction that fails when followed,
-       * which is §3.7's whole prohibition.
-       *
-       * `~jameson/7` works from everywhere, including both of those.
+       * `go 7` only works while you are standing in the room the 7 belongs to,
+       * and saying something on your own wall can happen from two places that
+       * are not it — your page, and the feed, where a bare number is refused
+       * outright because 7 is a different post on every wall. That used to be a
+       * special case for walls. As a lone line with no sentence around it, a
+       * bare `7` is also just cryptic, so the special case disappears into the
+       * general rule: print what `go` takes from anywhere, which is what every
+       * other listing on the site prints too.
        */
-      const address = location.room.startsWith('~') ? `${location.room}/${postNo}` : `${postNo}`
+      const address = `${location.room}/${postNo}`
 
-      return {
-        lines: [
-          { text: `said — it’s post ${postNo}.`, tone: 'faint' },
-          // What the number is *for*. On its own it reads as a receipt; the
-          // point of it is that it is the address replies arrive at, and that
-          // it is the same number in the URL (§3.4).
-          { text: `go ${address} opens it, which is where replies land.`, tone: 'faint' },
-        ],
-        failed: false,
+      /*
+       * The explanation is said once, and then never again.
+       *
+       * "Why do I even need to know what the number is if I'm sending it?" is a
+       * fair question, and the answer — it is the address, it is where replies
+       * arrive, it is the same thing in the URL (§3.4) — is worth a line the
+       * first time somebody posts. It is worth nothing the fourth time.
+       *
+       * A thing you need told once and a thing you need told always are
+       * different lines, and printing the first as though it were the second is
+       * how an interface that explains itself turns into one that nags.
+       */
+      /*
+       * Accent, not dim.
+       *
+       * Both tokens clear 4.5:1 against the ground, so this was never a
+       * legibility failure — it was a hierarchy one. `dim` is the tone this
+       * interface uses for context you skim past: post headers, timestamps,
+       * the body of a room listing. Rendering the one line that says "that
+       * happened" in the skim-past colour is how it came to read as though it
+       * had not. Accent is what room names, the prompt and mail's addresses
+       * already use: the colour of a thing you can act on, which an address is.
+       */
+      const lines: Line[] = [{ text: address, tone: 'accent' }]
+      if (!this.explainedAddresses) {
+        this.explainedAddresses = true
+        lines.push({
+          text: `that’s where it lives — go ${address} opens it, and replies land there.`,
+          tone: 'faint',
+        })
       }
+
+      return { lines, failed: false }
     } catch (error) {
       return {
         lines: [

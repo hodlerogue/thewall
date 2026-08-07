@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createRunner } from '@/lib/commands/run'
+import { findCommand } from '@/lib/commands/registry'
 import { suggestAlternates } from '@/lib/auth/names'
 import { fixtureEnv } from '@/lib/shell/env'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
@@ -297,5 +298,131 @@ describe('what makes an unauthenticated mail route safe to expose', () => {
   it('refuses an account that was closed rather than mailing it a key', () => {
     expect(code).toContain('banned_at')
     expect(code).toContain('that account was closed')
+  })
+})
+
+describe('the instruction printed mid-signup is one you can actually type', () => {
+  /*
+   * Reported from real use: "you type login ryan and it still thinks you're
+   * trying to set your name."
+   *
+   * It did. Mid-signup everything typed is an answer — that is deliberate, and
+   * it is what stops accounts being called `look` — so `login ryan` went to the
+   * name check, which rejected it for containing a space and offered
+   * `login_ryan`. The site printed an instruction it would not accept, and the
+   * fix it then offered was a third wrong account.
+   */
+  it('takes login <name> as a command, not as a name', async () => {
+    const { session, asked } = harness()
+    session.begin({ location: { room: 'commons' }, body: 'hello' })
+    await session.answer('ryan')
+
+    const out = text((await session.answer('login ryan')).lines)
+
+    expect(asked).toEqual(['ryan'])
+    expect(out).toContain('sent a key')
+    expect(out).not.toMatch(/login_ryan/)
+    expect(out).not.toMatch(/letters, numbers and underscores/)
+  })
+
+  it('is out of the signup afterwards, not still waiting for a name', async () => {
+    const { session } = harness()
+    session.begin({ location: { room: 'commons' }, body: 'hello' })
+    await session.answer('ryan')
+    await session.answer('login ryan')
+
+    expect(session.isAsking()).toBe(false)
+    expect(session.name()).toBe(null)
+  })
+
+  it('says the held sentence went with it, rather than dropping it silently', async () => {
+    const { session } = harness()
+    session.begin({ location: { room: 'commons' }, body: 'hello' })
+    const out = text((await session.answer('login ryan')).lines)
+    expect(out).toMatch(/nothing sent/)
+  })
+
+  it('works at the email question too, which is just as reachable', async () => {
+    const { session, asked } = harness()
+    session.begin({ location: { room: 'commons' }, body: 'hello' })
+    await session.answer('freshname')
+
+    const out = text((await session.answer('login marisol')).lines)
+    expect(asked).toEqual(['marisol'])
+    expect(out).toContain('sent a key')
+  })
+
+  it('still lets somebody be called login, because that is a real name', async () => {
+    /*
+     * Only the two-word form escapes. A bare `login` has no space and is a
+     * perfectly good name; `login ryan` cannot be a name at all, which is why
+     * there is nothing ambiguous to resolve.
+     */
+    const { session, asked } = harness()
+    session.begin({ location: { room: 'commons' }, body: 'hello' })
+    const out = text((await session.answer('login')).lines)
+
+    expect(asked).toEqual([])
+    expect(out).toMatch(/where should i send your key/)
+  })
+
+  it('does not fire on a name that merely starts with those letters', async () => {
+    const { session, asked } = harness()
+    session.begin({ location: { room: 'commons' }, body: 'hello' })
+    await session.answer('loginperson')
+    expect(asked).toEqual([])
+  })
+})
+
+describe('leave says where it will actually put you', () => {
+  /*
+   * Reported: "help says 'leave is back to lobby' but it's also just back in
+   * general." Two things were wrong, and both were the gloss describing a
+   * destination it does not always reach.
+   *
+   * At the lobby it was listed at all, described as "back to the lobby" to
+   * somebody standing in it, and did nothing when typed. And in a post it
+   * promised "back to the room" — true for a post in a room, false for a post
+   * on a wall, which backs out to the person whose wall it is. Same context,
+   * two destinations, and `gloss` only ever sees the context.
+   */
+  const leave = findCommand('leave')!
+
+  it('is not offered at the lobby, where it cannot do anything', async () => {
+    expect(leave.contexts).not.toContain('lobby')
+    const out = text((await harness().run('help', LOBBY)).lines)
+    expect(out).not.toMatch(/^leave — /m)
+  })
+
+  it('still answers plainly if somebody types it there anyway', async () => {
+    const out = text((await harness().run('leave', LOBBY)).lines)
+    expect(out).toContain('already at the lobby')
+  })
+
+  it('promises the lobby only where the lobby is where you land', async () => {
+    const { run } = harness()
+    for (const at of [{ room: 'music' }, { room: 'commons' }, { person: 'marisol' }] as Location[]) {
+      const context = at.person ? 'person' : at.room === 'commons' ? 'commons' : 'room'
+      expect(leave.gloss(context)).toContain('the lobby')
+      expect((await run('leave', at)).location).toEqual({})
+    }
+  })
+
+  it('promises no particular destination from a post, because there are two', async () => {
+    const { run } = harness()
+    expect(leave.gloss('post')).not.toContain('the room')
+
+    // A post in a room backs out to the room…
+    expect((await run('leave', { room: 'music', postId: 12 })).location).toEqual({ room: 'music' })
+    // …and a post on a wall backs out to whose wall it is.
+    expect((await run('leave', { room: '~marisol', postId: 2 })).location).toEqual({
+      person: 'marisol',
+    })
+  })
+
+  it('names both of those in detail, since the gloss no longer can', async () => {
+    const out = text((await harness().run('what leave', { room: 'music' })).lines)
+    expect(out).toMatch(/room it is in/)
+    expect(out).toMatch(/wall/)
   })
 })

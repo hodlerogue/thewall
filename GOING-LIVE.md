@@ -54,6 +54,7 @@ something in the last two columns, and the anon role reads all five objects.
 | `NEXT_PUBLIC_SITE_URL` | `https://thewall.social` | where the magic link comes back to |
 | `RESEND_API_KEY` | from Resend | leave blank and keys go to the server log instead |
 | `MAIL_FROM` | `thewall <key@thewall.social>` | must be a verified domain at Resend |
+| `DIGEST_SECRET` | a long random string | leave it unset and the daily email route is **off**, not open |
 
 `NEXT_PUBLIC_*` values are compiled into the browser bundle **at build time**.
 Adding one changes nothing until you redeploy. Set them first, then deploy.
@@ -61,8 +62,40 @@ Adding one changes nothing until you redeploy. Set them first, then deploy.
 If `NEXT_PUBLIC_USE_FIXTURES` is set anywhere, remove it — it serves the demo
 content and writes nothing.
 
-**Worked when:** the site loads and shows the six rooms rather than
+**Worked when:** the site loads and shows the rooms rather than
 "thewall needs a supabase project."
+
+---
+
+## 2a. The daily email, if you want it at all
+
+Nothing here is required. With no `DIGEST_SECRET` the route answers 503 and no
+email is ever sent — which is a working deployment, just one where `notify on`
+records a preference nothing acts on.
+
+The feature is opt-in on both sides: **off for every account** until somebody
+types `notify on`, and off for the whole site until you schedule this.
+
+Point any scheduler at it once a day:
+
+```
+curl -fsS -X POST https://thewall.social/api/digest \
+  -H "authorization: Bearer $DIGEST_SECRET"
+```
+
+A POST, and with a secret, on purpose. A GET that sends mail is one crawler
+away from sending it twice, and link prefetchers follow GETs.
+
+It answers `{"sent":N,"due":M}`. `due` is who had something waiting; `sent` is
+who the provider accepted. Only the ones actually sent to are stamped, so a
+provider outage costs one run rather than everybody's day.
+
+**Pick a civilised hour.** It sends in one burst, and the timestamp people see
+is whenever you scheduled it. Something like 17:00 in the timezone most of them
+are in.
+
+**Worked when:** running it by hand answers `{"sent":0,"due":0}` on a quiet
+site, and `401` without the header.
 
 ---
 

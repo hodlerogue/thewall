@@ -126,3 +126,142 @@ test.describe('a browser that has never been signed in', () => {
     await expect(scrollback(page)).toContainText('login marisol')
   })
 })
+
+test.describe('reading a room to the end', () => {
+  test('older is offered where somebody stuck at the top of a room would look', async ({
+    page,
+  }) => {
+    await page.goto('/music')
+    await type(page, 'help')
+    await expect(scrollback(page)).toContainText('older — the page before this one')
+  })
+
+  test('a room that fits says so rather than paging into nothing', async ({ page }) => {
+    /*
+     * The fixture rooms are small on purpose — the demo lobby is not the place
+     * for a 500-post room — so what this proves is the wiring and the honest
+     * answer at the boundary. The paging itself is walked end to end against a
+     * 250-post room in lib/commands/older.test.ts.
+     */
+    await page.goto('/music')
+    await type(page, 'older')
+    await expect(scrollback(page)).toContainText('nothing before it')
+  })
+
+  test('a small room is not told there is more to see', async ({ page }) => {
+    await page.goto('/music')
+    await type(page, 'look')
+    await expect(scrollback(page)).not.toContainText('older — the page before')
+  })
+
+  test('older from the lobby names somewhere it would work', async ({ page }) => {
+    // `/` lands in commons, not the lobby — the demo drops you somewhere with
+    // people in it. The lobby is its own path.
+    await page.goto('/lobby')
+    await type(page, 'older')
+    await expect(scrollback(page)).toContainText('nothing to walk back through')
+  })
+})
+
+test.describe('the instruction printed mid-signup can be typed', () => {
+  test('login <name> at the name question is a command, not a name', async ({ page }) => {
+    await page.goto('/commons')
+    await type(page, 'say hello again')
+    await type(page, 'marisol')
+    await expect(scrollback(page)).toContainText('login marisol')
+
+    // The exact thing the screen just told them to type.
+    await type(page, 'login marisol')
+    await expect(scrollback(page)).not.toContainText('login_marisol')
+    await expect(scrollback(page)).not.toContainText('letters, numbers and underscores')
+
+    // And they are out of the signup, not still being asked for a name.
+    await type(page, 'look')
+    await expect(scrollback(page)).toContainText('commons keeps nothing')
+  })
+})
+
+test.describe('a contribution says where it went', () => {
+  test('a reply answers with the address of the post it is under', async ({ page }) => {
+    await page.goto('/music/12')
+    await type(page, 'say warped ones are the best ones')
+    await type(page, 'replier')
+    await type(page, 'replier@example.com')
+    await expect(scrollback(page)).toContainText('music/12')
+  })
+
+  test('and the line is accent, not the colour used for things you skim past', async ({ page }) => {
+    await page.goto('/music')
+    await type(page, 'say found a second turntable')
+    await type(page, 'toner')
+    await type(page, 'toner@example.com')
+
+    const line = scrollback(page).locator('p', { hasText: /^music\/\d+$/ }).last()
+    await expect(line).toHaveClass(/line-accent/)
+  })
+})
+
+test.describe('the daily email is a thing you switch on', () => {
+  test('is off, and says so, without turning anything on to find out', async ({ page }) => {
+    await page.goto('/commons')
+    await type(page, 'say hello there')
+    await type(page, 'notifier')
+    await type(page, 'notifier@example.com')
+
+    await type(page, 'notify')
+    await expect(scrollback(page)).toContainText('off. nothing is emailed to you')
+    await expect(scrollback(page)).toContainText('notify on')
+  })
+
+  test('turning it on names the bound and the way out together', async ({ page }) => {
+    await page.goto('/commons')
+    await type(page, 'say hello there')
+    await type(page, 'switcher')
+    await type(page, 'switcher@example.com')
+
+    await type(page, 'notify on')
+    await expect(scrollback(page)).toContainText('one email a day')
+    await expect(scrollback(page)).toContainText('only when somebody has answered you')
+    await expect(scrollback(page)).toContainText('notify off')
+  })
+
+  test('is findable in help, since a setting nobody can see is not a choice', async ({ page }) => {
+    await page.goto('/lobby')
+    await type(page, 'help')
+    await expect(scrollback(page)).toContainText('notify — email me when replies are waiting')
+  })
+
+  test('a guest is told there is nowhere to send anything', async ({ page }) => {
+    await page.goto('/lobby')
+    await type(page, 'notify on')
+    await expect(scrollback(page)).toContainText('reading as a guest')
+  })
+})
+
+test.describe('the unsubscribe link in the email', () => {
+  test('answers a one-click POST, which is what RFC 8058 clients send', async ({ request }) => {
+    /*
+     * The `List-Unsubscribe-Post` header tells a mail client it may POST to the
+     * unsubscribe URL, and that URL is a page rather than a route handler. It
+     * works because Next renders a dynamic page for any method — a property of
+     * the framework rather than something the code asks for, which is exactly
+     * the kind of thing that changes under you in a minor version.
+     */
+    const response = await request.post('/unsubscribe?t=00000000-0000-4000-8000-000000000000')
+    expect(response.status()).toBe(200)
+  })
+
+  test('a GET works too, for the link in the body of the message', async ({ page }) => {
+    await page.goto('/unsubscribe?t=00000000-0000-4000-8000-000000000000')
+    // Fixtures have no database, so the honest answer is "that link doesn't
+    // match anything" — and it is still a page rather than a crash.
+    await expect(page.locator('main')).toContainText('thewall.social')
+  })
+
+  test('says how to stop it without this page, in case this page is the thing broken', async ({
+    page,
+  }) => {
+    await page.goto('/unsubscribe?t=00000000-0000-4000-8000-000000000000')
+    await expect(page.locator('main')).toContainText('notify off')
+  })
+})

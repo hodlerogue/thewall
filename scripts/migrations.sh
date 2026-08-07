@@ -30,6 +30,9 @@ MIGRATION_PROBES=(
   "20260805030000_about_is_a_route.sql|select exists (select 1 from public.reserved_slugs where slug = 'about')"
   "20260805040000_feed.sql|select to_regproc('public.wall_feed') is not null"
   "20260805050000_insert_grants.sql|select not has_table_privilege('authenticated', 'public.profiles', 'insert')"
+  # No new object again — two rows and a re-ordering. Probed by the rows.
+  "20260806000000_three_more_rooms.sql|select count(*) = 3 from public.rooms where slug in ('crypto', 'movies', 'feedback') and curated"
+  "20260806010000_notify_optin.sql|select to_regclass('public.notify_settings') is not null"
 )
 
 probe_for() {

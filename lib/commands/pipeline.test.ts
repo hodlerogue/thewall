@@ -3,6 +3,7 @@ import { parseFlags, parseSince, splitStages } from '@/lib/commands/pipeline'
 import { chipsForContext, createRunner } from '@/lib/commands/run'
 import { COMMANDS, findCommand } from '@/lib/commands/registry'
 import { fixtureEnv } from '@/lib/shell/env'
+import { ROOMS as FIXTURE_ROOMS } from '@/lib/shell/fixtures'
 import { Session } from '@/lib/shell/session'
 import type { Line, Location } from '@/lib/shell/types'
 
@@ -73,17 +74,35 @@ describe('§4.8 — one working pipe', () => {
     expect(nobody).toBe('0 posts')
 
     /*
-     * Four: the music post, the poker one, and two replies — the matchbook
-     * under the short leg in builders, and "the tip is the tell" in poker.
+     * Everything jameson has said, posts and replies both.
      *
      * This asserted 2 for a long time, with a comment explaining that replies
      * are not posts. That was true of the implementation and never true of the
      * question: somebody asking what jameson has said means all of it. `find`
      * read the posts table directly, so on a site whose §4.3 shape is a post
      * and a flat list of answers it was silently missing most of what was said.
+     *
+     * Counted from the fixtures rather than written down. It said `4` and a
+     * comment naming which four, and then adding two rooms made it 5 — a test
+     * that fails whenever the demo content grows is a test that will eventually
+     * be updated without being read. What it is actually asserting is below:
+     * that replies are in the total.
      */
+    const said = (author: string) =>
+      FIXTURE_ROOMS.filter((room) => !room.ephemeral).flatMap((room) => [
+        ...room.posts.filter((post) => post.author === author),
+        ...room.posts.flatMap((post) => post.replies.filter((reply) => reply.author === author)),
+      ])
+    const posts = FIXTURE_ROOMS.filter((r) => !r.ephemeral).flatMap((r) =>
+      r.posts.filter((p) => p.author === 'jameson'),
+    )
+    const expected = said('jameson').length
+
+    // Or the assertion below passes without proving anything about replies.
+    expect(expected).toBeGreaterThan(posts.length)
+
     const some = text((await run('find --by=jameson | count', LOBBY)).lines)
-    expect(some).toBe('4 posts')
+    expect(some).toBe(`${expected} posts`)
   })
 
   it('narrows by age', async () => {
