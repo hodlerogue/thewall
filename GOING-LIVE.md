@@ -125,7 +125,7 @@ not resolve yet is worse than one pointing at an ugly URL.
 Without this the magic link is refused when it arrives, which reads to the
 person clicking it as the link being broken.
 
-**Worked when:** step 7's magic link signs you in instead of showing an error.
+**Worked when:** the walk's step 4 link signs you in instead of showing an error.
 
 ---
 
@@ -144,7 +144,7 @@ Also set up `hello@thewall.social` to actually receive mail. Both published
 documents name it as the way to make an access, correction or deletion request,
 and an address in a privacy policy that bounces is worse than no address.
 
-**Worked when:** step 7 puts a real email in a real inbox.
+**Worked when:** the walk's step 4 puts a real email in a real inbox.
 
 ---
 
@@ -200,19 +200,37 @@ the kill condition.
 2. `go music`, `go 12` — the post and its replies.
 3. `say something` — it asks for a name, then an email, then posts the sentence
    you already typed without you retyping it.
-4. **Check the inbox.** The key should be there. Click it. You come back signed
-   in and verified.
+4. **Check the inbox.** The key should be there — a short code first, and a
+   link below it. Click the link. You come back signed in and verified.
 5. `say something else` — this only works if step 4 actually worked. If it says
    "check your email", verification did not land.
-6. Open a second browser, sign up as somebody else, reply to your post.
-7. Back in the first: `mail` should show the reply with its `room/id`, and the
+6. **Now the code, which is the half no suite can reach.** In a *new* private
+   window: `login <that name>`, then type the six characters from the email at
+   the prompt. It should say "you're <name> again" and the prompt label should
+   change without the page moving.
+
+   This is the step that matters most on a phone, and the one to be most
+   suspicious of. Everything else in this walk has been exercised by fixtures;
+   `verifyOtp({ email, token, type: 'magiclink' })` has never run against a real
+   GoTrue from this codebase. If the code is refused while the link in the same
+   email works, the `type` is the thing to change — try `'email'`.
+
+   Then try the same thing the way it actually gets used: open the email in the
+   Gmail app, tap the link, and confirm you end up signed in *inside Gmail* and
+   still a guest in Safari. That is the bug this exists for, and it should still
+   be true — nothing here fixes the link, it just stops the link being the only
+   door.
+7. Open a second browser, sign up as somebody else, reply to your post.
+8. Back in the first: `mail` should show the reply with its `room/id`, and the
    count line should appear above the prompt. **This is the one that was broken
    until just now** — `mailCount` was declared, threaded through and never set,
    so the count never polled. Worth confirming.
-8. `rename something_else`, then `~something_else` in the URL.
-9. `theme black`, reload, still black.
-10. In commons, with both browsers open: say something in one and watch it
+9. `rename something_else`, then `~something_else` in the URL.
+10. `theme black`, reload, still black.
+11. In commons, with both browsers open: say something in one and watch it
     appear in the other without a refresh.
+12. `make` a room from inside another room, then walk back into the first: it
+    should list the new one at the bottom as having grown out of it.
 
 Anything that fails here fails in a way no test could have caught, which is
 exactly why the walk exists.

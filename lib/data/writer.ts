@@ -82,12 +82,38 @@ export function httpSignupApi(): SignupApi {
       const payload = (await response.json().catch(() => ({}))) as {
         name?: string
         note?: string
+        codeSent?: boolean
         error?: string
       }
       if (!response.ok || !payload.name || !payload.note) {
         return { ok: false as const, reason: payload.error ?? 'couldn’t send a key just now.' }
       }
-      return { ok: true as const, name: payload.name, note: payload.note }
+      return {
+        ok: true as const,
+        name: payload.name,
+        note: payload.note,
+        // Defaults to false rather than true. A deployment with no mail
+        // provider sends no code, and asking for one that never arrives is a
+        // worse dead end than the link-only flow it replaced.
+        codeSent: payload.codeSent === true,
+      }
+    },
+
+    async loginCode(name: string, code: string) {
+      const response = await fetch('/api/login/code', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name, code }),
+      })
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        name?: string
+        error?: string
+      }
+      if (!response.ok || !payload.name) {
+        return { ok: false as const, reason: payload.error ?? 'that code didn’t work.' }
+      }
+      return { ok: true as const, name: payload.name }
     },
 
     async logout() {

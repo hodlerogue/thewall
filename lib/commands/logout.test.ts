@@ -34,6 +34,9 @@ function harness(options: { me?: string | null; fail?: string } = {}) {
     async login(name) {
       return { ok: true as const, name, note: 'sent' }
     },
+    async loginCode(name: string) {
+      return { ok: true as const, name }
+    },
     async logout() {
       calls += 1
       return options.fail ? { ok: false as const, reason: options.fail } : { ok: true as const }

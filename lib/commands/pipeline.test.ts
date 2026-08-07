@@ -24,6 +24,9 @@ const session = new Session(
     async login(name: string) {
       return { ok: true as const, name, note: 'sent' }
     },
+    async loginCode(name: string) {
+      return { ok: true as const, name }
+    },
     async resend() {
       return { note: 'sent' }
     },

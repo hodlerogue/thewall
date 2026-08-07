@@ -132,7 +132,8 @@ three of them mint magic links for different reasons.
 | `app/api/signup/route.ts` | §3.9 — makes the account, signs it in now, mails the key |
 | `app/api/verify/resend/route.ts` | another key for **this** session, when the first expired |
 | `app/api/login/route.ts` | a key for a name, for a browser with **no** session — the way back in |
-| `app/auth/callback/route.ts` | the only thing that has ever made somebody signed in |
+| `app/api/login/code/route.ts` | the short version of the same key, typed rather than followed |
+| `app/auth/callback/route.ts` | where a followed link lands |
 | `app/api/logout/route.ts` | ending it on this device, `scope: 'local'` |
 | `app/api/digest/route.ts` | the daily email, POST + shared secret, off when unconfigured |
 | `app/unsubscribe/page.tsx` | stopping it with no session, from the link in the email |
@@ -142,6 +143,37 @@ off `auth.getUser()`, so it cannot work without a session; `login` exists
 precisely for the case where there is none, takes a public name, and is
 therefore the one that needs two rate limits — one per caller, one per account
 aimed at, so nobody can fill a stranger's inbox with keys.
+
+**A key cannot sign you in in a browser it did not open, so it also comes as a
+code.** This is the reason `/api/login/code` exists and the thing to understand
+before touching any of it. A mail app opens links in a browser it owns, with
+cookie storage of its own — so tapping the key from Gmail signs you in *inside
+Gmail*, spends the single-use token doing it, and leaves the browser the person
+was reading in a stranger. Opening the same link in Safari afterwards lands on
+"that key had already been used", which is true and reads as nothing happening.
+No wording fixes it; a cookie set in one browser is not readable in another.
+
+So `generateLink` returns `email_otp` beside `hashed_token`, and it is sent too.
+Typing it proves the same thing with no browser involved, and
+`/api/login/code` verifies it through **`createRouteClient`** — the client that
+writes the session cookie into the response — so the session lands in the
+browser that asked. Verify it with the admin client and the whole feature is a
+no-op that looks like it works.
+
+Two rules that are not obvious and are load-bearing:
+
+- **Wrong codes are counted per account, not only per caller.** Six digits is a
+  million, which a script exhausts in minutes; a per-caller limit is defeated by
+  rotating addresses, and names here are public so choosing a target is free.
+  That is `login-code-to`, keyed on the profile id.
+- **A wrong code, a closed account and a name nobody has all get the same
+  sentence.** `/api/login` can say "no one here is called ren", because a name
+  is public. This cannot: a different refusal for a real name tells a guesser
+  the name is right and only the code is missing.
+
+The code is deliberately **not** in the subject line, where it would be most
+convenient. A subject shows on a locked phone, names here are public, and the
+whole reason the code exists is that somebody is on a phone.
 
 **React**, of which there is deliberately very little.
 

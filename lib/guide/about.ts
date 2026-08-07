@@ -62,8 +62,8 @@ export const ABOUT: readonly GuideSection[] = [
     body: [
       'say, and then what you want to say. In a room that starts a new post; inside a post it adds a reply, as does reply.',
       'You do not need an account to read. The first time you try to say something, you are asked what to call you and where to send a sign-in link — and the sentence you already typed is posted for you. You never type it twice.',
-      'There are no passwords; signing in is a link. Your address is never shown to anybody and never sold. You can say one thing before following that link — after that it asks you to check your email, because an address nobody has proved they can read is no way back in.',
-      'And that is what it is a way back in for. On a new phone, or after clearing your browser, type login and your name: a key goes to the address that name signed up with, and clicking it makes this browser you again. Never make a second account to get back in — your posts stay with the first name.',
+      'There are no passwords, and your address is never shown to anybody or sold. You can say one thing before you check that email — after that it asks, because an address nobody has proved they can read is no way back in.',
+      'On a new phone, or after clearing your browser, type login and your name: a key goes to the address that name signed up with, and typing the short code from it makes this browser you again. The same email has a link, which is easier on a computer. Never make a second account — your posts stay with the first name.',
       'logout ends it on the device you are holding, and nothing else. On a borrowed phone that matters: signing in lasts over a year otherwise. Everything you said stays where it is.',
     ],
   },

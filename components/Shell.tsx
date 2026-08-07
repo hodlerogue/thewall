@@ -441,6 +441,12 @@ function fixtureWriter(): Writer {
   }
 }
 
+/**
+ * Not a secret, and not meant to be. See `login` below for why the demo hands
+ * this over rather than pretending mail exists.
+ */
+const DEMO_CODE = '123456'
+
 function fixtureSignup(people: FixturePerson[]): SignupApi {
   const taken = new Set(['jameson', 'marisol', 'tuck', 'ren', 'dev'])
   return {
@@ -470,11 +476,37 @@ function fixtureSignup(people: FixturePerson[]): SignupApi {
           reason: `no one here is called ${name}. if you’ve not been here before, say something and i’ll set you up.`,
         }
       }
+      /*
+       * The demo asks for a code and tells you what it is.
+       *
+       * The alternative — say "nothing was sent" and stop — leaves the whole
+       * code flow unwalkable in the demo build and therefore untested by the
+       * phone suite, which is §8's kill condition. That is the fixture-is-a-
+       * different-shape trap this codebase keeps falling into: a listing that
+       * paged on the real site and not in fixtures hid a truncation bug for
+       * weeks.
+       *
+       * Saying the code out loud is honest rather than cute. Nothing was
+       * emailed and nothing was kept; what is being demonstrated is the shape
+       * of the exchange, and a demo that hands you the answer is obviously a
+       * demo.
+       */
       return {
         ok: true as const,
         name,
-        note: 'nothing was sent — this is a demo. on the real site a key would be in that account’s inbox.',
+        codeSent: true,
+        note: `nothing was emailed — this is a demo. on the real site a key would be in that account’s inbox; here the code is ${DEMO_CODE}.`,
       }
+    },
+
+    async loginCode(name: string, code: string) {
+      if (code.trim().toLowerCase().replace(/[\s-]/g, '') !== DEMO_CODE) {
+        return {
+          ok: false as const,
+          reason: `that code didn’t work. in this demo it is ${DEMO_CODE}.`,
+        }
+      }
+      return { ok: true as const, name }
     },
     async create(name: string) {
       // Nothing is stored anywhere, but the demo does have to be able to show

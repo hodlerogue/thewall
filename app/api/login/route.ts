@@ -134,10 +134,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'couldn’t make a key just now.' }, { status: 500 })
   }
 
-  // Built from `hashed_token`, never `action_link` — see lib/auth/links.ts.
+  /*
+   * The same key, twice: a URL and the six characters GoTrue minted beside it.
+   *
+   * `generateLink` has always returned `email_otp` and this route has always
+   * thrown it away. Sending it is what makes signing in work from a mail app —
+   * the link opens in whatever browser the mail app owns, sets the cookie
+   * there, and spends itself doing it, so the browser the person is actually
+   * reading in never sees a session. A code has no browser in it.
+   *
+   * Built from `hashed_token`, never `action_link` — see lib/auth/links.ts.
+   */
+  const code = link.properties.email_otp ?? null
+
   const delivery = await sendMagicLink(
     account.user.email,
     verifyUrl(link.properties.hashed_token, 'magiclink', request),
+    code,
   )
 
   if (!delivery.sent) {
@@ -151,6 +164,19 @@ export async function POST(request: Request) {
    */
   return NextResponse.json({
     name: profile.name,
-    note: `sent a key to the address ${profile.name} signed up with. click it and you’re back.`,
+    /*
+     * Reported by hand: the link opened in Gmail's own browser, and choosing
+     * "open in Safari" did not help — by then the key was spent, and the
+     * session it set was in a cookie jar Safari cannot read.
+     *
+     * So the instruction leads with the code. `codeSent` tells the prompt to
+     * ask for it; without it the prompt has no way to know whether this
+     * deployment has mail configured at all, and asking for a code that was
+     * never sent would be a dead end of its own.
+     */
+    codeSent: code !== null,
+    note: code
+      ? `sent a key to the address ${profile.name} signed up with.`
+      : `sent a key to the address ${profile.name} signed up with. follow it and you’re back.`,
   })
 }

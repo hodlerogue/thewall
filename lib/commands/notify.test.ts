@@ -51,6 +51,9 @@ function harness(options: { me?: string | null; refuse?: string } = {}) {
     async login(name) {
       return { ok: true as const, name, note: 'sent' }
     },
+    async loginCode(name: string) {
+      return { ok: true as const, name }
+    },
     async resend() {
       return { note: '' }
     },

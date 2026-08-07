@@ -1263,7 +1263,7 @@ export const COMMANDS: readonly Command[] = [
     contexts: ALL,
     gloss: () => 'get back into your account',
     detail: () =>
-      'sends a key to the address a name signed up with. login ryan, then click the link in the inbox and this browser is ryan again. there are no passwords — the link is the whole of it. use this on a new phone, or after clearing your browser.',
+      'sends a key to the address a name signed up with. login ryan, then type the short code from the email and this browser is ryan again. there are no passwords — the key is the whole of it. the email also has a link, which is one click on a computer; on a phone use the code, because a link tapped in a mail app opens in that app\u2019s own browser and signs you in there instead of here. use this on a new phone, or after clearing your browser.',
     insert: () => 'login ',
     wrongContext: () => '',
     async run({ arg, session }) {

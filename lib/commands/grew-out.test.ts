@@ -44,6 +44,9 @@ function harness(rooms: Room[], name: string | null = 'ryan') {
     async login(n) {
       return { ok: true as const, name: n, note: 'sent' }
     },
+    async loginCode(name: string) {
+      return { ok: true as const, name }
+    },
     async resend() {
       return { note: '' }
     },

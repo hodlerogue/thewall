@@ -31,6 +31,9 @@ function harness(
     async login(name: string) {
       return { ok: true as const, name, note: 'sent' }
     },
+    async loginCode(name: string) {
+      return { ok: true as const, name }
+    },
     async resend() {
       resends += 1
       return { note: 'another key is on its way.' }

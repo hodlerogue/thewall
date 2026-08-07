@@ -15,6 +15,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 const prompt = (page: Page) => page.getByTestId('prompt-input')
 const scrollback = (page: Page) => page.getByTestId('scrollback')
+const label = (page: Page) => page.getByTestId('prompt-label')
 
 async function type(page: Page, text: string) {
   await prompt(page).fill(text)
@@ -297,4 +298,52 @@ test.describe('leaving a device', () => {
     await type(page, 'help')
     await expect(scrollback(page)).toContainText('logout — leave this device')
   })
+})
+
+test('signing in with the code, which is the whole point of it', async ({ page }) => {
+  /*
+   * "When i click the link in my gmail and then select safari its still opening
+   * it in the gmail app." Not a browser-picker problem: a mail app opens links
+   * in a browser it owns, so the key is spent there, and the browser you were
+   * reading in never gets a session.
+   *
+   * This walk is the fix, on the phone the whole design is aimed at — ask,
+   * type, and be signed in *here*, with no browser handed off to anybody.
+   */
+  await page.goto('/music')
+  await type(page, 'login marisol')
+
+  // The demo build says out loud that it emails nothing and hands over the
+  // code, so the flow is walkable here rather than only on the real site.
+  await expect(scrollback(page)).toContainText('this is a demo')
+  await expect(scrollback(page)).toContainText('type the short code')
+  await expect(scrollback(page)).toContainText('this browser')
+
+  // Wrong first, because that is the common case on six characters by thumb —
+  // and coming back to the same question is what makes it survivable.
+  await type(page, '999999')
+  await expect(scrollback(page)).toContainText('didn’t work')
+  await expect(label(page)).toHaveText('guest:music$')
+
+  // Spaces are tolerated: a code read off a screen gets typed with them about
+  // as often as without, and refusing that is refusing somebody who was right.
+  await type(page, '123 456')
+  await expect(scrollback(page)).toContainText('you’re marisol again')
+  await expect(label(page)).toHaveText('marisol:music$')
+})
+
+test('the code question can be walked away from', async ({ page }) => {
+  await page.goto('/music')
+  await type(page, 'login marisol')
+  await type(page, 'cancel')
+
+  await expect(label(page)).toHaveText('guest:music$')
+  // A key really is sitting in a real inbox at this point, so the cancel line
+  // must not say nothing was sent.
+  await expect(scrollback(page)).not.toContainText('nothing sent')
+
+  // And reading carries on as normal, which is the promise cancel makes.
+  await type(page, 'leave')
+  await expect(scrollback(page)).toContainText('commons')
+  await expect(label(page)).toHaveText('guest:lobby$')
 })
