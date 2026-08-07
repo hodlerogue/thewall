@@ -85,6 +85,19 @@ Terminal.tsx ──typed text──> run.ts ──parse──> registry.ts ─�
 | `lib/data/live.ts` | realtime: presence, and posts arriving while you stand there |
 | `lib/supabase/{client,server,reader}.ts` | the three clients: browser, route handler, and unauthenticated read |
 
+**Never decorate a value before comparing it.** Live arrivals suppress your own
+posts by comparing the author to your name — and the caller built the display
+string first, `20  ryan`, and passed that as the author. So the comparison asked
+whether `20  ryan` was `ryan`, and everything anybody said in a room came back
+down the channel and printed underneath itself. It worked in commons alone,
+because there the address is absent and the two strings were accidentally equal
+— and commons is the room every signup test uses, which is why it survived.
+
+The fix worth copying is the shape rather than the line: the address is its own
+field on `Arrival`, so there is no parameter left that a rendered string can be
+passed to. When an identity check and a display string are built from the same
+value, separate them in the type.
+
 **Erasure anonymises, so `on delete cascade` never fires.** `forget` renames the
 profile to a tombstone and blanks the address; it does not delete the row,
 because deleting it would take every reply other people wrote under that

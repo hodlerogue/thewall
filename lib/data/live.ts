@@ -80,30 +80,12 @@ export function createLive(client: SupabaseClient, ephemeralRooms: readonly stri
           postId = data?.id ?? null
         }
 
-        const arrival = async (author: string, body: string, at: string, depth: 0 | 1) => {
-          // You saw your own words when you sent them. Comparing names rather
-          // than ids is deliberate: names are unique, and the id is not
-          // reliably known — signup completes server-side via Set-Cookie, so
-          // the browser client never fires an auth event to learn it.
-          if (name !== null && author === name) return
+        const arrival = async (params: Omit<Arrival, 'mine'>) => {
           // The location may have changed while the author name was being
           // resolved. Without this a message from a room you just left prints
           // under the room you just entered, with no attribution.
           if (closed) return
-
-          append(
-            depth === 0
-              ? [
-                  { text: `${author}, ${formatAgo(new Date(at))}`, tone: 'dim' },
-                  { text: body, depth: 1 },
-                ]
-              : // §3.2 — a reply is one step in, its body two. Same shape live
-                // as it is when read.
-                [
-                  { text: `${author}, ${formatAgo(new Date(at))}`, tone: 'dim', depth: 1 },
-                  { text: body, depth: 2 },
-                ],
-          )
+          append(arrivalLines({ ...params, mine: name }))
         }
 
         if (postId === null) {
@@ -114,9 +96,16 @@ export function createLive(client: SupabaseClient, ephemeralRooms: readonly stri
             async (payload) => {
               const row = payload.new as Row
               const author = await nameOf(client, row.author_id)
-              // Commons shows no numbers, because nothing there has an address.
-              const prefix = ephemeral ? '' : `${row.post_no}  `
-              await arrival(`${prefix}${author}`, row.body, row.created_at, 0)
+              await arrival({
+                author,
+                body: row.body,
+                at: row.created_at,
+                depth: 0,
+                // Commons shows no numbers, because nothing there has an
+                // address. Passed separately and never glued onto the name —
+                // see `arrivalLines`.
+                address: ephemeral ? undefined : row.post_no,
+              })
             },
           )
         } else {
@@ -126,7 +115,7 @@ export function createLive(client: SupabaseClient, ephemeralRooms: readonly stri
             async (payload) => {
               const row = payload.new as Row
               const author = await nameOf(client, row.author_id)
-              await arrival(author, row.body, row.created_at, 1)
+              await arrival({ author, body: row.body, at: row.created_at, depth: 1 })
             },
           )
         }
@@ -190,4 +179,58 @@ async function nameOf(client: SupabaseClient, id: string): Promise<string> {
 
 function anonymousKey(): string {
   return `guest-${Math.random().toString(36).slice(2, 10)}`
+}
+
+export interface Arrival {
+  /** Who wrote it, and nothing else. Never decorated. */
+  author: string
+  /** Who you are, so your own words are not read back to you. */
+  mine: string | null
+  body: string
+  at: string
+  /** 0 for a post arriving in a room, 1 for a reply arriving in a post. */
+  depth: 0 | 1
+  /** The post number, where the room has them. Absent in commons (§3.10). */
+  address?: number
+}
+
+/**
+ * What to print when somebody's words arrive live — or nothing, if they are
+ * yours.
+ *
+ * Extracted and exported because the suppression had a bug that nothing could
+ * see. The caller used to build the display string first — `20  ryan` — and
+ * pass *that* as the author, so the check asking "is this mine" compared
+ * `20  ryan` against `ryan` and never matched. Every post you made in a room
+ * came straight back down the channel and printed underneath itself:
+ *
+ *     ryan:music$ say idk about that
+ *     music/20
+ *
+ *     20  ryan, just now
+ *     idk about that
+ *
+ * Commons was the only place it worked, because there the prefix is empty and
+ * the two strings happened to be equal.
+ *
+ * So the address is its own field now and the name is never decorated before
+ * the comparison. The type is the fix as much as the code is: there is no
+ * longer a parameter you can pass a rendered string to.
+ */
+export function arrivalLines({ author, mine, body, at, depth, address }: Arrival): Line[] {
+  if (mine !== null && author === mine) return []
+
+  const head = `${address === undefined ? '' : `${address}  `}${author}, ${formatAgo(new Date(at))}`
+
+  // §3.2 — a reply is one step in, its body two. Same shape live as it is when
+  // read back.
+  return depth === 0
+    ? [
+        { text: head, tone: 'dim' },
+        { text: body, depth: 1 },
+      ]
+    : [
+        { text: head, tone: 'dim', depth: 1 },
+        { text: body, depth: 2 },
+      ]
 }
