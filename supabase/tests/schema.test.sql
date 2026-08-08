@@ -1670,7 +1670,7 @@ commit;
 select public.hide_post('~walled', 1, false);
 
 \echo ''
-\echo '§4.1, decided differently — one email a day, only if asked'
+\echo '§4.1, decided differently — one email a day, unless you say otherwise'
 
 \set jameson '11111111-1111-4111-8111-111111111111'
 \set marisol '22222222-2222-4222-8222-222222222222'
@@ -1687,13 +1687,84 @@ insert into public.replies (post_id, author_id, body)
 select id, :'marisol'::uuid, 'a reply that has not been read'
   from public.posts where room_slug = 'music' and post_no = 900;
 
+/*
+ * On by default now, and the assertions below are the whole of what that means
+ * — because "on by default" is one sentence and four separate things have to be
+ * true for it to be safe.
+ *
+ * Everybody has a row, and it says on. The absence of a row used to mean off;
+ * it now means nothing at all, because there is a trigger making one.
+ */
 select tests.ok(
-  (select count(*) from public.notify_settings) = 0,
-  'nobody is signed up for email until somebody asks'
+  (select count(*) from public.notify_settings)
+    = (select count(*) from public.profiles where banned_at is null),
+  'everybody with an account has a setting, rather than nobody'
 );
 select tests.ok(
-  not exists (select 1 from public.pending_digests()),
-  'and nothing is due to be sent'
+  not exists (
+    select 1 from public.notify_settings n
+      join public.profiles p on p.id = n.profile_id
+     where not n.daily
+  ),
+  'and it is on for all of them — nobody has turned it off yet'
+);
+
+-- A profile made from here gets one too. The trigger is why this cannot be
+-- forgotten by a route: signup is not the only thing that makes a profile, and
+-- a second path that skipped this would leave somebody silently unreachable.
+insert into auth.users (id, aud, role, email)
+values ('a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1', 'authenticated', 'authenticated', 'fresh@seed.invalid')
+on conflict (id) do nothing;
+insert into public.profiles (id, name, verified_at)
+values ('a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1', 'freshface', now())
+on conflict (id) do nothing;
+
+select tests.ok(
+  (select daily from public.notify_settings
+    where profile_id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'::uuid) = true,
+  'a brand new account is on without asking'
+);
+select tests.ok(
+  (select token from public.notify_settings
+    where profile_id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'::uuid) is not null,
+  'and has an unsubscribe token, so its first email can be stopped'
+);
+
+/*
+ * The guard that makes defaulting on defensible rather than rude, and the one
+ * to break first if this is ever revisited: nothing is sent to an address until
+ * somebody has followed a key that arrived in it.
+ *
+ * Being on and being unverified is a normal state — you are enrolled from the
+ * moment the account exists, and the account exists before the key is followed.
+ * What must not happen is mail going to an address a stranger typed into a
+ * signup box.
+ */
+insert into auth.users (id, aud, role, email)
+values ('a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2', 'authenticated', 'authenticated', 'unproven@seed.invalid')
+on conflict (id) do nothing;
+insert into public.profiles (id, name)
+values ('a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2', 'unproven')
+on conflict (id) do nothing;
+
+insert into public.posts (room_slug, post_no, author_id, body)
+select 'music', 901, 'a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2'::uuid, 'a post by somebody who never followed the key'
+ where not exists (select 1 from public.posts where room_slug = 'music' and post_no = 901);
+insert into public.replies (post_id, author_id, body)
+select id, :'marisol'::uuid, 'an answer they will never be emailed about'
+  from public.posts where room_slug = 'music' and post_no = 901;
+
+select tests.ok(
+  (select daily from public.notify_settings
+    where profile_id = 'a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2'::uuid) = true,
+  'an unverified account is on, like everybody else'
+);
+select tests.ok(
+  not exists (
+    select 1 from public.pending_digests()
+     where profile_id = 'a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2'::uuid
+  ),
+  'and is sent nothing, because nobody has proved they can read that address'
 );
 
 -- The table is not readable from a browser. Every column in it is one somebody
@@ -1720,10 +1791,29 @@ begin;
   set local role authenticated;
   set local request.jwt.claim.sub = :'jameson';
 
-  select tests.ok(public.notify_state() = false, 'it is off before you ask');
-  select tests.ok(public.set_notify(true) = true, 'and on once you do');
-  select tests.ok(public.notify_state() = true, 'which sticks');
+  select tests.ok(public.notify_state() = true, 'it is on without being asked for');
+
+  /*
+   * Off, and then still off. This is the assertion the whole migration turns
+   * on: a default flip must never re-enable somebody who said no.
+   *
+   * It cannot here, and not by being careful — `set_notify(false)` writes a row
+   * saying false rather than deleting one, so "off" is a stored fact and only
+   * the absence of a fact becomes on. If off were ever implemented as a delete,
+   * the trigger and the backfill would both undo it, and this is what would
+   * notice.
+   */
+  select tests.ok(public.set_notify(false) = false, 'and can be turned off');
+  select tests.ok(public.notify_state() = false, 'which sticks');
+  select tests.ok(public.set_notify(true) = true, 'and back on');
+  select tests.ok(public.notify_state() = true, 'which also sticks');
 commit;
+
+select tests.ok(
+  exists (select 1 from public.notify_settings
+           where profile_id = :'jameson'::uuid),
+  'turning it off leaves a row saying so, rather than removing the row'
+);
 
 select tests.ok(
   (select count(*) from public.pending_digests() where profile_id = :'jameson'::uuid) = 1,
@@ -1755,11 +1845,80 @@ begin;
   );
 commit;
 
--- Nobody else was opted in, so nobody else is in the list.
+/*
+ * This used to assert `count(*) = 1` — "nobody who did not ask is in the list",
+ * which was the point of an opt-in and is meaningless now that everybody is in
+ * by default. Replaced rather than deleted, because the *inverse* is the
+ * assertion the new default lives or dies on: somebody who said no is sent
+ * nothing, however much is piled up waiting for them.
+ *
+ * A purpose-made person with purpose-made mail, rather than one of the seed
+ * five. Their replies are backdated and `mail_seen_at` defaults to when the
+ * profile row was made, so everything shipped with the site counts as already
+ * read — which is right, and makes the seed useless for testing "waiting". That
+ * is the lesson this file learned the hard way once already: three attempts at
+ * the digest test passed against a broken function because seeded people have
+ * replies at assorted ages.
+ */
+insert into auth.users (id, aud, role, email)
+values ('a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3', 'authenticated', 'authenticated', 'optout@seed.invalid')
+on conflict (id) do nothing;
+insert into public.profiles (id, name, verified_at)
+values ('a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3', 'optout', now())
+on conflict (id) do nothing;
+
+insert into public.posts (room_slug, post_no, author_id, body)
+select 'music', 902, 'a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3'::uuid, 'a post belonging to somebody who wants no email'
+ where not exists (select 1 from public.posts where room_slug = 'music' and post_no = 902);
+insert into public.replies (post_id, author_id, body)
+select id, :'marisol'::uuid, 'an answer that is genuinely waiting'
+  from public.posts where room_slug = 'music' and post_no = 902;
+
 select tests.ok(
-  (select count(*) from public.pending_digests()) = 1,
-  'and nobody who did not ask is in the list'
+  exists (select 1 from public.pending_digests()
+           where profile_id = 'a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3'::uuid),
+  'they are due an email without ever having asked for one'
 );
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3';
+  select tests.ok(public.set_notify(false) = false, 'and they can say no');
+commit;
+
+select tests.ok(
+  not exists (select 1 from public.pending_digests()
+               where profile_id = 'a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3'::uuid),
+  'after which they are sent nothing, however much is waiting'
+);
+
+-- And the link in the email does the same without a session, which is the only
+-- way an unsubscribe link is not a lie.
+update public.notify_settings set daily = true
+ where profile_id = 'a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3'::uuid;
+select tests.ok(
+  public.unsubscribe(
+    (select token from public.notify_settings
+      where profile_id = 'a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3'::uuid)
+  ),
+  'the token at the bottom of the email turns it off too'
+);
+select tests.ok(
+  not exists (select 1 from public.pending_digests()
+               where profile_id = 'a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3'::uuid),
+  'and that stops the mail just as surely'
+);
+select tests.ok(
+  public.unsubscribe(
+    (select token from public.notify_settings where profile_id = :'marisol'::uuid)
+  ),
+  'the token in the email turns it off too'
+);
+select tests.ok(
+  not exists (select 1 from public.pending_digests() where profile_id = :'marisol'::uuid),
+  'and that also stops the mail'
+);
+update public.notify_settings set daily = true where profile_id = :'marisol'::uuid;
 
 -- One a day, and the stamp is what enforces it.
 select tests.ok(
@@ -1800,8 +1959,14 @@ select id, :'marisol'::uuid, 'answered days ago, never read', now() - interval '
   from public.posts where room_slug = 'music' and post_no = 950;
 
 -- Emailed yesterday, about that reply.
+--
+-- An upsert rather than an insert: the row already exists, put there by the
+-- trigger the moment the profile was made. What this is setting is
+-- `notified_at`, which is the only part of it this test cares about.
 insert into public.notify_settings (profile_id, daily, notified_at)
-values ('77777777-7777-4777-8777-777777777777', true, now() - interval '25 hours');
+values ('77777777-7777-4777-8777-777777777777', true, now() - interval '25 hours')
+on conflict (profile_id) do update
+  set daily = excluded.daily, notified_at = excluded.notified_at;
 
 select tests.ok(
   not exists (

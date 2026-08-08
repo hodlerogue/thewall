@@ -202,16 +202,37 @@ test.describe('a contribution says where it went', () => {
   })
 })
 
-test.describe('the daily email is a thing you switch on', () => {
-  test('is off, and says so, without turning anything on to find out', async ({ page }) => {
+test.describe('the daily email is a thing you switch off', () => {
+  test('is on for a brand new account, and says they did not do it', async ({ page }) => {
+    /*
+     * The default flipped: an opt-in only ever reached people already coming
+     * back, which is the one group that needs no reminding. What has to be true
+     * of an opt-out is that somebody finds out — so this walks a fresh signup
+     * and asks, exactly as a person would.
+     */
     await page.goto('/commons')
     await type(page, 'say hello there')
     await type(page, 'notifier')
     await type(page, 'notifier@example.com')
 
+    // Told at the moment the address changes hands, which is the only moment
+    // this is a default rather than a trick.
+    await expect(scrollback(page)).toContainText('i’ll email you when somebody answers you')
+
+    await type(page, 'notify')
+    await expect(scrollback(page)).toContainText('where everyone starts')
+    await expect(scrollback(page)).toContainText('notify off')
+  })
+
+  test('and one word ends it', async ({ page }) => {
+    await page.goto('/commons')
+    await type(page, 'say hello there')
+    await type(page, 'quitter')
+    await type(page, 'quitter@example.com')
+
+    await type(page, 'notify off')
     await type(page, 'notify')
     await expect(scrollback(page)).toContainText('off. nothing is emailed to you')
-    await expect(scrollback(page)).toContainText('notify on')
   })
 
   test('turning it on names the bound and the way out together', async ({ page }) => {
@@ -229,7 +250,10 @@ test.describe('the daily email is a thing you switch on', () => {
   test('is findable in help, since a setting nobody can see is not a choice', async ({ page }) => {
     await page.goto('/lobby')
     await type(page, 'help')
-    await expect(scrollback(page)).toContainText('notify — email me when replies are waiting')
+    // Glossed for the way out, not the way in. It is on, so somebody scanning
+    // this list is far likelier to be looking for how to stop it, and a gloss
+    // that reads as an offer hides that from them.
+    await expect(scrollback(page)).toContainText('notify — the daily email, and how to stop it')
   })
 
   test('a guest is told there is nowhere to send anything', async ({ page }) => {

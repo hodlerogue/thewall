@@ -1040,9 +1040,16 @@ export const COMMANDS: readonly Command[] = [
     verb: 'notify',
     aliases: ['notifications', 'email', 'digest'],
     contexts: ALL,
-    gloss: () => 'email me when replies are waiting',
+    /*
+     * Named for the thing somebody is looking for, which changed with the
+     * default. While it was opt-in the interesting half was switching it on, so
+     * "email me when replies are waiting" was an offer. It is on now, so the
+     * person scanning this list is much more likely to be looking for the way
+     * out — and a gloss that reads as an offer hides it from them.
+     */
+    gloss: () => 'the daily email, and how to stop it',
     detail: () =>
-      'notify on sends you one email a day, but only on days somebody answered you. notify off stops it, and so does the link at the bottom of any of them. it is off until you turn it on, nothing else is ever sent to you, and your address is still never shown to anybody.',
+      'one email a day, and only on days somebody answered you — a quiet week is a silent week. it is on from the moment you have an account; notify off stops it, and so does the link at the bottom of any of them. nothing else is ever sent to you, there is no second kind of email to end up on, and your address is still never shown to anybody.',
     insert: () => 'notify ',
     wrongContext: () => '',
     async run({ arg, env, session }) {
@@ -1064,12 +1071,16 @@ export const COMMANDS: readonly Command[] = [
         return {
           lines: on
             ? [
-                { text: 'on — one email a day, only when something is waiting.', tone: 'accent' },
+                // "Which is where everyone starts" because somebody reading
+                // this did not turn it on, and a bare "on" invites them to
+                // wonder what they clicked. Telling them it is the default is
+                // also the most honest place to mention the default at all.
+                { text: 'on, which is where everyone starts — one email a day, only when something is waiting.', tone: 'accent' },
                 { text: 'notify off stops it.', tone: 'faint' },
               ]
             : [
-                { text: 'off. nothing is emailed to you.', tone: 'faint' },
-                { text: 'notify on sends one a day, but only on days somebody answered you.', tone: 'faint' },
+                { text: 'off. nothing is emailed to you but a sign-in key when you ask for one.', tone: 'faint' },
+                { text: 'notify on starts it again — one a day, only on days somebody answered you.', tone: 'faint' },
               ],
         }
       }

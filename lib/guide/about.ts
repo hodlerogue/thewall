@@ -102,7 +102,7 @@ export const ABOUT: readonly GuideSection[] = [
     heading: 'Replies to you',
     body: [
       'When somebody answers something you said, a count appears above the prompt. mail lists them, each with the address to go and answer. Nothing chases you — it waits until you ask, and reading it clears the count.',
-      'notify on adds one email a day, only on days somebody answered you. Off unless you turn it on, and every one carries a link that stops it.',
+      'One email a day goes with an account, only on days somebody answered you — never more, and never anything else. notify off ends it, as does the link on every one.',
     ],
   },
   {

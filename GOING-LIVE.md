@@ -12,10 +12,10 @@ these fail silently — the site keeps loading and one feature is quietly dead.
 ## 1. The database
 
 Your project was set up when there were three migrations. There are now
-eighteen. What the rest add: the column-scoped grants that close two console
+nineteen. What the rest add: the column-scoped grants that close two console
 bypasses, mail, the kill switch, rename, erasure, walls, rooms people make, the
-feed, three more rooms, the opt-in daily email, and rooms that grew out of a
-room. **None of their features work until they are applied**, and none of them
+feed, three more rooms, the daily email, rooms that grew out of a room, and
+that email being on by default. **None of their features work until they are applied**, and none of them
 fail at build time — they fail in somebody's browser.
 
 The one to apply first if you apply nothing else is
@@ -60,7 +60,7 @@ This is safe to run repeatedly now. On its first run against an existing project
 it probes for each migration, records the ones already there, and applies only
 the rest — nothing runs twice and nothing is skipped.
 
-**Worked when:** `db-check.sh` shows all eighteen as `applied`, every room has
+**Worked when:** `db-check.sh` shows all nineteen as `applied`, every room has
 something in the last two columns, and the anon role reads all five objects.
 
 ---
@@ -93,11 +93,25 @@ content and writes nothing.
 ## 2a. The daily email, if you want it at all
 
 Nothing here is required. With no `DIGEST_SECRET` the route answers 503 and no
-email is ever sent — which is a working deployment, just one where `notify on`
+email is ever sent — which is a working deployment, just one where the setting
 records a preference nothing acts on.
 
-The feature is opt-in on both sides: **off for every account** until somebody
-types `notify on`, and off for the whole site until you schedule this.
+**Accounts are opted in; the site is not.** Every account is on from the moment
+it exists and off the moment somebody types `notify off`. Nothing actually goes
+out until you schedule the job below, so the site-wide switch is this section
+and the per-person one is theirs.
+
+Three things bound it, and they are why on-by-default is defensible rather than
+rude. Nothing is sent to an address until somebody has followed a key that
+arrived in it, so a stranger whose address was typed into a signup box gets one
+key and never hears from this site again. It is at most one a day, only on a day
+somebody actually answered them. And every one carries both a visible link and
+the RFC 8058 header a mail client can act on without opening anything.
+
+If you would rather existing accounts were left alone and only new ones default
+on, delete the backfill statement in
+`20260808000000_notify_on_by_default.sql` before applying it — the file says
+which one and why.
 
 Point any scheduler at it once a day:
 

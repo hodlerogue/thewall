@@ -185,7 +185,10 @@ export function fixtureEnv(
       : room.posts
 
   // Demo-only, and per session: nothing is stored and nothing is sent.
-  let notifying = false
+  // On, like the database. A demo that shows `notify` as off would teach the
+  // opposite of what the real site does, and the whole point of the demo is
+  // that somebody arriving afterwards finds the same place.
+  let notifying = true
 
   // Named rather than returned inline, so getProfile can reuse searchPosts
   // instead of restating the query that decides what a person's posts are.

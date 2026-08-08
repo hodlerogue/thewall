@@ -34,6 +34,9 @@ MIGRATION_PROBES=(
   "20260806000000_three_more_rooms.sql|select count(*) = 3 from public.rooms where slug in ('crypto', 'movies', 'feedback') and curated"
   "20260806010000_notify_optin.sql|select to_regclass('public.notify_settings') is not null"
   "20260806020000_rooms_grew_out_of.sql|select to_regproc('public.rooms_from') is not null"
+  # The default is the product decision, so the default is what is probed —
+  # the trigger could exist while the column still said false.
+  "20260808000000_notify_on_by_default.sql|select column_default = 'true' from information_schema.columns where table_name = 'notify_settings' and column_name = 'daily'"
 )
 
 probe_for() {

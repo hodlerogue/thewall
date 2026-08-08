@@ -381,6 +381,19 @@ export class Session {
           tone: 'faint',
         },
         /*
+         * Said here because this is the moment the address changes hands, and
+         * the daily summary is on from the moment the account exists.
+         *
+         * An opt-out somebody has to discover is a worse thing than an opt-in.
+         * An opt-out they were told about, in the sentence where they handed
+         * over the address, at the same volume as everything else — that is a
+         * default rather than a trick, and the difference is one line.
+         */
+        {
+          text: 'i’ll email you when somebody answers you, once a day at most. notify off stops that.',
+          tone: 'faint',
+        },
+        /*
          * The moment of assent, and the only one there is.
          *
          * The terms used to say "using it means agreeing", which nothing on the

@@ -467,6 +467,19 @@ both tones clear 4.5:1, so it was never legibility, it was hierarchy. `dim` is
 what this interface uses for things you skim past, so the one line saying "that
 happened" was in the skim-past colour.
 
+**The daily email is on by default, and "off" is a stored fact rather than the
+absence of one.** That distinction is the whole safety of the default flip, and
+it is easy to destroy by accident. `set_notify(false)` and `unsubscribe` both
+write a row saying `false`; neither deletes. So a profile with no row has never
+chosen, and only that becomes on — via a trigger on `profiles` and a one-time
+backfill. Implement "off" as a delete and both of those would silently re-enable
+everybody who had opted out. There is a database assertion for exactly this.
+
+The gate that makes it defensible is `pending_digests`'s `verified_at is not
+null`, not the setting: being on and unverified is a normal state, and it sends
+nothing. That is what stops a stranger whose address somebody typed into a
+signup box from being emailed. Break it and the default becomes indefensible.
+
 **"Is there anything waiting" and "is there anything new" are different
 questions.** The daily digest gated on the first and had to gate on the second:
 somebody who is emailed and never reads their mail still has the same pile

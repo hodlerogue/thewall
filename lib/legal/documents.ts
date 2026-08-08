@@ -93,7 +93,7 @@ export const PRIVACY: Document = {
     'reading thewall is anonymous. no account, no cookie, no analytics, no trackers.',
     'if you make an account we keep the name you chose, your email address, and what you post.',
     'if you make a room, we record that you made it. nobody else can see that.',
-    'your email is never shown to anyone and never sold. it is used to send you a sign-in link, and — only if you ask for it with notify on — one reply summary a day.',
+    'your email is never shown to anyone and never sold. it is used to send you a sign-in link, and one reply summary a day — at most, only on days somebody answered you, and only until you type notify off.',
     'what you post is public — that is the point of posting.',
     'you can have all of it deleted by writing to ' + CONTACT + '.',
     '',
@@ -120,7 +120,7 @@ export const PRIVACY: Document = {
       body: [
         'Your name. Public — it appears on everything you post, and at thewall.social/~yourname.',
         'Your email address. Never public, never shown to other users, never sold, never used for marketing. It is used to send you a sign-in link, because there are no passwords here — and, only if you switch it on yourself, one summary a day of replies waiting for you.',
-      'Whether you asked for that daily summary, and when the last one was sent. Not public, and held apart from the rest of your account so that neither the setting nor the unsubscribe link that goes with it is readable by anybody but the server. It is off unless you type notify on, no summary is ever sent on a day when nobody answered you, and every one of them carries a link that stops it without signing in.',
+      'Whether you get that daily summary, and when the last one was sent. Not public, and held apart from the rest of your account so that neither the setting nor the unsubscribe link that goes with it is readable by anybody but the server. It is on from the moment you have an account and off the moment you type notify off. Nothing is sent to an address until somebody has followed a key that arrived in it, no summary is ever sent on a day when nobody answered you, and every one of them carries a link that stops it without signing in.',
         'What you post and reply. Public, along with the time you posted it.',
         'When you signed up, when you last read your mail, and when your current name was taken.',
         'Names you have previously used. Not public: a name is shown as "previously somebody else\'s" only as a date, never attached to a person, so renaming to get away from a name actually works.',
