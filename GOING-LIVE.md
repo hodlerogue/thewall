@@ -38,6 +38,24 @@ Then apply what's missing:
 DATABASE_URL='...' ./scripts/db-deploy.sh
 ```
 
+**No psql, or a brand new project?** `supabase/setup.sql` is every migration and
+the seed in one file, generated from the same directory `db-deploy.sh` walks.
+Open it, copy it, and paste it into **SQL Editor → New query → Run**. There is
+nothing to fill in. It lands in one transaction, so a paste that fails partway
+leaves the project untouched rather than half-built.
+
+Use it only on a project with nothing in it. Against one that already has the
+schema it fails on the first `create table` and rolls back — correct, but
+`db-deploy.sh` is the tool there, since it applies only what is missing.
+
+**Moving to a different Supabase account?** `scripts/db-move.sql` carries the
+accounts, rooms, posts, replies, released names and email opt-ins across. Run
+`setup.sql` on the new project first; the move file explains the rest and ends
+with a check you run on both sides. Two things it will tell you and are worth
+knowing going in: everybody is signed out by the move, because the new project
+mints its own JWT secret and they come back with `login <name>`; and commons is
+not carried, because commons keeps nothing.
+
 This is safe to run repeatedly now. On its first run against an existing project
 it probes for each migration, records the ones already there, and applies only
 the rest — nothing runs twice and nothing is skipped.

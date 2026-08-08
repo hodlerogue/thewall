@@ -311,11 +311,32 @@ commit;
 
 begin;
   set local role anon;
+  /*
+   * By name, and by what is MISSING — not by a count.
+   *
+   * This said `count(*) ... = 7` and passed for a fortnight while three rooms
+   * in the lobby were empty. A count answers "how many worked", which is the
+   * same number whether seven of seven worked or seven of ten, so adding
+   * crypto, movies and feedback to `rooms` without adding anything to say in
+   * them moved the answer from right to right.
+   *
+   * What §5 actually asks is that *none* is empty, so that is what is asserted:
+   * the set of curated rooms with nothing to show, which must be empty and
+   * which names the offender when it is not. This is the rule already written
+   * down here after the last time — assert sets by name, never counts.
+   *
+   * Found by generating supabase/setup.sql and running it against a blank
+   * database, which prints a post count per room. No test could see it: the
+   * fixtures had content for all three.
+   */
   select tests.ok(
-    (select count(*) from public.room_overview where latest_body is not null) = 7,
-    -- Seven now, not six: `feed` is in the lobby and its line comes from the
-    -- walls rather than from posts of its own, which is the whole point of it.
-    'every seeded room has something recent to show'
+    not exists (
+      select 1 from public.room_overview where latest_body is null
+    ),
+    'no room in the lobby is empty — ' || coalesce(
+      (select string_agg(slug::text, ', ' order by slug)
+         from public.room_overview where latest_body is null),
+      'none are')
   );
   select tests.ok(
     (select latest_author from public.room_overview where slug = 'music') is not null,

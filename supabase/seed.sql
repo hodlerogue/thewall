@@ -182,6 +182,48 @@ insert into public.posts (room_slug, post_no, author_id, body, created_at) value
    'rewired the lamp my grandmother left me and it works. i have never been so pleased with anything.',
    now() - interval '50 minutes'),
 
+  /*
+   * crypto, movies and feedback, which shipped empty.
+   *
+   * They were added to `rooms` by 20260806000000_three_more_rooms.sql and to
+   * `lib/shell/fixtures.ts` at the same time, and not to this file — so the
+   * demo showed three warm rooms and every real project came up with three dead
+   * ones sitting in the lobby under "quiet in here". §5 is the whole reason
+   * this file exists: "an empty room is worse than no room. The demo cannot
+   * launch to a ghost town."
+   *
+   * Found by generating supabase/setup.sql and running it against a blank
+   * database, which prints a post count per room. Nothing else would have: the
+   * fixtures had content, so every suite that reads a room read a full one.
+   *
+   * The words are the fixtures' words on purpose. A person who tries the demo
+   * and then arrives at the real site should find the same place, and two sets
+   * of seed prose is two things to keep in step.
+   */
+  ('crypto', 1, '22222222-2222-4222-8222-222222222222',
+   'explained a wallet to my dad for an hour and he asked which bank it was in. i did not have a good answer.',
+   now() - interval '300 minutes'),
+  ('crypto', 2, '33333333-3333-4333-8333-333333333333',
+   'bought the top in 2021 and have not looked since. genuinely no idea what it is worth and i think that is the healthiest thing i have ever done.',
+   now() - interval '95 minutes'),
+
+  ('movies', 1, '44444444-4444-4444-8444-444444444444',
+   'three minutes into a thriller i realised i had seen it before and kept going anyway, because i could not remember the ending',
+   now() - interval '420 minutes'),
+  ('movies', 2, '11111111-1111-4111-8111-111111111111',
+   'watched the same film my dad had on every sunday. it is not a good film. i cried at the credits anyway.',
+   now() - interval '140 minutes'),
+
+  -- The room about the site itself, and the one place a seeded post has a job
+  -- beyond warmth: it says out loud that the lobby is not a fixed list, which
+  -- is the thing people were not working out on their own.
+  ('feedback', 1, '33333333-3333-4333-8333-333333333333',
+   'wanted a room for cycling and did not realise i could just make one. the lobby looks like a fixed list.',
+   now() - interval '260 minutes'),
+  ('feedback', 2, '44444444-4444-4444-8444-444444444444',
+   'took me three goes to work out that go 12 opens a post rather than a room. once you know it is obvious, which is the problem.',
+   now() - interval '75 minutes'),
+
   -- On a wall, and the only author it may have is its owner. The words are
   -- deliberately the sort of thing that would be odd in a room and reads right
   -- on a page of your own, which is the whole argument for walls existing.
@@ -217,6 +259,12 @@ select p.id, v.author_id::uuid, v.body, v.created_at
      now() - interval '4 hours'),
     ('builders', 2, '22222222-2222-4222-8222-222222222222',
      'there is always one bolt. it is a law of bicycles.', now() - interval '2 hours'),
+    ('crypto', 2, '44444444-4444-4444-8444-444444444444',
+     'the not-looking is the strategy. everyone finds this out eventually', now() - interval '60 minutes'),
+    ('movies', 2, '33333333-3333-4333-8333-333333333333',
+     'that is not about the film', now() - interval '100 minutes'),
+    ('feedback', 2, '22222222-2222-4222-8222-222222222222',
+     'same. the number being an address is the bit nobody says out loud', now() - interval '40 minutes'),
     -- Somebody else answering on her wall, which is the half of the feature
     -- that is easy to miss: only marisol starts things there, anybody replies.
     ('~marisol', 2, '33333333-3333-4333-8333-333333333333',

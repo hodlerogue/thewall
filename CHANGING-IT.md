@@ -189,6 +189,22 @@ whole reason the code exists is that somebody is on a phone.
 `supabase/seed.sql`. `supabase/tests/schema.test.sql` runs against the real
 migrations on a throwaway database.
 
+`supabase/setup.sql` is **generated** — every migration and the seed, in one
+transaction, for pasting into a SQL editor when there is no psql to hand.
+Regenerate it with `scripts/db-bundle.sh` after adding a migration;
+`lib/data/bundle.test.ts` fails if you forget, which is the only thing standing
+between a new project and last month's schema. `scripts/db-move.sql` is for
+carrying an existing project's contents to a different Supabase account.
+
+**Seeding a new room means two files, and forgetting the second is invisible.**
+`supabase/seed.sql` warms it on a real project and `lib/shell/fixtures.ts` warms
+it in the demo. crypto, movies and feedback got the fixture and not the seed, so
+the demo showed three lively rooms and every real deployment came up with three
+dead ones — for a fortnight, past every suite, because everything that reads a
+room reads the fixtures. §5 is the whole reason this matters: "an empty room is
+worse than no room." The guard is in `schema.test.sql` now and it names the
+offender.
+
 ---
 
 ## Add a command
