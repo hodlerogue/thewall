@@ -445,6 +445,38 @@ describe('the spelling that was asked for', () => {
   })
 })
 
+describe('you can find it under the word you already have in mind', () => {
+  it('teaches the form that works from where you are standing', async () => {
+    /*
+     * `help` lists what you can type *here*, so a gloss true everywhere and
+     * useful nowhere is a wasted line. In a room the number works; in the lobby
+     * and in commons only the address does, and the bare form always fails —
+     * which is exactly the defect this verb's context list was widened to fix.
+     */
+    const { run } = harness()
+    const line = async (at: Location) =>
+      text((await run('help', at)).lines)
+        .split('\n')
+        .find((l) => l.startsWith('reply —'))
+
+    expect(await line(IN_MUSIC)).toContain('number')
+    expect(await line({ person: 'marisol' })).toContain('number')
+    expect(await line(LOBBY)).toContain('address')
+    expect(await line({ room: 'commons' })).toContain('address')
+  })
+
+  it('says in what reply that the numbers on screen are buttons', async () => {
+    // The one part of this that cannot be guessed from the prompt. Everything
+    // else `reply` does is a thing you type; this is a thing you touch.
+    const { run } = harness()
+    const out = text((await run('what reply', IN_MUSIC)).lines)
+
+    expect(out).toContain('tapping')
+    // And that it types rather than sends, which is the whole contract (§3.6).
+    expect(out).toContain('rather than sending')
+  })
+})
+
 describe('the aim is not part of what was said', () => {
   it('puts an address in the quiet half, with the verb', async () => {
     // Left in the bright half it reads as a link somebody typed on purpose,

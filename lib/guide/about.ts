@@ -61,11 +61,11 @@ export const ABOUT: readonly GuideSection[] = [
     heading: 'Saying something',
     body: [
       'say, and then what you want to say — a new post in a room, a reply inside a post. Replies are numbered too: reply 2 answers reply 2, where it was written.',
-      'You can answer without opening anything: in a room, reply 5 something goes to post 5, and reply music/12 something works from anywhere.',
+      'You can answer without opening anything: in a room, reply 5 something goes to post 5, and reply music/12 something works from anywhere. Any number on screen is a button: tapping it types, never sends.',
       'write takes more than one line: type it, then the post, and a line with just a dot ends it. Blank lines are paragraph breaks, up to 4,000 characters.',
       'You do not need an account to read. The first time you try to say something, you are asked what to call you and where to send a sign-in link — and the sentence you already typed is posted for you. You never type it twice.',
       'There are no passwords, and your address is never shown to anybody or sold. You can say one thing before you check that email — after that it asks, because an address nobody has proved they can read is no way back in.',
-      'On a new phone, type login and your name: a key goes to the address that name signed up with, and typing its short code makes this browser you again. Never make a second account — your posts stay with the first name.',
+      'On a new phone, type login and your name: a key goes to the address it signed up with, and typing its short code makes this browser you again. Never make a second account — your posts stay with the first name.',
       'logout ends it on the device you are holding and nothing else. Everything you said stays where it is.',
     ],
   },
@@ -73,7 +73,7 @@ export const ABOUT: readonly GuideSection[] = [
     heading: 'commons, which keeps nothing',
     body: [
       'One room is different. commons is a hallway: everything said there is gone in 24 hours, there are no post numbers, and there are no replies. It is for the thing not worth keeping.',
-      'That is enforced by the database, not a setting: commons is structurally incapable of holding on to anything. Everywhere else keeps what you said until you ask for it to be removed.',
+      'That is enforced by the database, not a setting: commons is structurally incapable of keeping anything. Everywhere else keeps what you said until you ask for it to be removed.',
     ],
   },
   {
@@ -103,14 +103,14 @@ export const ABOUT: readonly GuideSection[] = [
   {
     heading: 'Replies to you',
     body: [
-      'When somebody answers something you said, a count appears above the prompt. mail lists them, each with the address to go and answer. Nothing chases you — it waits until you ask, and reading it clears the count.',
+      'When somebody answers something you said, a count appears above the prompt. mail lists them, each with the address to answer. Nothing chases you — it waits until you ask, and reading it clears the count.',
       'One email a day goes with an account, only on days somebody answered you — never more, and never anything else. notify off ends it, as does the link on every one.',
     ],
   },
   {
     heading: 'Your name',
     body: [
-      'rename betterchoice changes what you are called, as often as you like. Two things worth knowing: everything you have ever said follows the new name, and the name you leave is free for anybody to take the same minute.',
+      'rename betterchoice changes what you are called, as often as you like. Everything you have ever said follows the new name, and the name you leave is free for anybody to take the same minute.',
       'If a name recently belonged to somebody else, that is shown on the page of whoever holds it now — as a date, never as a person, so a reader is not fooled.',
     ],
   },

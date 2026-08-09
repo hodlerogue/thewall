@@ -88,6 +88,22 @@ describe('the rundown', () => {
     }
   })
 
+  it('covers the two ways to answer something, and the tap', () => {
+    /*
+     * Three things shipped in a fortnight that nothing user-facing mentioned:
+     * answering a post without opening it, answering one from another room by
+     * its address, and the fact that every address on the screen is a button.
+     *
+     * The last is the one that most needs saying. It is discoverable only by
+     * noticing that the number is orange and guessing what that means — and
+     * "orange is a thing you can type" is a convention this site has never
+     * written down anywhere.
+     */
+    expect(prose).toContain('reply 5')
+    expect(prose).toContain('reply music/12')
+    expect(prose).toMatch(/tapping it types, never sends/)
+  })
+
   it('is short enough to read in one sitting', () => {
     const words = prose.split(/\s+/).length
     /*

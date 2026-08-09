@@ -734,10 +734,22 @@ export const COMMANDS: readonly Command[] = [
     contexts: ALL,
     // No dash inside a gloss: help renders `verb — gloss`, and a second one
     // turns the line into a puzzle.
+    /*
+     * The gloss teaches the form that works from where you are standing, which
+     * is the whole job of this line — `help` is a list of what you can type
+     * *here*. "answer a post" was true everywhere and useful nowhere: in the
+     * lobby and in commons the bare form always fails and the address form
+     * always works, and saying so is the difference between a line somebody
+     * reads and a line somebody can follow.
+     */
     gloss: (c) =>
-      c === 'post' ? 'answer this' : c === 'room' ? 'answer a post by its number' : 'answer a post',
+      c === 'post'
+        ? 'answer this'
+        : c === 'room' || c === 'person'
+          ? 'answer a post by its number'
+          : 'answer a post by its address',
     detail: () =>
-      'answers somebody. inside a post, reply <something> answers the post and reply 2 <something> answers reply 2, saying so on the line. from outside, name the post: in a room reply 5 <something> answers post 5 without opening it, and reply music/12 <something> works from anywhere — the same address find and mail print. commons is the one place nothing can be answered, because nothing there is kept.',
+      'answers somebody. inside a post, reply <something> answers the post and reply 2 <something> answers reply 2, saying so on the line. from outside, name the post: in a room reply 5 <something> answers post 5 without opening it, and reply music/12 <something> works from anywhere — the same address find and mail print. tapping any of those numbers on the screen types it for you rather than sending anything. commons is the one place nothing can be answered, because nothing there is kept.',
     insert: (c) => (c === 'post' || c === 'room' ? 'reply ' : 'go '),
     // Never used: `contexts` is ALL, so nothing is ever the wrong place. Kept
     // because the interface requires it and an empty string is the honest
