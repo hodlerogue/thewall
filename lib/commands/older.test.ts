@@ -298,7 +298,7 @@ describe('typing does not re-render the scrollback', () => {
 
   it('renders the lines through a memo, not inline', () => {
     expect(code).toMatch(/const Scrollback = memo\(/)
-    expect(code).toContain('<Scrollback lines={lines} onInsert={insert} />')
+    expect(code).toContain('<Scrollback lines={lines} onInsert={aim} />')
   })
 
   it('hands the memo a callback that does not change on every letter', () => {
@@ -310,9 +310,14 @@ describe('typing does not re-render the scrollback', () => {
      * nothing breaks, the page size decision above just quietly stops being
      * paid for.
      *
-     * `insert` sets input rather than reading it, so it needs no dependencies.
+     * `aim` reads the compose state through a ref for exactly this reason, and
+     * updates the input with a function rather than reading it.
      */
-    expect(code).toMatch(/const insert = useCallback\([\s\S]*?\}, \[\]\)/)
+    // Anchored on the closing line at component indentation, so this reads
+    // `aim`'s own dependency list rather than the next callback's.
+    const deps = /const aim = useCallback\([\s\S]*?\n  \}, (\[[^\]]*\])\)/.exec(code)
+    expect(deps, 'aim is not a useCallback any more').not.toBeNull()
+    expect(deps![1], 'aim is reading state directly, which rebuilds it').toBe('[]')
   })
 
   it('keeps enough scrollback for older to be worth having', () => {

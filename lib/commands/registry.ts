@@ -772,7 +772,31 @@ export const COMMANDS: readonly Command[] = [
        * takes an address, because it is the one with something to point at.
        */
       const inThread = context === 'post' && NUMBER.test(aim)
-      if (inThread && body !== '') return sendReply(args, location, body, Number(aim))
+      if (inThread && body !== '') {
+        /*
+         * The reply has to be there, for the same reason a post does.
+         *
+         * `reply 0 x` and `reply 99 x` in a two-reply thread both used to send:
+         * the database drops a pointer that names nothing rather than refusing,
+         * so the answer landed correctly — and the confirmation printed `→ 99`
+         * over it, claiming a link that was never stored. A receipt for
+         * something that did not happen is worse than an error.
+         */
+        const toReply = Number(aim)
+        // Undefined means the read failed, not that the thread is empty — and
+        // refusing somebody's answer because the network hiccupped would be a
+        // far worse trade than a pointer nobody checked.
+        const post = await env.getPost(location.room!, location.postId!).catch(() => undefined)
+        if (post && !post.replies.some((reply) => reply.id === toReply)) {
+          const last = post.replies[post.replies.length - 1]?.id
+          return error(
+            last === undefined
+              ? `nothing to answer here yet — reply ${body} answers the post itself.`
+              : `there’s no reply ${toReply} here. they run 1 to ${last}.`,
+          )
+        }
+        return sendReply(args, location, body, toReply)
+      }
 
       /*
        * A number, or a whole address, naming a post you are not standing in.
@@ -835,6 +859,19 @@ export const COMMANDS: readonly Command[] = [
        * it is one edit rather than retyping.
        */
       const words = args.arg.trim() === '' ? '<something>' : args.arg.trim()
+
+      /*
+       * The feed holds nothing of its own — it is a view of walls — so asking
+       * it for a post to name back answers "there's nothing in feed to answer
+       * yet", which is the empty-room lie this codebase has now fixed on five
+       * surfaces. What is true is that its numbers need the wall in front.
+       */
+      if (location.room === FEED) {
+        const feed = await env.readFeed().catch(() => [])
+        const example = feed[0] ? `${feed[0].room}/${feed[0].id}` : '~marisol/2'
+        return error(`these live on people’s walls, so the number needs the name — try: reply ${example} ${words}`)
+      }
+
       if (context === 'room' || context === 'person') {
         const room = context === 'person' ? `~${location.person}` : location.room!
         const example = (await env.getRoom(room).catch(() => undefined))?.posts[0]?.id

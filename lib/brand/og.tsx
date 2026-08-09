@@ -122,7 +122,27 @@ export async function ogCard({
                 whiteSpace: 'pre',
               }}
             >
-              {truncateForCard(line.text, line.depth ?? 0)}
+              {/*
+                * The address in front keeps the colour the shell gives it.
+                *
+                * The site paints it `accent` — the colour it uses for a thing
+                * you can type, which an address now literally is, because
+                * tapping one types `reply <address> ` for you. The card renders
+                * by `tone` alone, so it went on drawing a dim address over an
+                * orange one, and the card's whole claim is that a preview
+                * cannot describe a site that does not look like this.
+                *
+                * Truncation stays on the whole line: the address is at the
+                * front, so the cut never lands inside it.
+                */}
+              {line.tap ? (
+                <>
+                  <span style={{ color: COLOURS.accent }}>{line.tap.token}</span>
+                  {truncateForCard(line.text, line.depth ?? 0).slice(line.tap.token.length)}
+                </>
+              ) : (
+                truncateForCard(line.text, line.depth ?? 0)
+              )}
             </div>
           ))}
         </div>

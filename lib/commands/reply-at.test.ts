@@ -44,7 +44,18 @@ function harness(name: string | null = 'ryan') {
       slug: 'music',
       gloss: 'what you are listening to',
       ephemeral: false,
-      posts: [post(12, 'found my dad’s records'), post(7, 'anyone else awake')],
+      posts: [
+        // Post 12 has answers in it: aiming at a reply that is not there is
+        // refused, so a thread with none would prove the wrong thing.
+        {
+          ...post(12, 'found my dad’s records'),
+          replies: [
+            { id: 1, author: 'ren', body: 'warped ones still play', createdAt: at(10) },
+            { id: 2, author: 'tuck', body: 'what was in there', createdAt: at(20) },
+          ],
+        },
+        post(7, 'anyone else awake'),
+      ],
     },
     { slug: 'poker', gloss: 'the tuesday game', ephemeral: false, posts: [post(3, 'we are on')] },
     { slug: 'empty', gloss: 'nothing yet', ephemeral: false, posts: [] },
@@ -259,6 +270,21 @@ describe('a whole address, from anywhere', () => {
     expect(written).toEqual([])
     expect(out).toContain('the number needs the name')
   })
+
+  it('and does not tell them the feed is empty, which it is not', async () => {
+    /*
+     * The feed holds nothing of its own — it is a view of walls — so asking it
+     * for a post to name back answered "there's nothing in feed to answer yet"
+     * under a screen full of things to answer. That is the empty-room lie, on
+     * its fifth surface: `go feed`, the URL, the lobby line, the share card,
+     * and now this.
+     */
+    const { run } = harness()
+    const out = text((await run('reply which of these', { room: 'feed' })).lines)
+
+    expect(out).not.toContain('nothing in feed')
+    expect(out).toContain('the number needs the name')
+  })
 })
 
 describe('inside a post, the number still means a reply', () => {
@@ -276,6 +302,37 @@ describe('inside a post, the number still means a reply', () => {
     const { run, written } = harness()
     await run('reply poker/3 deal me in', IN_POST)
     expect(written).toEqual([{ room: 'poker', postNo: 3, body: 'deal me in', toReply: undefined }])
+  })
+
+  it('refuses a reply number the thread does not have', async () => {
+    /*
+     * `reply 99 x` used to send. The database drops a pointer that names
+     * nothing rather than refusing, so the answer landed — and the confirmation
+     * printed `→ 99` over it, a receipt for a link that was never stored, which
+     * nothing later contradicts.
+     */
+    const { run, written } = harness()
+    const out = text((await run('reply 99 that one', IN_POST)).lines)
+
+    expect(written).toEqual([])
+    expect(out).toContain('no reply 99 here')
+    expect(out).toContain('1 to 2')
+  })
+
+  it('and zero, which nothing is ever numbered', async () => {
+    const { run, written } = harness()
+    await run('reply 0 that one', IN_POST)
+    expect(written).toEqual([])
+  })
+
+  it('says so plainly in a thread with no answers yet', async () => {
+    // Aiming at reply 2 where there are none is a different mistake from
+    // aiming past the end, and "they run 1 to undefined" is not a sentence.
+    const { run, written } = harness()
+    const out = text((await run('reply 2 hello', { room: 'poker', postId: 3 })).lines)
+
+    expect(written).toEqual([])
+    expect(out).toContain('nothing to answer here yet')
   })
 
   it('still posts the word when a number has nothing after it', async () => {

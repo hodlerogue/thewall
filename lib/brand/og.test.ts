@@ -160,6 +160,37 @@ describe('the front door redirects, so its card is not its own', () => {
   })
 })
 
+describe('the card and the site agree about what an address looks like', () => {
+  /*
+   * The card's whole claim is that a preview cannot describe a site that does
+   * not look like this — it renders the same `Line[]` the shell renders. That
+   * held until the address at the head of a line became a tap target and the
+   * site started painting it `accent`: the card renders by `tone` alone, so it
+   * went on drawing a dim address over an orange one, and nothing could notice
+   * because no test compares a picture to a stylesheet.
+   *
+   * Both sides read from the same place instead, and this asserts that they do.
+   */
+  it('paints the tapped address from the accent token, on both sides', () => {
+    const card = readFileSync(join(process.cwd(), 'lib/brand/og.tsx'), 'utf8')
+    expect(card, 'the card ignores the tap, so the address is drawn dim').toMatch(
+      /line\.tap \?[\s\S]*?COLOURS\.accent/,
+    )
+
+    const css = readFileSync(join(process.cwd(), 'app/globals.css'), 'utf8')
+    const rule = /\.line-tap \{([^}]*)\}/.exec(css)?.[1] ?? ''
+    expect(rule, 'the site no longer paints it accent either').toContain('var(--accent)')
+  })
+
+  it('and cuts the line to fit without cutting inside the address', () => {
+    // The address is at the front and truncation takes from the end, so this
+    // holds by construction — asserted because the card slices the truncated
+    // string by the token's length, which would go wrong the moment it did not.
+    const card = readFileSync(join(process.cwd(), 'lib/brand/og.tsx'), 'utf8')
+    expect(card).toMatch(/truncateForCard\(line\.text, line\.depth \?\? 0\)\.slice\(/)
+  })
+})
+
 describe('a room and a post still draw themselves', () => {
   it('so the cards that show content are still generated from it', () => {
     // The front door is a poster now; these two are not, and that split is the

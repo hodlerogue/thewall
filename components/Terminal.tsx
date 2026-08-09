@@ -192,6 +192,15 @@ export function Terminal({
   // Null unless a longer post is being written. Set from every result rather
   // than only when it changes — see RunResult.composing for why that matters.
   const [composing, setComposing] = useState<{ lines: number; chars: number } | null>(null)
+  /*
+   * The same fact, readable from a callback that must not be rebuilt.
+   *
+   * `aim` is handed to a memoised Scrollback, so a dependency on `composing`
+   * would make a new function on every keystroke of a draft and re-render every
+   * line printed. A ref written beside the state costs nothing and keeps both
+   * properties.
+   */
+  const composingRef = useRef<{ lines: number; chars: number } | null>(null)
   const [announcement, setAnnouncement] = useState('')
   /*
    * Whether the prompt holds the caret.
@@ -307,6 +316,36 @@ export function Terminal({
     if (pinnedToBottom.current) el.scrollTop = el.scrollHeight
   }, [lines])
 
+  /*
+   * Tapping an address, which is not quite the same as tapping a chip.
+   *
+   * Two things a chip never has to worry about, because a chip sits in a strip
+   * you reach for on purpose while these are scattered through everything you
+   * are reading.
+   *
+   * It never overwrites. `setInput(text)` is right for an empty prompt and
+   * destroys a sentence otherwise — you read a post, start typing your answer,
+   * tap the thing you are answering, and §3.9's "nothing typed is ever lost"
+   * is broken by the feature that exists to save you typing. Putting the aim in
+   * front instead is both safe and what you meant: `reply 8431 ` followed by
+   * the answer already in the box.
+   *
+   * And it does nothing while a longer post is being written, where every line
+   * typed is prose: the insert would go into the draft as the literal words
+   * "reply 8431", quietly, in the middle of somebody's paragraph.
+   */
+  const aim = useCallback((text: string) => {
+    if (composingRef.current !== null) return
+    setInput((current) => (current === '' ? text : text + current))
+
+    const el = inputRef.current
+    if (!el) return
+    el.focus()
+    requestAnimationFrame(() => {
+      el.setSelectionRange(el.value.length, el.value.length)
+    })
+  }, [])
+
   const insert = useCallback((text: string) => {
     setInput(text)
     const el = inputRef.current
@@ -393,6 +432,7 @@ export function Terminal({
 
       // §4.1 — reading your mail is what clears it.
       if (result.mail !== undefined) setMail(result.mail)
+      composingRef.current = result.composing ?? null
       setComposing(result.composing ?? null)
     },
     //  is read to decide whether an empty Enter means anything, so
@@ -550,7 +590,7 @@ export function Terminal({
           pinnedToBottom.current = el.scrollHeight - el.clientHeight - el.scrollTop < 40
         }}
       >
-        <Scrollback lines={lines} onInsert={insert} />
+        <Scrollback lines={lines} onInsert={aim} />
       </div>
 
       <div className="composer">
@@ -623,10 +663,13 @@ export function Terminal({
             aria-label={`${label} command`}
             /* The database caps a body at 4000. Without this the words are
                typed, sent, refused, and gone — which is the failure §3.9
-               exists to prevent. `reply 999 ` is the longest prefix a body can
-               follow, so the allowance is a little over the cap rather than
-               exactly it. */
-            maxLength={4020}
+               exists to prevent, so the allowance is the cap plus the longest
+               prefix a body can follow.
+               That prefix used to be `reply 999 `, and 4020 was plenty. It is
+               now `reply <room>/<n> ` — a slug is up to 24 characters and a
+               post number up to six — which is 38, so a maximum-length reply
+               aimed at a long address was being silently cut at 4020. */
+            maxLength={4048}
           />
         </form>
       </div>

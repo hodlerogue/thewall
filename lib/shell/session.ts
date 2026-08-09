@@ -182,6 +182,24 @@ export interface WriteResult {
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+/**
+ * The held sentence, spelled as the command that would send it.
+ *
+ * `retry` puts text in the prompt, and the prompt runs what is in it — so the
+ * words alone are not enough. The verb depends on where it was going and the
+ * aim has to survive with it, or a failed reply comes back as a line that would
+ * post somewhere else entirely if it were run.
+ */
+function retryLine(target: Location, held: Held): string {
+  if (target.postId === undefined) return `say ${held.body}`
+  const aim = held.elsewhere
+    ? `${target.room}/${target.postId} `
+    : held.toReply === undefined
+      ? ''
+      : `${held.toReply} `
+  return `reply ${aim}${held.body}`
+}
+
 export class Session {
   private mode: Mode = 'command'
   private held: Held | null = null
@@ -395,7 +413,27 @@ export class Session {
         }
 
         const written = await this.write(draft.location, body, { addressed: draft.addressed })
-        return { lines: written.lines, retry: written.failed ? body : undefined }
+
+        /*
+         * A draft that did not send stays a draft.
+         *
+         * It used to come back through `retry`, which puts text in the prompt —
+         * and the prompt is a single-line `<input>`, which strips newlines on
+         * assignment. So a failed post came back with every paragraph break
+         * gone: the one thing `write` exists to make possible, destroyed by the
+         * mechanism meant to protect it.
+         *
+         * Holding the draft instead costs nothing and loses nothing. The mode
+         * stays on, the indicator stays on, and a second dot tries again.
+         */
+        if (written.failed) {
+          this.draft = draft
+          this.mode = 'writing'
+          return {
+            lines: [...written.lines, { text: 'still here — type a dot to try again.', tone: 'faint' }],
+          }
+        }
+        return { lines: written.lines }
       }
 
       /*
@@ -696,8 +734,18 @@ export class Session {
     })
     lines.push(...written.lines)
 
-    // Losing the sentence here would be the worst possible moment for it.
-    return { lines, identity: this.who, retry: written.failed ? held.body : undefined }
+    /*
+     * Losing the sentence here would be the worst possible moment for it — and
+     * handing it back as bare words is barely better, because the prompt is a
+     * command line: pressing Enter on `four pounds of tomatoes` answers
+     * `i don't know "four"` and the sentence is gone for real. So what goes
+     * back is the line that would send it, aimed where it was aimed.
+     */
+    return {
+      lines,
+      identity: this.who,
+      retry: written.failed ? retryLine(target, held) : undefined,
+    }
   }
 
   /** §4.7 — send another key. Only meaningful once you have an account. */

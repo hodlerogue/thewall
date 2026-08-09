@@ -286,14 +286,23 @@ describe('the length limit is one number, stated in five places', () => {
   })
 
   it('agrees with what the prompt will physically accept', () => {
-    // A little over, because `reply 999 ` is a prefix a body can follow — but
-    // never under, which would truncate the words before they were sent.
+    /*
+     * Over the cap by the longest prefix a body can follow, and never under,
+     * which would truncate the words before they were sent.
+     *
+     * `reply <slug>/<n> ` is that prefix now: 6 for the verb and its space, up
+     * to 24 for a slug, 1 for the slash, up to 6 for a post number, 1 more
+     * space. The number was set when the longest was `reply 999 `, and a
+     * maximum-length reply aimed at a long address was quietly losing its
+     * last characters.
+     */
+    const LONGEST_PREFIX = 'reply '.length + 24 + 1 + 6 + 1
     const terminal = readFileSync(
       join(__dirname, '..', '..', 'components', 'Terminal.tsx'),
       'utf8',
     )
     const max = Number(/maxLength=\{(\d+)\}/.exec(terminal)![1])
-    expect(max).toBeGreaterThanOrEqual(limit)
+    expect(max).toBeGreaterThanOrEqual(limit + LONGEST_PREFIX)
     expect(max).toBeLessThan(limit + 100)
   })
 
