@@ -64,6 +64,24 @@ export interface Command {
   /** Opts into `|` splitting. Without it, a pipe is just a character. */
   pipeable?: boolean
   /**
+   * Named on another verb's line in `help` rather than taking one of its own.
+   *
+   * Not `hidden`, which also removes a verb from the palette and the
+   * "did you mean" pool — this is only about the glossary's length. §3.6 caps
+   * the first group at ten lines because eleven is a wall again, so adding a
+   * row means choosing one to drop, deliberately, rather than letting the list
+   * grow past the point it can be read at a glance.
+   *
+   * The first attempt folded `write` into `say`'s gloss instead — and the
+   * mobile gate caught it, because a chip's label *is* its gloss and
+   * "post something here, or write for a longer one" pushed the primary action
+   * off the right edge of a 380px strip. §8 makes that the kill condition.
+   *
+   * The verb still has its own `what` entry, its own chip, and its own place in
+   * the alias table. Only the glossary row is folded.
+   */
+  folded?: boolean
+  /**
    * The argument is content, not an instruction.
    *
    * True for exactly two verbs, and it changes one thing: the echo of what was
@@ -461,7 +479,13 @@ export const COMMANDS: readonly Command[] = [
   {
     verb: 'say',
     contributes: true,
-    aliases: ['wall', 'post', 'write', 'talk'],
+    /*
+     * `write` used to be here and is a verb of its own now — the longer form,
+     * with paragraphs. Leaving it as an alias would make one word mean two
+     * things, and the alias test caught it the moment the new verb landed,
+     * which is the second time that test has earned itself.
+     */
+    aliases: ['wall', 'post', 'talk'],
     /*
      * §3.3 — one verb for all contribution, and `say` is still it: inside a
      * post this is what adds a reply. `reply` used to be an alias here, which
@@ -553,6 +577,51 @@ export const COMMANDS: readonly Command[] = [
       const written = await session.write(location, arg, { addressed: context !== 'commons' })
       // §3.9 — nothing typed is ever lost, including to a network blip.
       return { lines: written.lines, retry: written.failed ? arg : undefined }
+    },
+  },
+
+  {
+    /*
+     * A post with paragraphs in it.
+     *
+     * The gap this fills is smaller than it looks and was never about length:
+     * the cap was already two thousand characters. The prompt is a single-line
+     * `<input>`, so there was no way to type a line break — a long post had to
+     * be one unbroken block, and pasting one in flattens it.
+     *
+     * Deliberately *not* a second kind of post. What comes out is an ordinary
+     * post at an ordinary address; nothing else in the system learns a new
+     * concept, no listing has to ask which kind a thing is, and the site never
+     * says "these are the real posts and those are the lesser ones". The idea
+     * that started this had a 280-character floor to qualify — dropped, because
+     * all twenty-one posts the site ships as its own example of good content
+     * are under it, the longest by half.
+     */
+    verb: 'write',
+    aliases: ['compose', 'longer', 'essay'],
+    // Wherever `say` starts something. Not commons — §3.10 keeps nothing there,
+    // and a page of writing is the worst thing to lose to a 24-hour expiry.
+    contexts: ['room', 'post', 'person'],
+    gloss: (c) => (c === 'post' ? 'a longer answer' : 'a longer post, with paragraphs'),
+    detail: () =>
+      'takes more than one line. type write, then the post — a line with just a dot on it ends it and sends it. blank lines are paragraph breaks, cancel throws it away, and the limit is 4000 characters. what comes out is an ordinary post at an ordinary address; say is the same thing for one line.',
+    insert: () => 'write',
+    wrongContext: () =>
+      'commons keeps nothing for longer than a day, so it is the wrong place for something you spent time on. try a room.',
+    async run({ arg, context, location, session }) {
+      if (arg !== '') {
+        // §3.7 — name the fix. Somebody typing `write about the thing` means to
+        // start, not to post those four words, and posting them would be a
+        // surprise nobody could undo.
+        return error('write takes no words on this line. type write on its own, then the post.')
+      }
+
+      if (context === 'person' && location.person !== session.name()) {
+        return error(`this is ${location.person}'s wall — only they can put things on it.`)
+      }
+
+      const target = context === 'person' ? { room: `~${location.person}` } : location
+      return { lines: session.compose(target, true) }
     },
   },
 
@@ -739,6 +808,20 @@ export const COMMANDS: readonly Command[] = [
      * finite in that direction.
      */
     verb: 'older',
+    /*
+     * Folded out of the glossary, and it is the right one to fold.
+     *
+     * §3.6 caps the first group at ten lines because eleven is a wall again,
+     * and `write` earned a row — a genuinely new thing you can do. This is the
+     * entry that can spare one: a room that has more than a page prints
+     * "older — the page before this one" at the top of its own listing, every
+     * time it is looked at, which is exactly where and when it is useful. A
+     * permanent row for a paging control is the redundancy.
+     *
+     * `what older` still explains it, the chip is still there, and the alias
+     * table is untouched.
+     */
+    folded: true,
     // Not `back`: that is `leave`'s, and the signup flow says "type back to
     // change the name" out loud. Two meanings for one word in a shell whose
     // whole promise is that typing a word does the obvious thing.
@@ -902,7 +985,7 @@ export const COMMANDS: readonly Command[] = [
 
       for (const command of COMMANDS) {
         // §4.8 — the pipe is not on this list. That is the point of it.
-        if (command.hidden || !command.contexts.includes(context)) continue
+        if (command.hidden || command.folded || !command.contexts.includes(context)) continue
         const line: Line = { text: `${command.verb} — ${command.gloss(context)}`, tone: 'dim' }
         if (ELSEWHERE.includes(command.verb)) elsewhere.set(command.verb, line)
         else here.push(line)

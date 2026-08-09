@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createRunner } from '@/lib/commands/run'
+import { findCommand } from '@/lib/commands/registry'
 import { ROOM_PAGE, fixtureEnv, type Env } from '@/lib/shell/env'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
 import type { Post, Room } from '@/lib/shell/model'
@@ -215,9 +216,25 @@ describe('older walks back a page at a time', () => {
     expect(out).not.toMatch(/^440\s/m)
   })
 
-  it('is offered in help, where somebody stuck at the top of a room would look', async () => {
+  it('is offered by the room itself, which is where it is useful', async () => {
+    /*
+     * This asserted a row in `help`, and `older` was folded out of that list
+     * when `write` earned one — §3.6 caps the first group at ten lines, so a
+     * new row means choosing one to drop.
+     *
+     * `older` is the right one to drop and this is why: a room with more than a
+     * page in it prints the offer at the top of its own listing, every time it
+     * is looked at. A permanent row for a paging control is the redundancy;
+     * the offer where the cut actually is, is not.
+     */
     const { run } = harness([bigRoom(500)])
-    expect(text((await run('help', AT)).lines)).toContain('older — the page before this one')
+    expect(text((await run('look', AT)).lines)).toContain('older — the page before this one')
+  })
+
+  it('is still explained by what, and still on the palette', async () => {
+    const { run } = harness([bigRoom(500)])
+    expect(text((await run('what older', AT)).lines)).toContain('older')
+    expect(findCommand('older')?.hidden).toBeFalsy()
   })
 
   it('is refused from the lobby, naming a room to try it in', async () => {

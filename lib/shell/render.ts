@@ -476,6 +476,29 @@ export function renderProfile(profile: Profile, now = new Date()): Line[] {
   return lines
 }
 
+/**
+ * A one-line preview of something that may not be one line.
+ *
+ * `write` means a body can have paragraphs in it, and every listing on this
+ * site shows a slice of one as a single `Line`. The scrollback renders with
+ * `white-space: pre-wrap`, so a newline inside that slice really does break the
+ * line — one preview would silently become two, and a lobby of them would come
+ * apart.
+ *
+ * So the *first line* is the preview, and then it is cut to length. That is
+ * also the better preview: somebody who writes a short opening line and then
+ * their argument underneath has written a subject and a body, and this shows
+ * the subject. Nothing had to be added to the schema for that to be true — it
+ * falls out of being able to type a line break at all.
+ *
+ * The ellipsis says the same thing either way, so a long first line and a
+ * second paragraph are not distinguished. They do not need to be: both mean
+ * "there is more of this than fits here", which is what the reader is deciding
+ * about.
+ */
 function truncate(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`
+  const first = text.split('\n', 1)[0].trimEnd()
+  const more = first.length < text.trimEnd().length
+  if (first.length <= max) return more ? `${first}…` : first
+  return `${first.slice(0, max - 1).trimEnd()}…`
 }

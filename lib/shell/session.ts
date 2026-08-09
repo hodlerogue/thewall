@@ -111,7 +111,7 @@ export interface Writer {
   >
 }
 
-type Mode = 'command' | 'ask-name' | 'ask-email' | 'ask-one'
+type Mode = 'command' | 'ask-name' | 'ask-email' | 'ask-one' | 'writing'
 
 /**
  * A single question the prompt is waiting on, and what to do with the answer.
@@ -178,6 +178,8 @@ export class Session {
   private held: Held | null = null
   private pendingName: string | null = null
   private pending: OneQuestion | null = null
+  /** The post being written, while one is. See `compose`. */
+  private draft: { location: Location; addressed: boolean; lines: string[] } | null = null
   private who: string | null = null
   /**
    * Whether "what the post number is for" has been said yet in this sitting.
@@ -268,22 +270,153 @@ export class Session {
      * are already confused enough to be walking.
      */
     const held = this.held !== null
-    const asking = held || this.pending !== null || this.pendingName !== null
+    const writing = this.draft !== null
+    const asking = held || writing || this.pending !== null || this.pendingName !== null
     this.mode = 'command'
     this.held = null
     this.pendingName = null
     this.pending = null
+    this.draft = null
 
     if (!asking) return [{ text: 'nothing to cancel.', tone: 'faint' }]
     return [
       {
-        text: held ? 'no problem — nothing sent. keep looking around.' : 'no problem. keep looking around.',
+        text: writing
+          ? // Said plainly, because this one throws away work rather than a
+            // single sentence, and somebody who typed it by accident deserves
+            // to know exactly what just happened.
+            'thrown away. nothing was posted.'
+          : held
+            ? 'no problem — nothing sent. keep looking around.'
+            : 'no problem. keep looking around.',
         tone: 'faint',
       },
     ]
   }
 
+  /**
+   * The longest a body may be, stated once on this side of the wire.
+   *
+   * The database says the same number in a check constraint and
+   * `lib/data/writer.test.ts` reads that file to make sure the two agree — a
+   * limit that disagrees with the one enforcing it is how a long piece of
+   * writing gets accepted by the prompt and refused by the server, which is the
+   * one moment §3.9 promises cannot happen.
+   */
+  static readonly LIMIT = 4000
+
+  /**
+   * Start a longer post: lines, until a line with just a dot on it.
+   *
+   * The prompt is a single-line `<input>`, so until now a body could be
+   * thousands of characters and had to be one unbroken block — there was no
+   * way to type a line break, and pasting one in flattens it. That is the
+   * whole of what was missing; the length cap was never the thing in the way.
+   *
+   * A dot on its own line is the `mail(1)` and `ed(1)` convention, which is
+   * both the oldest answer to this problem and the one a terminal-literate
+   * visitor guesses first (§3.5). It is also the only line it could be: a
+   * blank line has to stay meaningful, because a blank line is what a
+   * paragraph break *is*.
+   */
+  compose(location: Location, addressed: boolean): Line[] {
+    this.mode = 'writing'
+    this.draft = { location, addressed, lines: [] }
+    return [
+      { text: 'writing. a line with just a dot on it ends the post.', tone: 'accent' },
+      { text: 'blank lines are paragraph breaks. cancel throws it away.', tone: 'faint' },
+    ]
+  }
+
+  /**
+   * How much has been written, for the line above the prompt.
+   *
+   * Null when nothing is being written, which is what lets the caller show the
+   * indicator without asking a second question. It exists because compose mode
+   * is the one state where forgetting you are in it is expensive: every line
+   * you type is swallowed into a draft, and unlike the signup questions there
+   * is nothing being asked to remind you.
+   */
+  composing(): { lines: number; chars: number } | null {
+    if (this.draft === null) return null
+    return { lines: this.draft.lines.length, chars: this.draftLength() }
+  }
+
+  private draftLength(): number {
+    return this.draft === null ? 0 : this.draft.lines.join('\n').length
+  }
+
   async answer(input: string): Promise<AnswerResult> {
+    /*
+     * Writing is handled before anything else, and on the *raw* line.
+     *
+     * Trimming would eat the indentation somebody typed on purpose, and the
+     * generic escapes below would eat their prose: `login ryan` is a plausible
+     * sentence in the middle of a paragraph, and treating it as a command would
+     * throw away everything written so far. In here only two lines mean
+     * anything other than themselves — a dot, and cancel.
+     */
+    if (this.mode === 'writing' && this.draft !== null) {
+      const line = input.replace(/\s+$/, '')
+
+      if (/^(cancel|nevermind|never mind|quit|stop)$/i.test(line.trim())) {
+        return { lines: this.cancel() }
+      }
+
+      if (line.trim() === '.') {
+        const draft = this.draft
+        // Trailing blank lines are what you get from pressing enter twice before
+        // the dot, and they are never meant.
+        const body = draft.lines.join('\n').replace(/\n+$/, '').trim()
+        this.draft = null
+        this.mode = 'command'
+
+        if (body === '') {
+          return { lines: [{ text: 'nothing written — nothing sent.', tone: 'faint' }] }
+        }
+
+        // §3.9 — the same held-sentence path a one-line `say` takes. A whole
+        // draft is a sentence as far as this is concerned, and losing one to a
+        // signup question would be the worst version of the bug that machinery
+        // exists to prevent.
+        if (this.who === null) {
+          return {
+            lines: this.begin({ location: draft.location, body, addressed: draft.addressed }),
+          }
+        }
+
+        const written = await this.write(draft.location, body, { addressed: draft.addressed })
+        return { lines: written.lines, retry: written.failed ? body : undefined }
+      }
+
+      /*
+       * Refused a line at a time, never the whole draft.
+       *
+       * The database would refuse the commit, and by then the draft is gone and
+       * so is the writing. Checking here means the answer arrives while there
+       * is still something to shorten, and the line that would not fit is
+       * handed straight back rather than swallowed.
+       */
+      const would = this.draftLength() + (this.draft.lines.length > 0 ? 1 : 0) + line.length
+      if (would > Session.LIMIT) {
+        return {
+          lines: [
+            {
+              text: `that would take it past ${Session.LIMIT} characters, which is the limit.`,
+              tone: 'error',
+            },
+            { text: 'end it with a dot, or shorten that line and try again.', tone: 'faint' },
+          ],
+          retry: line,
+        }
+      }
+
+      this.draft.lines.push(line)
+      // Nothing printed. The echo above is the record of what was typed, and a
+      // word under every line is how a prompt turns into a chat client.
+      return { lines: [] }
+    }
+
     const text = input.trim()
 
     // §3.9 — cancel at any point, and it costs nothing.

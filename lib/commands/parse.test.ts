@@ -39,7 +39,10 @@ const text = (lines: { text: string }[]) => lines.map((l) => l.text).join('\n')
 const ALIAS_TABLE: Record<string, string[]> = {
   look: ['ls', 'see', 'list', 'show', 'rooms'],
   go: ['cd', 'enter', 'open', 'join', 'read'],
-  say: ['wall', 'post', 'write', 'talk'],
+  // `write` was here and is its own verb now — the longer form, with
+  // paragraphs. One word cannot mean two things, and this table is what said so.
+  say: ['wall', 'post', 'talk'],
+  write: ['compose', 'longer', 'essay'],
   reply: ['re', 'answer'],
   who: ['people', 'online', 'users'],
   leave: ['back', 'exit', 'up', 'cd ..'],

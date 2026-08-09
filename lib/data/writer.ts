@@ -172,7 +172,7 @@ export function friendly(message: string): string {
     return 'that’s empty — say something.'
   }
   if (message.includes('body_length')) {
-    return 'that’s longer than 2000 characters. say it shorter, or say it in two.'
+    return 'that’s longer than 4000 characters. say it shorter, or say it in two.'
   }
   // The operator's levers, as they land on the person they were pulled at.
   if (message.includes('say things here anymore')) {

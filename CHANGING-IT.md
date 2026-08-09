@@ -492,6 +492,45 @@ badge. Three attempts at the test for this passed against the broken function,
 because everybody in the seed has replies at assorted recent ages; it needed its
 own person with every timestamp controlled.
 
+**`write` exists because the prompt is a single-line `<input>`, not because of
+a length cap.** The cap was already thousands of characters; there was no way to
+type a line break, and pasting one in flattens it. A compose mode takes lines
+until a line with just a dot — the `mail(1)` convention, and the only line it
+could be, since a blank line has to stay meaningful because a blank line is what
+a paragraph break *is*.
+
+Three things that are load-bearing. In compose mode the raw line is used, before
+the trim and before the generic escapes: `login ryan` is a plausible sentence
+mid-paragraph, and treating it as a command would discard everything written so
+far. The length is checked **per line**, not at the commit, because by the time
+the database refuses it the draft is gone and so is the writing. And the empty
+Enter is only meaningful here — `Terminal.submit` returned early on it, which
+swallowed paragraph breaks silently; found by walking the flow, not by a test.
+
+It is deliberately **not a second kind of post**. The idea that started it had a
+subject field and a 280-character floor to qualify; the floor was dropped
+because all twenty-one posts the site ships as its own example of good content
+are under it, the longest by half. The subject came free instead: a listing
+previews the *first line* rather than the first 56 characters, so a short
+opening line and an argument underneath is a subject and a body with nothing
+added to the schema. That change is also required — a newline inside a
+one-`Line` preview really does break the line, and a lobby of them comes apart.
+
+**The body limit is one number in five places, and a test reads the migration.**
+Migration, `Session.LIMIT`, `friendly()`, the prompt's `maxLength` and `what
+write`. A limit that disagrees with the one enforcing it is how a long piece of
+writing gets accepted by the prompt and refused by the server — §3.9's one
+promise, broken at its most expensive moment.
+
+**`help`'s first group is ten lines, so a new row means dropping one on
+purpose.** `write` earned one; `older` gave one up, because a room with more
+than a page prints the offer at the top of its own listing every time it is
+looked at, and a permanent row for a paging control is the redundancy. The first
+attempt instead folded `write` into `say`'s gloss — and the mobile gate caught
+it, because **a chip's label is its gloss**: the longer sentence pushed the
+primary action off the right edge of a 380px strip, which §8 makes the kill
+condition. Lengthening a gloss is a layout change.
+
 **A reply has a number within its post, and a pointer at the one it answers.**
 §4.3 gave replies no address, which is exactly why there was nothing to answer —
 "I want to be able to reply to replies". That half is reversed; the half about

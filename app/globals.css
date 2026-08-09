@@ -121,6 +121,16 @@ body {
  * own words at 9.1:1 against the 14.0:1 the same words get when read back in
  * the room. This lets `ryan:poker$ say ` recede and the sentence not.
  */
+/* The same slot the mail count uses, and never both at once — while a post is
+   being written, "you have 3 replies waiting" is the wrong thing to be told. */
+.composing {
+  /* The same box the mail line uses. Written without the padding first, which
+     put it hard against the left edge and off the side of a 380px screen. */
+  margin: 0;
+  padding: 6px 12px 0;
+  color: var(--accent);
+}
+
 .line-prefix {
   color: var(--fg-dim);
 }

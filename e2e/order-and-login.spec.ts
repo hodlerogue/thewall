@@ -129,12 +129,28 @@ test.describe('a browser that has never been signed in', () => {
 })
 
 test.describe('reading a room to the end', () => {
-  test('older is offered where somebody stuck at the top of a room would look', async ({
+  test('write is on the help list, and older is offered by the room instead', async ({
     page,
   }) => {
+    /*
+     * §3.6 caps the first group at ten lines, so `write` earning a row meant
+     * choosing one to drop. `older` is the right one: a room with more than a
+     * page prints the offer at the top of its own listing, every time — which
+     * is where and when it is useful. A permanent row for a paging control is
+     * the redundancy.
+     *
+     * The first attempt kept both by folding `write` into `say`'s gloss, and
+     * the mobile gate caught it: a chip's label *is* its gloss, and the longer
+     * one pushed the primary action off the right edge of a 380px strip.
+     */
     await page.goto('/music')
     await type(page, 'help')
-    await expect(scrollback(page)).toContainText('older — the page before this one')
+    await expect(scrollback(page)).toContainText('write — a longer post, with paragraphs')
+    await expect(scrollback(page)).not.toContainText('older — the page before this one')
+
+    // Still a verb, still explained, just not a permanent row.
+    await type(page, 'what older')
+    await expect(scrollback(page)).toContainText('older')
   })
 
   test('a room that fits says so rather than paging into nothing', async ({ page }) => {

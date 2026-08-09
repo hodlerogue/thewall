@@ -60,11 +60,12 @@ export const ABOUT: readonly GuideSection[] = [
   {
     heading: 'Saying something',
     body: [
-      'say, and then what you want to say. In a room that starts a new post; inside a post it adds a reply. Replies are numbered too: reply 2 answers reply 2, where it was written.',
+      'say, and then what you want to say — a new post in a room, a reply inside a post. Replies are numbered too: reply 2 answers reply 2, where it was written.',
+      'write takes more than one line: type it, then the post, and a line with just a dot ends it. Blank lines are paragraph breaks, up to 4,000 characters.',
       'You do not need an account to read. The first time you try to say something, you are asked what to call you and where to send a sign-in link — and the sentence you already typed is posted for you. You never type it twice.',
       'There are no passwords, and your address is never shown to anybody or sold. You can say one thing before you check that email — after that it asks, because an address nobody has proved they can read is no way back in.',
-      'On a new phone, or after clearing your browser, type login and your name: a key goes to the address that name signed up with, and typing the short code from it makes this browser you again. The same email has a link, which is easier on a computer. Never make a second account — your posts stay with the first name.',
-      'logout ends it on the device you are holding, and nothing else. On a borrowed phone that matters: signing in lasts over a year otherwise. Everything you said stays where it is.',
+      'On a new phone, type login and your name: a key goes to the address that name signed up with, and typing its short code makes this browser you again. Never make a second account — your posts stay with the first name.',
+      'logout ends it on the device you are holding and nothing else. Everything you said stays where it is.',
     ],
   },
   {

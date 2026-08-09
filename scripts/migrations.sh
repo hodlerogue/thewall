@@ -44,6 +44,8 @@ MIGRATION_PROBES=(
   # is that the `or` is gone, and the view answers identically either way.
   "20260810000000_lobby_uses_its_index.sql|select pg_get_viewdef('public.room_overview'::regclass) not like '%OR%'"
   "20260811000000_reply_to_a_reply.sql|select to_regproc('public.create_reply') is not null"
+  # Probed by the number, not by the constraint existing — it existed before.
+  "20260812000000_four_thousand.sql|select pg_get_constraintdef(oid) like '%4000%' from pg_constraint where conname = 'posts_body_length'"
 )
 
 probe_for() {

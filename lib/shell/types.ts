@@ -84,6 +84,17 @@ export interface RunResult {
   retry?: string
   /** §4.1 — a fresh unread count, when the command changed it. */
   mail?: number
+  /**
+   * How much of a longer post has been written, or null when none is.
+   *
+   * Set on *every* result rather than only when it changes, which is the whole
+   * reason it can be trusted: compose mode is the one state where forgetting
+   * you are in it is expensive — every line typed disappears into a draft, and
+   * unlike the signup questions there is nothing being asked to remind you. A
+   * field that only appeared on some results would leave the indicator showing
+   * a stale count, which is worse than none.
+   */
+  composing?: { lines: number; chars: number } | null
 }
 
 export interface RunOptions {

@@ -293,3 +293,60 @@ test('the post says how to answer one of its replies', async ({ page }) => {
   // Every reply carries the number you would use.
   await expect(scrollback(page)).toContainText('1  marisol')
 })
+
+test('write takes more than one line, and the blank ones are paragraphs', async ({ page }) => {
+  /*
+   * The gap this fills was never length — the cap was already thousands of
+   * characters. The prompt is a single-line input, so there was no way to type
+   * a line break, and a long post had to be one unbroken block.
+   *
+   * The blank line is the whole feature and the thing that broke first: the
+   * submit handler ignored an empty Enter, so paragraph breaks were swallowed
+   * and the indicator said three lines when four had been typed. Found by
+   * walking it, which is why this walk exists.
+   */
+  await withName(page)
+
+  await type(page, 'write')
+  await expect(scrollback(page)).toContainText('a line with just a dot on it ends the post')
+
+  await type(page, 'the first paragraph')
+  await type(page, '')
+  await type(page, 'and the second, after a gap')
+
+  // The indicator is the only thing saying that typing goes into a draft.
+  // Three lines, the middle one blank — 19 + 1 + 0 + 1 + 27 characters. The
+  // count is of lines typed, and a paragraph break is one of them.
+  await expect(page.getByTestId('composing')).toContainText('3 lines')
+  await expect(page.getByTestId('composing')).toContainText('a dot ends it')
+
+  await type(page, '.')
+  await expect(page.getByTestId('composing')).toHaveCount(0)
+
+  // And it is an ordinary post at an ordinary address — not a second kind.
+  await expect(scrollback(page)).toContainText('roommaker, just now')
+})
+
+/*
+ * The lobby preview of a multi-line post is asserted in lib/commands/write.test.ts
+ * against `renderRoomList` directly, not here.
+ *
+ * It cannot be walked in the demo: `fixtureWriter.post` returns an address and
+ * does not add the post to the room, so the lobby keeps showing the seeded
+ * line. That is a real gap between the demo and the site — worth knowing about,
+ * and not worth papering over with a test that would pass by looking at
+ * somebody else's post.
+ */
+test('cancel throws a draft away and says so', async ({ page }) => {
+  await withName(page)
+  await type(page, 'write')
+  await type(page, 'something i spent time on')
+  await type(page, 'cancel')
+
+  await expect(scrollback(page)).toContainText('thrown away')
+  await expect(page.getByTestId('composing')).toHaveCount(0)
+
+  // And the prompt is a prompt again, not still swallowing lines.
+  await type(page, 'help')
+  await expect(scrollback(page)).toContainText('from here you can type')
+})

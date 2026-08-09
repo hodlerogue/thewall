@@ -73,6 +73,21 @@ export function createRunner(
   ephemeralRooms: readonly string[],
   session: Session,
 ): Runner {
+  /*
+   * Every result carries the compose state, not only the ones that change it.
+   *
+   * The indicator above the prompt is the only thing telling somebody that
+   * what they type is going into a draft rather than being run — and unlike the
+   * signup questions, nothing is being asked to remind them. A field that
+   * appeared only when it changed would leave a stale count on screen, which is
+   * worse than showing none: it would say "still writing" after the post had
+   * gone.
+   */
+  const answer = async (result: RunResult): Promise<RunResult> => ({
+    ...result,
+    composing: session.composing(),
+  })
+
   return async (
     input: string,
     location: Location,
@@ -89,11 +104,11 @@ export function createRunner(
       // `location` because an answer can now move you: naming what a room is
       // for opens it and walks you in, and dropping it here left the lines
       // saying "you are in it" while the prompt still named the old room.
-      return { lines, identity, retry, location: moved }
+      return answer({ lines, identity, retry, location: moved })
     }
 
     const parsed = parse(input)
-    if (!parsed) return { lines: [] }
+    if (!parsed) return answer({ lines: [] })
 
     const context = contextOf(location, ephemeralRooms)
 
@@ -103,7 +118,7 @@ export function createRunner(
 
     if (!parsed.command) {
       const near = nearestCommand(parsed.head)
-      return {
+      return answer({
         lines: [
           {
             text: near
@@ -112,16 +127,16 @@ export function createRunner(
             tone: 'error',
           },
         ],
-      }
+      })
     }
 
     if (!parsed.command.contexts.includes(context)) {
-      return {
+      return answer({
         lines: [{ text: parsed.command.wrongContext(context, await hint()), tone: 'error' }],
-      }
+      })
     }
 
-    return parsed.command.run({ arg: parsed.arg, location, context, env, hint, session })
+    return answer(await parsed.command.run({ arg: parsed.arg, location, context, env, hint, session }))
   }
 }
 
