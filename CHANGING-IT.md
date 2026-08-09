@@ -553,6 +553,30 @@ for *what* it printed and none for the order.
 is no desktop project. Measure what a thumb can reach — `.tap()` scrolls an
 element into view first, which is how an off-screen chip passed a green suite.
 
+**Never send to an address that cannot receive.** RFC 2606 and RFC 6761 reserve
+`.test`, `.example`, `.invalid`, `.localhost` and `example.com/net/org` so they
+can never resolve, which is why `seed.sql` uses `@seed.invalid` — and why the
+site was quietly willing to mail five accounts that will hard-bounce every time.
+They are verified, their posts are in the lobby, and the digest is on by
+default, so the first real answer to jameson put `jameson@seed.invalid` in front
+of the sender. The cost is not that the seed accounts miss their mail; it is
+that enough bounces throttle a sending domain and then nobody gets a sign-in
+key. The rule lives twice on purpose: `lib/auth/deliverable.ts` guards a route
+somebody types at, and `pending_digests` guards a cron job nobody is watching.
+
+Its probe in `migrations.sh` looks for the words in `pg_get_functiondef`, and
+passed against a first version whose regex was escaped wrong and matched
+nothing. A probe answers "was this applied"; only a behavioural assertion
+answers "does it work", and there is one in `schema.test.sql`.
+
+**Test accounts need deliverable addresses.** Half the digest tests used
+jameson, and jameson is one of the seeded five — so once the filter existed,
+"is this person due an email" was permanently false for him. Worse was
+`unproven@seed.invalid`, whose whole job is proving the *verified* gate works:
+on a reserved TLD it would have been excluded by the address filter instead, and
+passed with the gate deleted. Purpose-made people in that section use
+`@deliverable.seed`, which is neither real nor reserved.
+
 **Boot's requests overlap, and only one test can tell.** The reads on arrival
 ran nose to tail — session, profile, room list, room, mail count — because that
 is the order the lines were written in, not because they depended on each other.

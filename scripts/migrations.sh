@@ -37,6 +37,9 @@ MIGRATION_PROBES=(
   # The default is the product decision, so the default is what is probed —
   # the trigger could exist while the column still said false.
   "20260808000000_notify_on_by_default.sql|select column_default = 'true' from information_schema.columns where table_name = 'notify_settings' and column_name = 'daily'"
+  # Probed by the filter itself: the function could exist unchanged and this
+  # migration would still not have been applied.
+  "20260809000000_no_mail_to_nowhere.sql|select pg_get_functiondef('public.pending_digests()'::regprocedure) like '%invalid|localhost%'"
 )
 
 probe_for() {

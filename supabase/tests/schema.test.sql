@@ -1675,12 +1675,38 @@ select public.hide_post('~walled', 1, false);
 \set jameson '11111111-1111-4111-8111-111111111111'
 \set marisol '22222222-2222-4222-8222-222222222222'
 
+/*
+ * A person with an address that can actually receive mail.
+ *
+ * These tests used jameson, and jameson is one of the seeded five — his address
+ * is `jameson@seed.invalid`, a TLD the standards reserve so it can never
+ * resolve. Once `pending_digests` learned to skip undeliverable addresses, "is
+ * this person due an email" became permanently false for him, and half this
+ * section failed.
+ *
+ * Which is the guard working, not the guard being wrong: a test that asserts
+ * mail is due to an address nothing can deliver to was asserting something the
+ * site must never do. So the subject moves to somebody real, and jameson keeps
+ * the two assertions that are *about* being undeliverable, further down.
+ */
+-- `.seed` is not a real TLD and not a reserved one, which is the whole point:
+-- the filter has to accept it. `example.test` was the first attempt and is
+-- reserved twice over — that is how easy it is to write a "real" address that
+-- the thing under test correctly refuses.
+insert into auth.users (id, aud, role, email)
+values ('b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1', 'authenticated', 'authenticated', 'reachable@deliverable.seed')
+on conflict (id) do nothing;
+insert into public.profiles (id, name, verified_at)
+values ('b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1', 'reachable', now())
+on conflict (id) do nothing;
+\set reachable 'b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1'
+
 -- A post of jameson's and a fresh reply to it, rather than the seeded pair.
 -- `mail_seen_at` defaults to when the profile row was made, and the seed
 -- backdates its content, so everything shipped with the site is already read —
 -- which is right, and makes it useless for testing "waiting".
 insert into public.posts (room_slug, post_no, author_id, body)
-select 'music', 900, :'jameson'::uuid, 'a post with something waiting on it'
+select 'music', 900, :'reachable'::uuid, 'a post of reachable''s, with something waiting on it'
  where not exists (select 1 from public.posts where room_slug = 'music' and post_no = 900);
 
 insert into public.replies (post_id, author_id, body)
@@ -1741,7 +1767,10 @@ select tests.ok(
  * signup box.
  */
 insert into auth.users (id, aud, role, email)
-values ('a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2', 'authenticated', 'authenticated', 'unproven@seed.invalid')
+-- Deliverable on purpose. On a reserved TLD this account would be skipped by
+-- the address filter, and the assertion below would pass whether or not the
+-- verified gate existed — a test proving the wrong thing.
+values ('a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2', 'authenticated', 'authenticated', 'unproven@deliverable.seed')
 on conflict (id) do nothing;
 insert into public.profiles (id, name)
 values ('a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2', 'unproven')
@@ -1789,7 +1818,7 @@ select tests.ok(
 
 begin;
   set local role authenticated;
-  set local request.jwt.claim.sub = :'jameson';
+  set local request.jwt.claim.sub = :'reachable';
 
   select tests.ok(public.notify_state() = true, 'it is on without being asked for');
 
@@ -1811,16 +1840,16 @@ commit;
 
 select tests.ok(
   exists (select 1 from public.notify_settings
-           where profile_id = :'jameson'::uuid),
+           where profile_id = :'reachable'::uuid),
   'turning it off leaves a row saying so, rather than removing the row'
 );
 
 select tests.ok(
-  (select count(*) from public.pending_digests() where profile_id = :'jameson'::uuid) = 1,
+  (select count(*) from public.pending_digests() where profile_id = :'reachable'::uuid) = 1,
   'somebody with replies waiting is due an email'
 );
 select tests.ok(
-  (select unread from public.pending_digests() where profile_id = :'jameson'::uuid) > 0,
+  (select unread from public.pending_digests() where profile_id = :'reachable'::uuid) > 0,
   'and it says how many'
 );
 
@@ -1832,13 +1861,13 @@ select tests.ok(
 -- worth leaving written down: the guard caught its own test.
 select set_config(
   'tests.digest_unread',
-  (select unread::text from public.pending_digests() where profile_id = :'jameson'::uuid),
+  (select unread::text from public.pending_digests() where profile_id = :'reachable'::uuid),
   false
 );
 
 begin;
   set local role authenticated;
-  set local request.jwt.claim.sub = :'jameson';
+  set local request.jwt.claim.sub = :'reachable';
   select tests.ok(
     public.mail_count() = current_setting('tests.digest_unread')::int,
     'the digest count is the badge count, filter for filter'
@@ -1861,7 +1890,7 @@ commit;
  * replies at assorted ages.
  */
 insert into auth.users (id, aud, role, email)
-values ('a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3', 'authenticated', 'authenticated', 'optout@seed.invalid')
+values ('a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3', 'authenticated', 'authenticated', 'optout@deliverable.seed')
 on conflict (id) do nothing;
 insert into public.profiles (id, name, verified_at)
 values ('a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3', 'optout', now())
@@ -1922,16 +1951,16 @@ update public.notify_settings set daily = true where profile_id = :'marisol'::uu
 
 -- One a day, and the stamp is what enforces it.
 select tests.ok(
-  public.mark_digested(array[:'jameson'::uuid]) = 1,
+  public.mark_digested(array[:'reachable'::uuid]) = 1,
   'sending stamps the person who was sent to'
 );
 select tests.ok(
-  not exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  not exists (select 1 from public.pending_digests() where profile_id = :'reachable'::uuid),
   'and they are not due again the same day'
 );
 update public.notify_settings set notified_at = now() - interval '25 hours';
 select tests.ok(
-  exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  exists (select 1 from public.pending_digests() where profile_id = :'reachable'::uuid),
   'but they are tomorrow'
 );
 
@@ -1947,7 +1976,7 @@ select tests.ok(
 -- ages and none of the ones above could isolate this. The first three attempts
 -- at this assertion all passed against the broken function.
 insert into auth.users (id, email)
-values ('77777777-7777-4777-8777-777777777777', 'quiet@seed.invalid')
+values ('77777777-7777-4777-8777-777777777777', 'quiet@deliverable.seed')
 on conflict (id) do nothing;
 insert into public.profiles (id, name, verified_at, mail_seen_at)
 values ('77777777-7777-4777-8777-777777777777', 'quiet', now(), now() - interval '10 days')
@@ -2002,7 +2031,7 @@ delete from public.notify_settings where profile_id = '77777777-7777-4777-8777-7
 update public.replies set hidden_at = now()
  where post_id = (select id from public.posts where room_slug = 'music' and post_no = 900);
 select tests.ok(
-  not exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  not exists (select 1 from public.pending_digests() where profile_id = :'reachable'::uuid),
   'a hidden reply is not something anybody is emailed about'
 );
 update public.replies set hidden_at = null
@@ -2010,38 +2039,38 @@ update public.replies set hidden_at = null
 
 -- Banned, and it stops. Emailing somebody who has been removed is the site
 -- keeping in touch with a person it has just shown the door.
-update public.profiles set banned_at = now() where id = :'jameson'::uuid;
+update public.profiles set banned_at = now() where id = :'reachable'::uuid;
 select tests.ok(
-  not exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  not exists (select 1 from public.pending_digests() where profile_id = :'reachable'::uuid),
   'a banned account is not emailed'
 );
-update public.profiles set banned_at = null where id = :'jameson'::uuid;
+update public.profiles set banned_at = null where id = :'reachable'::uuid;
 
 -- Unverified means an address nobody has proved they can read, which probably
 -- belongs to somebody else.
-update public.profiles set verified_at = null where id = :'jameson'::uuid;
+update public.profiles set verified_at = null where id = :'reachable'::uuid;
 select tests.ok(
-  not exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  not exists (select 1 from public.pending_digests() where profile_id = :'reachable'::uuid),
   'an unproven address is never written to'
 );
 begin;
   set local role authenticated;
-  set local request.jwt.claim.sub = :'jameson';
+  set local request.jwt.claim.sub = :'reachable';
   select tests.raises(
     $$select public.set_notify(true)$$,
     'an unproven address cannot turn email on in the first place'
   );
 commit;
-update public.profiles set verified_at = now() where id = :'jameson'::uuid;
+update public.profiles set verified_at = now() where id = :'reachable'::uuid;
 
 -- Unsubscribing works with no session at all, because the link is followed on
 -- whatever device the email was opened on.
 select tests.ok(
-  public.unsubscribe((select token from public.notify_settings where profile_id = :'jameson'::uuid)),
+  public.unsubscribe((select token from public.notify_settings where profile_id = :'reachable'::uuid)),
   'the token in the email turns it off, with nobody signed in'
 );
 select tests.ok(
-  (select daily from public.notify_settings where profile_id = :'jameson'::uuid) = false,
+  (select daily from public.notify_settings where profile_id = :'reachable'::uuid) = false,
   'and it is really off'
 );
 select tests.ok(
@@ -2051,8 +2080,61 @@ select tests.ok(
 
 -- It only ever turns things off. A leaked token is a nuisance, never a way in.
 select tests.ok(
-  (select daily from public.notify_settings where profile_id = :'jameson'::uuid) = false,
+  (select daily from public.notify_settings where profile_id = :'reachable'::uuid) = false,
   'and there is no token that turns it on'
+);
+
+/*
+ * Never to an address that cannot receive it.
+ *
+ * The seeded five live at `@seed.invalid`, a TLD the standards reserve so that
+ * it can never resolve. They are verified, their posts sit in the lobby, and
+ * the daily email is on by default — so the first time a real person answers
+ * jameson the job hands the sender `jameson@seed.invalid`, and does it again
+ * every day there is something new. Every one is a hard bounce against a
+ * freshly warmed sending domain, and enough of those means nobody gets a
+ * sign-in key.
+ *
+ * Asserted by *behaviour*, not by the function's text. `migrations.sh` probes
+ * this one by looking for the words in `pg_get_functiondef`, and that probe
+ * passed against a first version whose regex was escaped wrong and matched
+ * nothing — the words were there, the filter was not. A probe answers "was this
+ * applied"; only this answers "does it work".
+ */
+-- A post of its own. Hung on music/12 first, which is jameson's and is counted
+-- by three assertions above — so the extra reply moved a number they read and
+-- broke them. A test that disturbs the fixture it shares is a test that will be
+-- deleted by whoever it breaks next.
+insert into public.posts (room_slug, post_no, author_id, body)
+select 'music', 903, :'jameson'::uuid, 'a seeded account''s post, for the bounce test'
+ where not exists (select 1 from public.posts where room_slug = 'music' and post_no = 903);
+insert into public.replies (post_id, author_id, body)
+select id, 'a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3'::uuid, 'a real person answering a seeded post'
+  from public.posts where room_slug = 'music' and post_no = 903;
+
+select tests.ok(
+  exists (
+    select 1 from public.profiles p
+      join auth.users u on u.id = p.id
+      join public.notify_settings n on n.profile_id = p.id
+     where u.email like '%@seed.invalid' and p.verified_at is not null
+  ),
+  'the seeded accounts are here, verified, and would otherwise qualify'
+);
+select tests.ok(
+  not exists (
+    select 1 from public.pending_digests() d
+     where d.email like '%@seed.invalid'
+  ),
+  'and no undeliverable address is ever handed to the sender'
+);
+select tests.ok(
+  not exists (
+    select 1 from public.pending_digests() d
+     where d.email ~* '\.(test|example|invalid|localhost)$'
+        or d.email ~* '(@|\.)example\.(com|net|org)$'
+  ),
+  'nor any other address the standards reserve so it can never resolve'
 );
 
 -- Erasure takes it with the account ---------------------------------------------
@@ -2080,6 +2162,8 @@ delete from public.notify_settings;
 delete from public.posts where room_slug = 'music' and post_no = 900;
 
 \echo ''
+
+
 \echo 'rooms that grew out of a room — a label, never a nesting'
 
 -- Nesting was asked for ("can you create a room within a room, 3-5 deep, for
