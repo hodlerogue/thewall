@@ -1286,11 +1286,23 @@ export const COMMANDS: readonly Command[] = [
       // scrollback's snap-to-bottom lands on it. See `oldestFirst` in
       // lib/shell/render.ts.
       for (const item of [...items].reverse()) {
-        // The address first, because a notification you cannot walk to is just
-        // an alert.
+        /*
+         * The address first, because a notification you cannot walk to is just
+         * an alert — and here it is also the thing you tap to answer, which is
+         * why this list exists at all.
+         *
+         * `renderPosts` and the feed use `saidBy` for this shape; this one
+         * stays local because the whole line is `accent` rather than an accent
+         * address on a dim header. Mail is a list of things demanding an answer
+         * and nothing else, so there is no hierarchy to draw here.
+         */
         lines.push({
           text: `${item.room}/${item.postId}  ${item.author}, ${formatAgo(item.createdAt)}`,
           tone: 'accent',
+          tap: {
+            token: `${item.room}/${item.postId}`,
+            insert: `reply ${item.room}/${item.postId} `,
+          },
         })
         lines.push({ text: item.body, depth: 1 })
       }

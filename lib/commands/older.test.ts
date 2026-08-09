@@ -298,7 +298,21 @@ describe('typing does not re-render the scrollback', () => {
 
   it('renders the lines through a memo, not inline', () => {
     expect(code).toMatch(/const Scrollback = memo\(/)
-    expect(code).toContain('<Scrollback lines={lines} />')
+    expect(code).toContain('<Scrollback lines={lines} onInsert={insert} />')
+  })
+
+  it('hands the memo a callback that does not change on every letter', () => {
+    /*
+     * `memo` compares props, so an inline arrow or a `useCallback` that closes
+     * over `input` would defeat it completely — every keystroke would make a
+     * new function, the comparison would fail, and the whole scrollback would
+     * re-render exactly as it did before the memo existed. That is invisible:
+     * nothing breaks, the page size decision above just quietly stops being
+     * paid for.
+     *
+     * `insert` sets input rather than reading it, so it needs no dependencies.
+     */
+    expect(code).toMatch(/const insert = useCallback\([\s\S]*?\}, \[\]\)/)
   })
 
   it('keeps enough scrollback for older to be worth having', () => {

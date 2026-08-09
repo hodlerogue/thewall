@@ -42,6 +42,32 @@ function oldestFirst<T>(items: readonly T[]): T[] {
 }
 
 /**
+ * The header over something somebody said: its address, then who and when.
+ *
+ * One helper because every listing on the site prints this same shape, and
+ * because the address in front is now a tap target — `reply 8431 ` typed into
+ * the prompt for you, cursor waiting, nothing run. Written five times instead,
+ * the tap would have been added to four of them.
+ *
+ * The address is `accent` while the rest of the header stays `dim`, which is not
+ * decoration: accent is what this interface uses for a thing you can type, and
+ * this is now literally that. It is the same change the room a subject grew out
+ * of got, for the same reason — "that should be showing in orange to depict a
+ * room but it's just normal text."
+ *
+ * Two spaces between the address and the name, everywhere, so a column of these
+ * can be read down.
+ */
+function saidBy(address: string, rest: string, depth?: 0 | 1 | 2): Line {
+  return {
+    text: `${address}  ${rest}`,
+    tone: 'dim',
+    depth,
+    tap: { token: address, insert: `reply ${address} ` },
+  }
+}
+
+/**
  * §3.11 — proof of life: the difference between a busy building and a list of
  * doors. And §4.2's mitigation, now that anybody can add a door.
  *
@@ -176,10 +202,7 @@ export function renderFeed(
 
   const lines: Line[] = []
   for (const post of oldestFirst(posts)) {
-    lines.push({
-      text: `${post.room}/${post.id}  ${post.author}, ${formatAgo(post.createdAt, now)}`,
-      tone: 'dim',
-    })
+    lines.push(saidBy(`${post.room}/${post.id}`, `${post.author}, ${formatAgo(post.createdAt, now)}`))
     lines.push({ text: post.body, depth: 1 })
     if (post.replies) {
       lines.push({
@@ -331,12 +354,13 @@ export function renderPosts(
   const lines: Line[] = []
   for (const post of oldestFirst(posts)) {
     // The number comes first because it is the address, and it is permanent.
-    lines.push({
-      text: ephemeral
-        ? `${post.author}, ${formatAgo(post.createdAt, now)}`
-        : `${post.id}  ${post.author}, ${formatAgo(post.createdAt, now)}`,
-      tone: 'dim',
-    })
+    lines.push(
+      // Commons has no addresses (§3.10), so there is nothing to print in front
+      // and nothing to tap — a header there is just who and when.
+      ephemeral
+        ? { text: `${post.author}, ${formatAgo(post.createdAt, now)}`, tone: 'dim' }
+        : saidBy(`${post.id}`, `${post.author}, ${formatAgo(post.createdAt, now)}`),
+    )
     lines.push({ text: post.body, depth: 1 })
     if (!ephemeral && post.replies.length > 0) {
       lines.push({
@@ -376,13 +400,15 @@ export function renderPost(post: Post, now = new Date()): Line[] {
    * characters wide. A pointer costs four characters and reads at any depth.
    */
   for (const reply of post.replies) {
-    lines.push({
-      text: `${reply.id}  ${reply.author}, ${formatAgo(reply.createdAt, now)}${
-        reply.toReply === undefined ? '' : `  → ${reply.toReply}`
-      }`,
-      tone: 'dim',
-      depth: 1,
-    })
+    lines.push(
+      saidBy(
+        `${reply.id}`,
+        `${reply.author}, ${formatAgo(reply.createdAt, now)}${
+          reply.toReply === undefined ? '' : `  → ${reply.toReply}`
+        }`,
+        1,
+      ),
+    )
     lines.push({ text: reply.body, depth: 2 })
   }
 
@@ -446,10 +472,12 @@ export function renderProfile(profile: Profile, now = new Date()): Line[] {
      * though the post were hers; following that address lands on his. `find`
      * grew the marker at the time and this did not.
      */
-    lines.push({
-      text: `${post.room}/${post.id}  ${formatAgo(post.createdAt, now)}${post.isReply ? '  (reply)' : ''}`,
-      tone: 'dim',
-    })
+    lines.push(
+      saidBy(
+        `${post.room}/${post.id}`,
+        `${formatAgo(post.createdAt, now)}${post.isReply ? '  (reply)' : ''}`,
+      ),
+    )
     lines.push({ text: post.body, depth: 1 })
   }
 

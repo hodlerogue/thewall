@@ -286,3 +286,81 @@ test('help in commons offers nothing commons cannot do', async ({ page }) => {
   await type(page, 'reply nice one')
   await expect(scrollback(page)).toContainText('commons keeps nothing')
 })
+
+test('tapping an address types the reply for you, and does not send it', async ({ page }) => {
+  /*
+   * "What happens when we're on reply 239482 — typing that number in each time
+   * will be real annoying." Post numbers are the ones that grow (they are
+   * allocated per room), and answering means typing back a number already on
+   * the screen.
+   *
+   * The contract is the palette's, and it is the important half: tapping
+   * *inserts* and never runs. A button that posted something would make this a
+   * button UI in a terminal costume (§9) — and would post an empty reply.
+   */
+  await page.goto('/music')
+  const address = page.getByTestId('tap').first()
+  const number = await address.textContent()
+
+  await address.tap()
+
+  await expect(prompt(page)).toHaveValue(`reply ${number} `)
+  // Nothing ran: no confirmation, and no signup question either.
+  await expect(scrollback(page)).not.toContainText('what do you want to be called')
+  await expect(scrollback(page)).not.toContainText('just now')
+})
+
+test('and the keyboard stays up, with the cursor at the end', async ({ page }) => {
+  // Tapping anything that steals focus closes the keyboard on a phone, which
+  // costs a tap to reopen and scrolls the page out from under you.
+  await page.goto('/music')
+  await page.getByTestId('tap').first().tap()
+
+  await expect(prompt(page)).toBeFocused()
+  const [start, end] = await prompt(page).evaluate((el: HTMLInputElement) => [
+    el.selectionStart,
+    el.selectionEnd,
+  ])
+  expect(start).toBe(await prompt(page).inputValue().then((v) => v.length))
+  expect(end).toBe(start)
+})
+
+test('the address is big enough to hit with a thumb', async ({ page }) => {
+  /*
+   * WCAG 2.5.5, and §8's kill condition in miniature: a single digit at 15px
+   * monospace is about nine pixels wide, which is not a target. The padding
+   * that fixes it is invisible — horizontal padding cancelled by an equal
+   * negative margin, vertical padding on an inline box, which does not affect
+   * the line at all.
+   */
+  await page.goto('/music')
+  const box = await page.getByTestId('tap').first().boundingBox()
+
+  expect(box!.width).toBeGreaterThanOrEqual(24)
+  expect(box!.height).toBeGreaterThanOrEqual(24)
+})
+
+test('and the column of addresses does not move to make room for it', async ({ page }) => {
+  /*
+   * The reason the padding is cancelled rather than simply added. Every listing
+   * on this site prints `address  who, when` so a column of them can be read
+   * down; a button that shifted its own text right by eight pixels would break
+   * that alignment on exactly the lines it was added to, and nothing else in
+   * the suite looks at pixels.
+   */
+  await page.goto('/music')
+
+  const drift = await page.evaluate(() => {
+    const buttons = [...document.querySelectorAll('.line-tap')]
+    return buttons.map((button) => {
+      const range = document.createRange()
+      range.selectNodeContents(button)
+      // Where the address's first character actually sits, against where the
+      // line it belongs to begins.
+      return range.getBoundingClientRect().left - button.closest('p')!.getBoundingClientRect().left
+    })
+  })
+
+  expect(drift.length).toBeGreaterThan(0)
+  for (const offset of drift) expect(Math.abs(offset)).toBeLessThan(1)
+})

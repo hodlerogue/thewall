@@ -31,6 +31,26 @@ export interface Line {
    * `text` stays whatever the line's own tone says.
    */
   prefix?: string
+  /**
+   * The address at the head of this line, and what tapping it types for you.
+   *
+   * Every line on this site that says "somebody said this" starts with the
+   * thing's address — `8431`, `2`, `music/12` — and answering it means typing
+   * that address back. In a room with eight thousand posts in it that is real
+   * thumb work for something already on the screen, and getting a digit wrong
+   * is an error rather than a wrong reply, but it is still a retype.
+   *
+   * So the address becomes a button, and tapping it *inserts* `reply 8431 `
+   * with the cursor waiting — it never runs. That is the palette's contract
+   * (§3.6), and it is what keeps this an interface somebody graduates to
+   * typing rather than a set of buttons in a terminal costume (§9).
+   *
+   * `token` has to be a prefix of `text`, because the button is drawn by
+   * splitting the line at it — `render.test.ts` asserts that for every line any
+   * renderer produces. The rest of the line is untouched, which is why the
+   * assertions about header shapes elsewhere still read `text` whole.
+   */
+  tap?: { token: string; insert: string }
 }
 
 /**

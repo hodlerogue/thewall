@@ -579,6 +579,36 @@ Two things hold this up, and both are load-bearing:
   so repeating it is the receipt line this codebase keeps deleting; from
   outside, it is the only place the address is ever said.
 
+**The address at the head of a line is a button, and it inserts rather than
+runs.** Post numbers are allocated per room, so a busy room reaches `music/8431`
+and answering it means thumbing a number that is already on the screen. (Reply
+numbers are per *post*, so they stay small — a thread would need a quarter of a
+million answers to get long. The complaint that prompted this named a reply
+number and was pointing at the right work under the wrong number.)
+
+`Line.tap` is `{token, insert}`; `Scrollback` draws `token` as a button and
+`text.slice(token.length)` after it, so **`token` must be a prefix of `text`** or
+the line silently renders with characters missing. `render.ts`'s `saidBy` is the
+one place that builds this shape, and `tap.test.ts` walks every line every
+renderer produces to check both halves — the prefix rule, and that what it
+inserts parses to a real command.
+
+Three things it must not become:
+
+- **It must never run.** That is §3.6's contract for the palette and it is the
+  whole difference between an interface people graduate to typing and buttons in
+  a terminal costume (§9). It would also post an empty reply.
+- **It must not move the column.** The horizontal padding that makes a 9-pixel
+  digit a 24-pixel target is cancelled by an equal negative margin, and the
+  vertical padding is on an inline box, which does not affect the line at all.
+  There is an e2e assertion measuring the drift of the text against its own
+  line, because nothing else in the suite looks at pixels.
+- **It must not become a tab stop.** The scrollback is one focusable region on
+  purpose (WCAG 2.1.1); sixty buttons in a room listing would put sixty stops
+  between it and the prompt. `tabIndex={-1}` is defensible *only* because
+  everything the button does, typing also does — it is a shortcut, never the
+  only path. Add one that is the only path and it has to be focusable.
+
 `reply` is listed in commons now, which reverses an entry that used to be here.
 The old reasoning — a verb that can never work where it is listed is the same
 defect as a chip that always fails — was right about the verb it described.

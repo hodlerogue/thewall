@@ -36,7 +36,13 @@ type Keyed = Line & { key: number }
  * no longer touches this at all and the cap is free to be about memory and
  * usefulness instead of latency.
  */
-const Scrollback = memo(function Scrollback({ lines }: { lines: readonly Keyed[] }) {
+const Scrollback = memo(function Scrollback({
+  lines,
+  onInsert,
+}: {
+  lines: readonly Keyed[]
+  onInsert: (text: string) => void
+}) {
   return (
     <>
       {lines.map((line) => (
@@ -51,7 +57,33 @@ const Scrollback = memo(function Scrollback({ lines }: { lines: readonly Keyed[]
             .join(' ')}
         >
           {line.prefix ? <span className="line-prefix">{line.prefix}</span> : null}
-          {line.text === '' ? (
+          {line.tap ? (
+            <>
+              <button
+                type="button"
+                className="line-tap"
+                data-testid="tap"
+                /*
+                 * Not a tab stop. The scrollback is one focusable region on
+                 * purpose (WCAG 2.1.1, so a keyboard user can read their own
+                 * history), and a room listing would put sixty stops between
+                 * that region and the prompt. This is a shortcut for a thumb:
+                 * everything it does, typing does, so leaving it out of the tab
+                 * order costs a keyboard user nothing. The address itself stays
+                 * ordinary text in the log for anything reading the line aloud.
+                 */
+                tabIndex={-1}
+                aria-label={`answer ${line.tap.token}`}
+                // Same as a chip: never steal focus from the prompt, or the
+                // keyboard closes on every tap.
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onInsert(line.tap!.insert)}
+              >
+                {line.tap.token}
+              </button>
+              {line.text.slice(line.tap.token.length)}
+            </>
+          ) : line.text === '' ? (
             ' '
           ) : line.prefix ? (
             // Explicit rather than leaning on `:has()`. The prefix recedes and
@@ -518,7 +550,7 @@ export function Terminal({
           pinnedToBottom.current = el.scrollHeight - el.clientHeight - el.scrollTop < 40
         }}
       >
-        <Scrollback lines={lines} />
+        <Scrollback lines={lines} onInsert={insert} />
       </div>
 
       <div className="composer">
