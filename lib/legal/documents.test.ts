@@ -223,3 +223,61 @@ describe('the terms', () => {
     expect(text).toMatch(/local courts/)
   })
 })
+
+/**
+ * Every surface that describes the email says the same thing about it.
+ *
+ * Four places tell somebody what this site will send them: the short privacy
+ * text in the prompt, the full policy, `/about`, and `what notify`. When the
+ * digest went from opt-in to on-by-default, three of them were updated and the
+ * fourth still said "only if you switch it on yourself" — inside the same
+ * document whose next entry said "on from the moment you have an account".
+ *
+ * A privacy policy that contradicts itself about consent is worse than either
+ * version of it, because the reader cannot tell which one is the promise. This
+ * is the test that would have caught it, and it is written by property rather
+ * than by matching sentences, so rewording any of the four keeps it honest.
+ */
+describe('what the site promises about email', () => {
+  // Both halves: the short version the prompt prints, and the full document.
+  // The stale sentence lived in the second, which is the one nobody re-reads.
+  const surfaces = () => ({
+    policy: [...PRIVACY.summary, ...PRIVACY.sections.flatMap((s) => s.body)].join(' '),
+  })
+
+  it('never describes the digest as something you have to switch on', () => {
+    const { policy } = surfaces()
+    expect(policy).not.toMatch(/only if you (switch|turn) it on/i)
+    expect(policy).not.toMatch(/off unless you/i)
+  })
+
+  it('says how to stop it wherever it says it happens', () => {
+    // A default that is never accompanied by the way out is the shape of a
+    // trick, whatever the intention.
+    const { policy } = surfaces()
+    expect(policy).toMatch(/notify off/)
+  })
+
+  it('promises the address is never used for marketing, and means it', () => {
+    /*
+     * The load-bearing sentence, and the reason this is a test rather than a
+     * comment. Mailing these people about anything other than this site — a
+     * second project, a launch, an announcement — is the exact thing this
+     * forecloses, and it is easy to forget having written it.
+     *
+     * If it ever stops being true, this test is the thing that has to be
+     * deleted first, deliberately, by somebody who has read this.
+     */
+    const { policy } = surfaces()
+    expect(policy).toMatch(/never used for marketing/i)
+  })
+
+  it('names every kind of mail it will ever send, and there are two', () => {
+    // A sign-in key and a reply summary. Anything else needs its own consent,
+    // its own paragraph here, and its own way out — not a quiet third use of a
+    // list somebody joined for something else.
+    const { policy } = surfaces()
+    expect(policy).toMatch(/sign-in link/i)
+    expect(policy).toMatch(/summary a day/i)
+  })
+})
