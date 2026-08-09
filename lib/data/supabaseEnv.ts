@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Live } from '@/lib/data/live'
 import { ROOM_PAGE, type Check, type Env, type MadeRoom, type MailItem, LOBBY_FETCH } from '@/lib/shell/env'
 import type { Post, PostHit, Profile, Room, RoomHit, RoomSummary, RoomList } from '@/lib/shell/model'
+import { FEED_PAGE } from '@/lib/shell/render'
 
 /**
  * The Env the commands actually run against.
@@ -111,7 +112,7 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
     },
 
     async readFeed(): Promise<PostHit[]> {
-      const { data, error } = await client.rpc('wall_feed', { p_limit: 40 })
+      const { data, error } = await client.rpc('wall_feed', { p_limit: FEED_PAGE })
       if (error) throw error
 
       const rows = (data ?? []) as {
@@ -238,7 +239,7 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
       const { data, error } = await client
         .from('posts')
         .select(
-          'post_no, body, created_at, author:profiles(name), replies(body, created_at, author:profiles(name))',
+          'post_no, body, created_at, author:profiles(name), replies(reply_no, to_reply_no, body, created_at, author:profiles(name))',
         )
         .eq('room_slug', slug)
         .eq('post_no', id)
@@ -256,11 +257,17 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         createdAt: new Date(data.created_at),
         replies: replies
           .map((reply) => ({
+            id: reply.reply_no,
             author: authorName(reply.author),
             body: reply.body,
             createdAt: new Date(reply.created_at),
+            toReply: reply.to_reply_no ?? undefined,
           }))
-          // §4.3 — flat and chronological. There is no tree to sort.
+          /*
+           * Flat and chronological. There is still no tree to sort — a reply
+           * that answers another is not underneath it, it is after it, with a
+           * pointer saying which one it means.
+           */
           .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()),
       }
     },
@@ -433,6 +440,8 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
 }
 
 interface RawReply {
+  reply_no: number
+  to_reply_no: number | null
   body: string
   created_at: string
   author: { name: string } | { name: string }[] | null
@@ -497,7 +506,14 @@ function toPost(row: {
     body: row.body,
     createdAt: new Date(row.created_at),
     // The listing only needs the count; the bodies arrive when you go in.
-    replies: Array.from({ length: replyCount(row.replies) }, () => ({
+    /*
+     * The listing only needs the count; the bodies arrive when you go in. The
+     * ids are 1..n rather than 0 so that nothing downstream can mistake a
+     * placeholder for a real address — but nothing downstream reads them, and
+     * a `renderPosts` that started to would be reading a lie either way.
+     */
+    replies: Array.from({ length: replyCount(row.replies) }, (_, i) => ({
+      id: i + 1,
       author: '',
       body: '',
       createdAt: new Date(0),

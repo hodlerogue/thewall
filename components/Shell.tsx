@@ -468,12 +468,21 @@ async function arriveAt(
  */
 function fixtureWriter(): Writer {
   let next = 100
+  // Per post, because that is what a reply number is. A single counter would
+  // hand out 1, 2, 3 across different posts and teach the demo's visitor a
+  // rule the site does not have.
+  const replies = new Map<string, number>()
   const taken = new Set(['jameson', 'marisol', 'tuck', 'ren', 'dev'])
   return {
     async post() {
       return next++
     },
-    async reply() {},
+    async reply(room: string, postNo: number) {
+      const at = `${room}/${postNo}`
+      const no = (replies.get(at) ?? 0) + 1
+      replies.set(at, no)
+      return no
+    },
     async rename(name: string) {
       if (taken.has(name)) return { ok: false as const, reason: `${name} is taken` }
       return { ok: true as const, name }

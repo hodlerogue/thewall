@@ -18,7 +18,7 @@ const signedIn = new Session(
     async login(name: string) { return { ok: true as const, name, note: 'sent' } },
     async loginCode(name: string) { return { ok: true as const, name } },
     async resend() { return { note: 'sent' } } },
-  { async post() { return 1 }, async reply() {},
+  { async post() { return 1 }, async reply() { return 1 },
     async rename(name) { return { ok: true as const, name } } },
   'tester',
 )
@@ -370,7 +370,9 @@ describe('§3.6 — help is a glossary, not a wall', () => {
       async post() {
         return 1
       },
-      async reply() {},
+      async reply() {
+      return 1
+    },
       async rename(name: string) {
         return { ok: true as const, name }
       },

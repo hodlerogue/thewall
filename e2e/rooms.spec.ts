@@ -231,7 +231,10 @@ test('a room made from inside a room is listed at the bottom of that room', asyn
 
   await type(page, 'go music')
   await expect(scrollback(page)).toContainText('grew out of here')
-  await expect(scrollback(page)).toContainText('bebop — the fast stuff')
+  // Two lines, the way the lobby lists a room: the name in accent, a word
+  // about it under. It was one dim line and read as prose.
+  await expect(scrollback(page).locator('p', { hasText: /^bebop$/ })).toHaveClass(/line-accent/)
+  await expect(scrollback(page)).toContainText('the fast stuff')
 
   // The line is navigation: typing what it shows walks you there.
   await type(page, 'go bebop')
@@ -256,4 +259,37 @@ test('create is on the help list, under the word somebody would look for', async
   const lines = (await scrollback(page).innerText()).split('\n')
   const make = lines.find((line) => line.startsWith('make —'))
   expect(make).toContain('create')
+})
+
+test('you can answer a reply, and the thread says which one', async ({ page }) => {
+  /*
+   * "I want to be able to reply to replies." §4.3 gave replies no address, so
+   * there was nothing to answer — a thread with six replies was six people
+   * talking past each other.
+   *
+   * Flat and pointed, not nested: reply 3 answers reply 1 and is still printed
+   * after reply 2, at the same indentation, with `→ 1` saying what it means.
+   */
+  await page.goto('/music/12')
+  await type(page, 'reply 1 that is exactly the bit i meant')
+  await type(page, 'threader')
+  await type(page, 'threader@example.com')
+
+  await expect(scrollback(page)).toContainText('→ 1')
+
+  // The aim is dim, with the verb — it is an address, not part of the sentence.
+  const echo = scrollback(page).locator('p', { hasText: 'that is exactly the bit i meant' }).first()
+  await expect(echo.locator('.line-prefix')).toHaveText('guest:music/12$ reply 1')
+
+  // And a plain reply still answers the post, which is what it always meant.
+  await type(page, 'reply and the rest of it too')
+  const plain = scrollback(page).locator('p', { hasText: /^\d+ {2}threader, just now$/ }).last()
+  await expect(plain).not.toContainText('→')
+})
+
+test('the post says how to answer one of its replies', async ({ page }) => {
+  await page.goto('/music/12')
+  await expect(scrollback(page)).toContainText('reply 2 <something> answers 2')
+  // Every reply carries the number you would use.
+  await expect(scrollback(page)).toContainText('1  marisol')
 })

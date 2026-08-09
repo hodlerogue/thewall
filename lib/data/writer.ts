@@ -16,28 +16,35 @@ export function supabaseWriter(client: SupabaseClient): Writer {
       return row.post_no
     },
 
-    async reply(room: string, postNo: number, body: string): Promise<void> {
-      const {
-        data: { user },
-      } = await client.auth.getUser()
-      if (!user) throw new Error('you’re not signed in anymore. say it again to sign back in.')
-
-      // post_no is the address a person types; replies hang off the internal id.
-      const { data: post, error: findError } = await client
-        .from('posts')
-        .select('id')
-        .eq('room_slug', room)
-        .eq('post_no', postNo)
-        .maybeSingle()
-
-      if (findError) throw new Error(friendly(findError.message))
-      if (!post) throw new Error(`post ${postNo} isn’t there anymore.`)
-
-      const { error } = await client
-        .from('replies')
-        .insert({ post_id: post.id, author_id: user.id, body })
+    async reply(
+      room: string,
+      postNo: number,
+      body: string,
+      toReply?: number,
+    ): Promise<number> {
+      /*
+       * Through `create_reply` rather than an insert, and that is not a
+       * refactor — a reply has a number within its post now, and a number has
+       * to be allocated somewhere two people answering at the same moment
+       * cannot both read the same one. The insert grant is revoked; this is the
+       * only door.
+       *
+       * It also drops a round trip. The old version looked the post up by
+       * `(room, post_no)` to find its internal id and then inserted; the
+       * function takes the address people actually type and does both.
+       */
+      const { data, error } = await client.rpc('create_reply', {
+        p_room: room,
+        p_post_no: postNo,
+        p_body: body,
+        // Checked by the function rather than trusted, and dropped rather than
+        // refused if it names nothing — losing somebody's sentence over a
+        // mistyped number is the worse trade.
+        p_to_reply: toReply ?? null,
+      })
 
       if (error) throw new Error(friendly(error.message))
+      return typeof data === 'number' ? data : 0
     },
 
     async rename(name: string) {

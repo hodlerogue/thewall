@@ -492,6 +492,35 @@ badge. Three attempts at the test for this passed against the broken function,
 because everybody in the seed has replies at assorted recent ages; it needed its
 own person with every timestamp controlled.
 
+**A reply has a number within its post, and a pointer at the one it answers.**
+§4.3 gave replies no address, which is exactly why there was nothing to answer —
+"I want to be able to reply to replies". That half is reversed; the half about
+nesting is not. `music/12` still addresses the whole conversation, no URL grows
+a segment, and `to_reply_no` is a label for reading rather than a parent in a
+tree: the listing stays flat and in time order with `→ 2` on the header. §3.2
+caps depth at two steps, and a fourth level on a 380px screen leaves the words
+about two characters wide.
+
+The allocator is a **trigger on `replies`**, not a line inside `create_reply`.
+The first attempt put it in the function, which meant `seed.sql` and fifteen
+inserts in the schema tests each had to compute a number or fall foul of the
+not-null — fifteen places that can forget an invariant. On the table, an address
+is a property of the row and nothing that writes a reply needs to know reply
+numbers exist. The direct insert grant is gone, because a number has to be
+allocated somewhere two people cannot race for it.
+
+Only `reply` reads a leading number. `say 2 hello` posts the words "2 hello",
+and it has to: a verb that sometimes swallows its first word is one nobody can
+predict. The number also travels in `Held`, or answering somebody would quietly
+become answering the post the moment a new person finished signing up.
+
+**The feed does not page, and now says so.** `wall_feed` takes the newest 40 and
+`renderFeed` said nothing, so a busy feed ended on a blank line — the same
+silent cap the room listing was fixed for. It names a wall rather than an
+`older` command, because the feed crosses every wall at once and "the page
+before this one" is not a thing it has; naming a command that does not exist is
+worse than the silence.
+
 **The lobby fetches a page and counts the rest, and the two numbers are not the
 same.** `listRooms` returns `{ rooms, total }` because it used to select every
 listable room: measured on a database with 310 in it, 65 KB of JSON on every

@@ -71,7 +71,9 @@ function harness(options: { me?: string | null; refuse?: string; on?: boolean } 
     async post() {
       return 1
     },
-    async reply() {},
+    async reply() {
+      return 1
+    },
     async rename(name) {
       return { ok: true as const, name }
     },

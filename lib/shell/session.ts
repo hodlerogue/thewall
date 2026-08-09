@@ -31,6 +31,16 @@ export interface Held {
    */
   addressed?: boolean
   /**
+   * Which reply this was aimed at, when it was aimed at one.
+   *
+   * Held with the sentence for the same reason the sentence is held at all: two
+   * questions happen between typing `reply 2 <something>` and it landing, and
+   * dropping the number over that gap would turn answering somebody into
+   * answering the post — silently, at the one moment §3.9 promises nothing
+   * typed is lost.
+   */
+  toReply?: number
+  /**
    * Send it to the wall of whoever this turns out to be.
    *
    * `location` cannot say that yet. Somebody typing on the feed with no account
@@ -81,7 +91,14 @@ export interface SignupApi {
 export interface Writer {
   /** Returns the new post's permanent address (§3.4). */
   post(room: string, body: string): Promise<number>
-  reply(room: string, postNo: number, body: string): Promise<void>
+  /**
+   * Returns the reply's number within the post (§3.4, one level down).
+   *
+   * `toReply` is which reply is being answered, when one is. It is a pointer
+   * for reading rather than a parent in a tree — see the migration — and the
+   * database drops it rather than refusing if it names nothing.
+   */
+  reply(room: string, postNo: number, body: string, toReply?: number): Promise<number>
   /**
    * §4.6 — change your name, as often as you like.
    *
@@ -528,7 +545,12 @@ export class Session {
     lines.push({ text: 'and the thing you were trying to say is up.', tone: 'accent' })
     // The wall is named here, because here is the first moment there is a name.
     const target = held.toOwnWall ? { room: `~${this.who}` } : held.location
-    const written = await this.write(target, held.body, { addressed: held.addressed })
+    const written = await this.write(target, held.body, {
+      addressed: held.addressed,
+      // Carried across the two questions, or `reply 2 <something>` typed by
+      // somebody without an account would quietly become an answer to the post.
+      toReply: held.toReply,
+    })
     lines.push(...written.lines)
 
     // Losing the sentence here would be the worst possible moment for it.
@@ -743,7 +765,7 @@ export class Session {
      * already knows — `commons` is its own context precisely because §3.10
      * makes it a different kind of place.
      */
-    options: { addressed?: boolean } = {},
+    options: { addressed?: boolean; toReply?: number } = {},
   ): Promise<WriteResult> {
     if (!location.room) {
       return {
@@ -778,23 +800,37 @@ export class Session {
      */
     try {
       if (location.postId !== undefined) {
-        await this.writer.reply(location.room, location.postId, body)
+        const replyNo = await this.writer.reply(
+          location.room,
+          location.postId,
+          body,
+          options.toReply,
+        )
         /*
-         * The post's address, not silence.
+         * The reply's own header, in the grammar the thread prints.
          *
-         * §4.3 gives a reply no address of its own, and the first version of
-         * this printed nothing at all on that basis. From actually using it:
-         * "instead of just LOOKING like it's sent" — and nothing on screen is
-         * the strongest possible version of that, because `live.ts` drops your
-         * own words from the channel, so the thread you are staring at does not
-         * visibly gain your reply either.
+         * This used to be the post's address — `music/12` — on the reasoning
+         * that a reply had no address of its own (§4.3) and the post was the
+         * only true thing to give back. A reply has a number now, and that
+         * changes which fact is worth printing: the post address is already on
+         * the screen, in the prompt, one line below. The number is not, and it
+         * is the thing somebody else needs in order to answer *you*.
          *
-         * The post's address is the true and useful thing: it is where your
-         * words now live, and it is what you would type to come back and read
-         * the thread. Every contribution now answers with one line and the
-         * same shape.
+         * Same shape as a new post's confirmation, and the same shape the
+         * thread will show it in when it is read back — so what you see when
+         * you write it is what it looks like.
          */
-        return { lines: [{ text: `${location.room}/${location.postId}`, tone: 'accent' }], failed: false }
+        return {
+          lines: [
+            {
+              text: `${replyNo}  ${this.who ?? 'you'}, ${formatAgo(new Date())}${
+                options.toReply === undefined ? '' : `  → ${options.toReply}`
+              }`,
+              tone: 'dim',
+            },
+          ],
+          failed: false,
+        }
       }
       const postNo = await this.writer.post(location.room, body)
 

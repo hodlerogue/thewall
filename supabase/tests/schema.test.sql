@@ -428,9 +428,10 @@ select tests.ok(
 begin;
   set local role authenticated;
   set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
-  insert into public.replies (post_id, author_id, body)
-  select id, auth.uid(), 'a reply that should show up as mail'
-    from public.posts where room_slug = 'music' and post_no = 12;
+  -- Through `create_reply`, which is the only door a browser has now. The
+  -- direct insert grant is gone: a reply has a number within its post, and a
+  -- number has to be allocated somewhere that two people cannot race.
+  select public.create_reply('music'::citext, 12, 'a reply that should show up as mail');
 commit;
 
 begin;
@@ -730,9 +731,7 @@ begin;
   -- allowance, and it has to be one allowance rather than two.
   select public.create_post('poker', 'flooding ' || g) from generate_series(1, 19) g;
 
-  insert into public.replies (post_id, author_id, body)
-  select id, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'and a reply'
-    from public.posts where room_slug = 'music' and post_no = 12;
+  select public.create_reply('music'::citext, 12, 'and a reply');
 
   select tests.raises(
     $sql$select public.create_post('poker', 'and one more')$sql$,
@@ -1027,9 +1026,7 @@ begin;
   );
 
   -- The whole point of it being a wall rather than a diary.
-  insert into public.replies (post_id, author_id, body)
-  select id, '99999999-9999-4999-8999-999999999999', 'answering on somebody''s wall'
-    from public.posts where room_slug = '~waller' and post_no = 1;
+  select public.create_reply('~waller'::citext, 1, 'answering on somebody''s wall');
 commit;
 
 select tests.ok(
@@ -1537,10 +1534,26 @@ begin;
   set local role authenticated;
   set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
 
-  -- §4.1 counts a reply unread while created_at > mail_seen_at, so a reply
-  -- dated next year sits in an inbox permanently and reading does not clear it.
-  -- §4.3 sorts replies chronologically, so a chosen past date puts an answer
-  -- above answers written before it.
+  /*
+   * The column-scoped insert grant on `replies` is gone, and this asserts the
+   * stronger thing that replaced it: `authenticated` cannot write this table at
+   * all. `create_reply` is the only door.
+   *
+   * The grant used to allow (post_id, author_id, body) and nothing else, which
+   * kept `created_at` and `hidden_at` out of a caller's hands — a reply dated
+   * next year sits in an inbox permanently (§4.1), and a pre-hidden one is the
+   * operator's column being set on the way in. Those are still refused, now by
+   * there being nothing to refuse with.
+   *
+   * Why it changed: a reply has a number within its post now, and a number has
+   * to be allocated somewhere two people cannot race for it.
+   */
+  select tests.raises(
+    $sql$insert into public.replies (post_id, author_id, body)
+         select id, '99999999-9999-4999-8999-999999999999', 'straight in'
+           from public.posts where room_slug = 'music' limit 1$sql$,
+    'a browser cannot write a reply directly at all any more'
+  );
   select tests.raises(
     $sql$insert into public.replies (post_id, author_id, body, created_at)
          select id, '99999999-9999-4999-8999-999999999999', 'from the future',
@@ -1554,20 +1567,185 @@ begin;
            from public.posts where room_slug = 'music' limit 1$sql$,
     'nor set the operator''s column on the way in'
   );
-  -- And the three columns the client actually writes still go through. A plain
-  -- statement, not wrapped in a CTE: Postgres will not have a data-modifying
-  -- WITH anywhere but the top level, so the tidier-looking version does not run.
-  insert into public.replies (post_id, author_id, body)
-  select id, '99999999-9999-4999-8999-999999999999', 'an ordinary reply'
-    from public.posts where room_slug = 'music' limit 1;
 
+  -- And the door that is open still works.
+  select public.create_reply('music'::citext, 12, 'an ordinary reply');
   select tests.ok(
     exists (select 1 from public.replies where body = 'an ordinary reply'),
-    'while an ordinary reply is unaffected'
+    'while an ordinary reply, through create_reply, is unaffected'
   );
 commit;
 
+select tests.ok(
+  not has_table_privilege('authenticated', 'public.replies', 'insert'),
+  'and the grant it used to need is gone rather than narrowed'
+);
+
 delete from public.replies where body = 'an ordinary reply';
+
+\echo ''
+\echo '§4.3, revisited — a reply you can answer'
+
+/*
+ * "I want to be able to reply to replies."
+ *
+ * §4.3 gave replies no address, which is why there was nothing to answer. That
+ * half is reversed; the half about nesting is not. A reply is numbered within
+ * its post — `music/12` still addresses the whole conversation — and
+ * `to_reply_no` is a pointer for reading, never a parent in a tree.
+ */
+\set answerer '99999999-9999-4999-8999-999999999999'
+
+insert into public.posts (room_slug, post_no, author_id, body)
+select 'music', 960, '11111111-1111-4111-8111-111111111111'::uuid, 'a post with a conversation under it'
+ where not exists (select 1 from public.posts where room_slug = 'music' and post_no = 960);
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'answerer';
+
+  select tests.ok(
+    public.create_reply('music'::citext, 960, 'the first answer') = 1,
+    'the first reply on a post is 1'
+  );
+  select tests.ok(
+    public.create_reply('music'::citext, 960, 'the second answer') = 2,
+    'and they count up within the post, not across the site'
+  );
+  select tests.ok(
+    public.create_reply('music'::citext, 960, 'answering the first one', 1) = 3,
+    'answering a reply is still just the next reply'
+  );
+commit;
+
+select tests.ok(
+  (select to_reply_no from public.replies r
+     join public.posts p on p.id = r.post_id
+    where p.room_slug = 'music' and p.post_no = 960 and r.reply_no = 3) = 1,
+  'and it records which one it answers'
+);
+select tests.ok(
+  (select to_reply_no from public.replies r
+     join public.posts p on p.id = r.post_id
+    where p.room_slug = 'music' and p.post_no = 960 and r.reply_no = 1) is null,
+  'while one that answers the post itself points at nothing'
+);
+
+-- Numbering is per post. A second post's replies start at 1 again, or the
+-- number on screen would be a global counter wearing a local number's clothes.
+insert into public.posts (room_slug, post_no, author_id, body)
+select 'music', 961, '11111111-1111-4111-8111-111111111111'::uuid, 'a different post'
+ where not exists (select 1 from public.posts where room_slug = 'music' and post_no = 961);
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'answerer';
+  select tests.ok(
+    public.create_reply('music'::citext, 961, 'first here too') = 1,
+    'a different post starts at 1 again'
+  );
+commit;
+
+/*
+ * An address is never reused, one level down (§3.4). The allocator lives on the
+ * post rather than being derived from max(reply_no), because a hidden reply
+ * leaves a gap that max cannot see — and handing the next person an address
+ * somebody else already had is how a thread starts pointing at the wrong words.
+ */
+update public.replies r
+   set hidden_at = now()
+  from public.posts p
+ where p.id = r.post_id and p.room_slug = 'music' and p.post_no = 960 and r.reply_no = 3;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'answerer';
+  select tests.ok(
+    public.create_reply('music'::citext, 960, 'after one was hidden') = 4,
+    'hiding reply 3 does not free the number 3'
+  );
+commit;
+
+-- A pointer at a reply that is not there is dropped rather than refused: the
+-- same trade a room's `from_room` makes, and for the same reason — losing
+-- somebody's sentence over a mistyped label is the worse outcome.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'answerer';
+  select tests.ok(
+    public.create_reply('music'::citext, 960, 'answering nothing', 99) = 5,
+    'a pointer at a reply that does not exist still writes the reply'
+  );
+commit;
+
+select tests.ok(
+  (select to_reply_no from public.replies r
+     join public.posts p on p.id = r.post_id
+    where p.room_slug = 'music' and p.post_no = 960 and r.reply_no = 5) is null,
+  'with the pointer dropped, rather than pointing at nothing'
+);
+
+-- And a pointer at a hidden reply is dropped too, or the operator's lever
+-- leaves an arrow aimed at words nobody can read.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'answerer';
+  select public.create_reply('music'::citext, 960, 'answering the hidden one', 3);
+commit;
+
+select tests.ok(
+  (select to_reply_no from public.replies r
+     join public.posts p on p.id = r.post_id
+    where p.room_slug = 'music' and p.post_no = 960 and r.reply_no = 6) is null,
+  'a pointer at a hidden reply is dropped as well'
+);
+
+/*
+ * Every gate `create_post` has, one level down.
+ *
+ * A purpose-made account rather than one of the ones above, because §4.7 allows
+ * exactly one free contribution before asking for the email — so whether an
+ * existing unverified account is refused depends on what it has already done
+ * earlier in this file. This one spends its free contribution first, which is
+ * what makes the refusal about verification rather than about arithmetic.
+ */
+insert into auth.users (id, aud, role, email)
+values ('c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1', 'authenticated', 'authenticated', 'unproved@deliverable.seed')
+on conflict (id) do nothing;
+insert into public.profiles (id, name)
+values ('c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1', 'unproved')
+on conflict (id) do nothing;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1';
+
+  select tests.ok(
+    public.create_reply('music'::citext, 960, 'the one free contribution') > 0,
+    'an unverified account gets its one free contribution here too (§4.7)'
+  );
+  select tests.raises(
+    $sql$select public.create_reply('music'::citext, 960, 'and a second')$sql$,
+    'and the second is stopped at the same gate as a post'
+  );
+commit;
+
+begin;
+  set local role anon;
+  select tests.raises(
+    $sql$select public.create_reply('music'::citext, 960, 'from nobody')$sql$,
+    'and a signed-out reader cannot reach it at all'
+  );
+commit;
+
+select tests.ok(
+  not has_function_privilege('anon', 'public.create_reply(citext, integer, text, integer)', 'execute'),
+  'which is a grant, not a check that could be forgotten'
+);
+
+delete from public.replies r using public.posts p
+ where p.id = r.post_id and p.room_slug = 'music' and p.post_no in (960, 961);
+delete from public.posts where room_slug = 'music' and post_no in (960, 961);
 
 \echo ''
 \echo 'feed — every wall in one place, and nothing of its own'

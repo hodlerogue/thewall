@@ -107,3 +107,39 @@ describe('which verbs claim to carry content', () => {
     expect(carrying).toEqual(['reply', 'say'])
   })
 })
+
+describe('a reply’s aim is not part of what was said', () => {
+  it('puts the number in the quiet half, with the verb', () => {
+    /*
+     * `reply 2 you are right` — the `2` is an address. It is a thing the person
+     * typed but not a thing they said, and the bright half of this line is for
+     * what they said. Left in the sentence it reads as the first word of the
+     * reply, which is what somebody scanning the thread later has to un-read.
+     */
+    const line = echoOf('reply 2 you are right about that', 'ryan:music/12$')
+    expect(line.prefix).toBe('ryan:music/12$ reply 2 ')
+    expect(line.text).toBe('you are right about that')
+  })
+
+  it('leaves a number alone when it is the sentence', () => {
+    // `reply 2` with nothing after it is somebody who has not finished typing,
+    // and the handler posts it as the word "2" — so the echo must not pretend
+    // it was an address.
+    const line = echoOf('reply 2', 'ryan:music/12$')
+    expect(line.prefix).toBe('ryan:music/12$ reply ')
+    expect(line.text).toBe('2')
+  })
+
+  it('leaves say alone entirely', () => {
+    // `say 2 things happened` posts "2 things happened". `say` is content and
+    // nothing else; only `reply` takes an aim.
+    const line = echoOf('say 2 things happened today', 'ryan:music$')
+    expect(line.prefix).toBe('ryan:music$ say ')
+    expect(line.text).toBe('2 things happened today')
+  })
+
+  it('still reads back as exactly what was typed', () => {
+    const line = echoOf('reply 2 you are right', 'ryan:music/12$')
+    expect(`${line.prefix ?? ''}${line.text}`).toBe('ryan:music/12$ reply 2 you are right')
+  })
+})

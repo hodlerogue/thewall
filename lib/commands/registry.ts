@@ -585,17 +585,46 @@ export const COMMANDS: readonly Command[] = [
     // turns the line into a puzzle.
     gloss: (c) => (c === 'post' ? 'answer this' : 'answer a post, once you open it'),
     detail: () =>
-      'answers somebody. replies live inside a post, so open one first: go 12, then reply. inside a post this and say are the same thing. commons is the exception — nothing there keeps replies.',
+      'answers somebody. replies live inside a post, so open one first: go 12, then reply. reply <something> answers the post; reply 2 <something> answers reply 2, and says so on the line. inside a post reply and say are otherwise the same thing. commons is the exception — nothing there keeps replies.',
     insert: (c) => (c === 'post' ? 'reply ' : 'go '),
     // Only ever commons, since that is the only context left out above.
     wrongContext: () => 'commons doesn’t keep replies — say it as its own thing instead.',
     async run(args) {
       const { context, location, env } = args
 
-      // Inside a post this *is* say — looked up rather than duplicated, so
-      // there is exactly one contribution path and §3.9's held-sentence
-      // machinery cannot be bypassed by a second door onto it.
-      if (context === 'post') return findCommand('say')!.run(args)
+      if (context === 'post') {
+        /*
+         * `reply 2 <something>` answers reply 2. `reply <something>` answers
+         * the post, which is what it has always meant.
+         *
+         * The number is only read here, never in `say`. `say 2 hello` has to
+         * keep posting the words "2 hello" — `say` is content and nothing else,
+         * and a verb that sometimes eats its first word is a verb nobody can
+         * predict. That asymmetry is the point: `reply` is the one that takes
+         * an address, because it is the one that has something to point at.
+         */
+        const aimed = /^(\d{1,6})\s+(.+)$/s.exec(args.arg.trim())
+        if (aimed) {
+          const { session, location } = args
+          const toReply = Number(aimed[1])
+          const body = aimed[2].trim()
+
+          if (session.name() === null) {
+            // §3.9 — the sentence is captured first, then the account is asked
+            // for. The number goes with it, or answering somebody would become
+            // answering the post the moment you signed up.
+            return { lines: session.begin({ location, body, addressed: true, toReply }) }
+          }
+
+          const written = await session.write(location, body, { toReply })
+          return { lines: written.lines, retry: written.failed ? args.arg : undefined }
+        }
+
+        // Otherwise this *is* say — looked up rather than duplicated, so there
+        // is exactly one contribution path and §3.9's held-sentence machinery
+        // cannot be bypassed by a second door onto it.
+        return findCommand('say')!.run(args)
+      }
 
       // §3.7 — name the fix, and name a real one. A post that is actually
       // there beats an invented number, which is the difference between an

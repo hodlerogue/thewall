@@ -4,9 +4,30 @@
  */
 
 export interface Reply {
+  /**
+   * Its number within the post. Permanent and never reused, like a post's
+   * number within its room (§3.4).
+   *
+   * §4.3 gave replies no address, which is exactly why there was no way to
+   * answer one — "I want to be able to reply to replies". That half is
+   * reversed. The half about nesting is not: this is a number inside `music/12`,
+   * not a new segment of an address, so `go` learns nothing new and no URL
+   * grows.
+   */
+  id: number
   author: string
   body: string
   createdAt: Date
+  /**
+   * Which reply this answers, when it answers one rather than the post.
+   *
+   * A pointer for reading, never a parent in a tree — the listing stays flat and
+   * in time order, and this becomes a `→ 2` on the header. Same choice as rooms
+   * that grew out of a room: a tree is unreadable by the fourth level on a
+   * 380px screen, and what people actually want is to know what somebody is
+   * responding to.
+   */
+  toReply?: number
 }
 
 export interface Post {

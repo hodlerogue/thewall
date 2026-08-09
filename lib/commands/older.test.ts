@@ -64,7 +64,9 @@ function harness(rooms: Room[]) {
     async post() {
       return 1
     },
-    async reply() {},
+    async reply() {
+      return 1
+    },
     async rename(name) {
       return { ok: true as const, name }
     },

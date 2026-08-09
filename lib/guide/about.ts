@@ -53,14 +53,14 @@ export const ABOUT: readonly GuideSection[] = [
     heading: 'Where you are',
     body: [
       'The lobby is the list of rooms. Type look to see it, then go roomname to walk into one — go music.',
-      'A room holds posts. look shows them, each with a number in front: that number is its permanent address and is never reused. go 12 opens it and puts you inside the conversation. leave backs you out one step.',
+      'A room holds posts. look shows them, each with a permanent number in front, never reused. go 12 opens it and puts you inside the conversation. leave backs you out one step.',
       'The path in the prompt is also the web address: if it says music/12, then thewall.social/music/12 is that post, and a link you can send somebody.',
     ],
   },
   {
     heading: 'Saying something',
     body: [
-      'say, and then what you want to say. In a room that starts a new post; inside a post it adds a reply, as does reply.',
+      'say, and then what you want to say. In a room that starts a new post; inside a post it adds a reply. Replies are numbered too: reply 2 answers reply 2, where it was written.',
       'You do not need an account to read. The first time you try to say something, you are asked what to call you and where to send a sign-in link — and the sentence you already typed is posted for you. You never type it twice.',
       'There are no passwords, and your address is never shown to anybody or sold. You can say one thing before you check that email — after that it asks, because an address nobody has proved they can read is no way back in.',
       'On a new phone, or after clearing your browser, type login and your name: a key goes to the address that name signed up with, and typing the short code from it makes this browser you again. The same email has a link, which is easier on a computer. Never make a second account — your posts stay with the first name.',

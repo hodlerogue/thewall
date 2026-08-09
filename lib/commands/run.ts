@@ -39,6 +39,23 @@ export function echoOf(input: string, label: string): Line {
     return { text: `${label} ${input}`, tone: 'echo' }
   }
 
+  /*
+   * A reply's aim goes in the quiet half with the verb.
+   *
+   * `reply 2 you are right` — the `2` is an address, not part of the sentence.
+   * It is a thing the person typed, but it is not a thing they *said*, and the
+   * bright half of this line is for what they said. Left in the sentence it
+   * reads as the first word of the reply, which is exactly what somebody
+   * scanning the thread later would have to un-read.
+   *
+   * Only for `reply`, and only when there are words after the number, which is
+   * the same test the handler applies before treating it as an aim at all.
+   */
+  const aimed = parsed.command.verb === 'reply' && /^(\d{1,6})\s+(.+)$/s.exec(parsed.arg)
+  if (aimed) {
+    return { prefix: `${label} ${parsed.head} ${aimed[1]} `, text: aimed[2], tone: 'echo' }
+  }
+
   // `parsed.head` rather than the verb, so somebody who typed an alias sees the
   // alias. The echo is a record of what happened, not a correction of it.
   return { prefix: `${label} ${parsed.head} `, text: parsed.arg, tone: 'echo' }

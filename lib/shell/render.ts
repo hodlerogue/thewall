@@ -146,6 +146,14 @@ export function renderRoomList(
 }
 
 /**
+ * How many the feed asks for, and the number it admits to when it fills.
+ *
+ * Shared with `supabaseEnv.readFeed` and `wall_feed`'s default so the listing
+ * and the sentence under it cannot disagree.
+ */
+export const FEED_PAGE = 40
+
+/**
  * The feed: everything on everybody's walls, newest first.
  *
  * Rendered like search hits rather than like a room, because that is what it
@@ -153,7 +161,12 @@ export function renderRoomList(
  * number is meaningless here — `2` is a different post on every wall. The
  * address carries the name, which is also what `go` wants back.
  */
-export function renderFeed(posts: readonly PostHit[], now = new Date()): Line[] {
+export function renderFeed(
+  posts: readonly PostHit[],
+  now = new Date(),
+  /** What the Env asked for, so a full page can say it was one. */
+  limit = FEED_PAGE,
+): Line[] {
   if (posts.length === 0) {
     return [
       { text: 'nothing on anybody’s wall yet.', tone: 'faint' },
@@ -177,6 +190,30 @@ export function renderFeed(posts: readonly PostHit[], now = new Date()): Line[] 
     }
     lines.push({ text: '' })
   }
+  /*
+   * No silent caps — the rule the room listing was the last place to break, and
+   * the feed was quietly the next one.
+   *
+   * `wall_feed` takes the newest 40 and this said nothing about it, so a busy
+   * feed ended on a blank line, indistinguishable from having reached the
+   * bottom. That is the site's own promise — "when you have read it you have
+   * read it" — being false again, in the one place somebody arriving from a
+   * link lands.
+   *
+   * At the top, because the listing runs oldest-first: everything missing is
+   * older than the first line under this. And it names walls rather than an
+   * `older` command, because there is no paging here to offer — the feed
+   * crosses every wall at once, so "the page before this one" is not a thing it
+   * has. Naming a command that does not exist would be worse than the silence.
+   */
+  if (posts.length >= limit) {
+    lines.unshift({ text: '' })
+    lines.unshift({
+      text: `the newest ${limit}. the feed doesn’t go back further — a wall does: go ~name.`,
+      tone: 'faint',
+    })
+  }
+
   lines.push({
     text: 'anybody can answer any of these. say something here and it goes on your own wall.',
     tone: 'faint',
@@ -248,8 +285,22 @@ function renderGrewOut(room: Room): Line[] {
     text: `${grew.length === 1 ? 'a room' : 'rooms'} that grew out of here:`,
     tone: 'faint',
   })
+  /*
+   * A room name is accent, everywhere, and this was the one list that forgot.
+   *
+   * Reported as "that room should be showing in orange to depict a room but
+   * it's just normal text" — and orange is not decoration here, it is the
+   * colour this interface uses for a thing you can type. Room names in the
+   * lobby, the prompt, addresses in `mail`. Printing one in the skim-past
+   * colour says the opposite of what the line is for.
+   *
+   * Two lines rather than `slug — gloss` on one, because that is the shape the
+   * lobby uses for exactly this — a list of rooms with a word about each — and
+   * a room should look the same wherever it is listed.
+   */
   for (const child of shown) {
-    lines.push({ text: `${child.slug} — ${child.gloss}`, tone: 'dim', depth: 1 })
+    lines.push({ text: child.slug, tone: 'accent', depth: 1 })
+    lines.push({ text: child.gloss, tone: 'dim', depth: 2 })
   }
 
   // No silent caps, here as everywhere. A room that spawned forty is not going
@@ -312,10 +363,37 @@ export function renderPost(post: Post, now = new Date()): Line[] {
     return lines
   }
 
+  /*
+   * Flat, numbered, and in time order — never a tree.
+   *
+   * "I want to be able to reply to replies." §4.3 gave replies no address,
+   * which is exactly why there was nothing to answer, so they have numbers now.
+   * What they did not get is nesting: an answer to an answer sits where it was
+   * written, with `→ 2` saying which one it means.
+   *
+   * The alternative is indentation per level, and §3.2 caps depth at two steps
+   * for a reason — a fourth level on a 380px screen leaves the words about two
+   * characters wide. A pointer costs four characters and reads at any depth.
+   */
   for (const reply of post.replies) {
-    lines.push({ text: `${reply.author}, ${formatAgo(reply.createdAt, now)}`, tone: 'dim', depth: 1 })
+    lines.push({
+      text: `${reply.id}  ${reply.author}, ${formatAgo(reply.createdAt, now)}${
+        reply.toReply === undefined ? '' : `  → ${reply.toReply}`
+      }`,
+      tone: 'dim',
+      depth: 1,
+    })
     lines.push({ text: reply.body, depth: 2 })
   }
+
+  // Said once, at the bottom, where somebody has just finished reading and is
+  // deciding what to answer. `reply` alone still answers the post, which is
+  // what it has always meant.
+  lines.push({ text: '' })
+  lines.push({
+    text: 'reply <something> answers the post — reply 2 <something> answers 2.',
+    tone: 'faint',
+  })
   return lines
 }
 

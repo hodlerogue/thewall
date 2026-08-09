@@ -67,7 +67,9 @@ function harness(options: { me?: string; accounts?: string[] } = {}) {
     async post() {
       return 42
     },
-    async reply() {},
+    async reply() {
+      return 1
+    },
     async rename(name) {
       return { ok: true as const, name }
     },

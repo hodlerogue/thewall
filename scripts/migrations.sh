@@ -43,6 +43,7 @@ MIGRATION_PROBES=(
   # Probed by the shape of the fix, not by the view existing: the whole point
   # is that the `or` is gone, and the view answers identically either way.
   "20260810000000_lobby_uses_its_index.sql|select pg_get_viewdef('public.room_overview'::regclass) not like '%OR%'"
+  "20260811000000_reply_to_a_reply.sql|select to_regproc('public.create_reply') is not null"
 )
 
 probe_for() {

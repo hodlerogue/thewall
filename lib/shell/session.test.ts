@@ -14,7 +14,7 @@ function harness(
   const posted: { room: string; body: string }[] = []
   const renamed: string[] = []
   let resends = 0
-  const replied: { room: string; postNo: number; body: string }[] = []
+  const replied: { room: string; postNo: number; body: string; toReply?: number }[] = []
 
   const api: SignupApi = {
     async checkName(name) {
@@ -45,8 +45,11 @@ function harness(
       posted.push({ room, body })
       return 42
     },
-    async reply(room, postNo, body) {
-      replied.push({ room, postNo, body })
+    async reply(room, postNo, body, toReply) {
+      replied.push({ room, postNo, body, toReply })
+      // Per post, like the real allocator — a single counter would teach these
+      // tests a numbering rule the site does not have.
+      return replied.filter((r) => r.room === room && r.postNo === postNo).length
     },
     async rename(name) {
       if (taken.has(name)) return { ok: false as const, reason: `${name} is taken` }
@@ -693,16 +696,20 @@ describe('what a post number is for, and where there isn’t one', () => {
     expect(out).toMatch(/that’s where it lives/)
   })
 
-  it('answers a reply with the address of the post it is under', async () => {
+  it('answers a reply with the reply’s own number', async () => {
     /*
-     * §4.3 gives a reply no address of its own, and the post's is the true
-     * answer to "where did that go" — it is also what you would type to come
-     * back and read the thread. Printing nothing was the previous version, and
-     * nothing is exactly what "it doesn't look like it sent" is made of.
+     * This printed the *post's* address — `music/12` — because §4.3 gave a
+     * reply no address of its own, so the post was the only true thing to give
+     * back. A reply has a number now, and that changes which fact is worth a
+     * line: `music/12` is already on the screen, in the prompt directly below.
+     * The number is not, and it is what somebody else needs in order to answer
+     * you.
+     *
+     * Still one line, still no status word — the same shape a new post gets.
      */
     const { run } = harness({ me: 'ryan' })
     const out = text((await run('say i agree', { room: 'music', postId: 12 })).lines)
-    expect(out).toBe('music/12')
+    expect(out).toMatch(/^\d+ {2}ryan, just now$/)
   })
 })
 
