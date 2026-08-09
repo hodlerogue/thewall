@@ -14,7 +14,14 @@ import { expect, test, type Page } from '@playwright/test'
  */
 
 const CARDS = [
-  ['the front door', '/opengraph-image'],
+  /*
+   * The front door is a fixed image and the rest are generated, which is why
+   * this one has a `.png` on it: Next serves a static card at its own filename.
+   * Everything below it is drawn from the same `Line[]` the shell renders, and
+   * the point of listing both here is that they have to be indistinguishable to
+   * a crawler — same status, same type, same 1200×630.
+   */
+  ['the front door', '/opengraph-image.png'],
   ['a room', '/music/opengraph-image'],
   ['a post', '/music/12/opengraph-image'],
   ['commons', '/commons/opengraph-image'],
@@ -62,6 +69,19 @@ test('the page points at its card, absolutely', async ({ page }) => {
     // unreadable at 120px.
     expect(await content('meta[name="twitter:card"]'), path).toBe('summary_large_image')
     expect(await content('meta[property="og:title"]'), path).toBeTruthy()
+
+    /*
+     * The tag that vanishes without a sound.
+     *
+     * A generated card exports `alt` from its module; the fixed one takes it
+     * from `opengraph-image.alt.txt` sitting beside the file. Misname that by a
+     * character and nothing fails — no warning, no build error, the tag is
+     * simply absent, and the only place you would notice is a screen reader on
+     * somebody else's timeline.
+     */
+    const alt = await content('meta[property="og:image:alt"]')
+    expect(alt, `og:image:alt on ${path}`).toBeTruthy()
+    expect(alt, `og:image:alt on ${path} has a stray newline in it`).toBe(alt!.trim())
   }
 })
 
