@@ -349,6 +349,9 @@ test('and the column of addresses does not move to make room for it', async ({ p
    * the suite looks at pixels.
    */
   await page.goto('/music')
+  // Same reason as below: `evaluate` does not retry, and an empty list here
+  // would read as "nothing drifted" rather than "nothing was measured".
+  await expect(page.getByTestId('tap').first()).toBeVisible()
 
   const drift = await page.evaluate(() => {
     const buttons = [...document.querySelectorAll('.line-tap')]
@@ -363,4 +366,37 @@ test('and the column of addresses does not move to make room for it', async ({ p
 
   expect(drift.length).toBeGreaterThan(0)
   for (const offset of drift) expect(Math.abs(offset)).toBeLessThan(1)
+})
+
+test('a five-digit address still fits on a 380px screen', async ({ page }) => {
+  /*
+   * The case this was built for: `post_no` is allocated per room and never
+   * reused, so a room busy for a year hands out `239482` rather than `12`. The
+   * address is `white-space: pre` so a number can never break in half — which
+   * means a long one cannot wrap its way out of trouble, and §8 makes a
+   * horizontal scrollbar at 380px the kill condition.
+   *
+   * Done against the real line, with the real classes, because this is a CSS
+   * property and nothing else in the suite would notice it.
+   */
+  await page.goto('/music')
+  // Waited for rather than assumed: `evaluate` does not retry, and the room
+  // listing arrives a moment after the prompt does.
+  await expect(page.getByTestId('tap').first()).toBeVisible()
+
+  await page.evaluate(() => {
+    const button = document.querySelector<HTMLElement>('.line-tap')!
+    button.textContent = '239482'
+    // The longest address the site can produce: somebody's wall, and a name at
+    // the 20-character limit.
+    const line = button.closest('p')!
+    const clone = line.cloneNode(true) as HTMLElement
+    clone.querySelector('.line-tap')!.textContent = '~averylongnamehere12/239482'
+    line.after(clone)
+  })
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )
+  expect(overflow).toBeLessThanOrEqual(0)
 })

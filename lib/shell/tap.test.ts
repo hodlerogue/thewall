@@ -10,18 +10,22 @@ import type { Line, Location } from '@/lib/shell/types'
 /**
  * Tapping an address to answer it.
  *
- * "What happens when we're on reply 239482 — typing that number in each time
- * will be real annoying." Reply numbers are allocated per post, so that one
- * would need a thread with a quarter of a million answers in it; **post**
- * numbers are per room, and `music/8431` is an ordinary thing a busy room
- * reaches. Either way the complaint is right about the shape of the work:
- * answering means typing back a number that is already on the screen.
+ * "What happens when we're on 239482 — typing that number in each time will be
+ * real annoying", about the numbered posts in a room. Those are the ones that
+ * grow: `post_no` is allocated per room and never reused, so a room that has
+ * been busy for a year is handing out five-digit addresses, and answering one
+ * means thumbing a number that is already on the screen.
  *
  * So the address at the head of every "somebody said this" line is a button,
- * and tapping it *inserts* `reply 8431 ` with the cursor waiting. It never
+ * and tapping it *inserts* `reply 239482 ` with the cursor waiting. It never
  * runs — that is the palette's contract (§3.6), and it is the difference
  * between an interface people graduate to typing and a set of buttons wearing
  * a terminal costume (§9).
+ *
+ * The same treatment covers replies inside a thread, whose numbers are per
+ * *post* and so stay small. Not because they were the problem — they weren't —
+ * but because one rule over every address is a rule; two would be a thing to
+ * remember.
  *
  * Two invariants, and they are why this file exists rather than a handful of
  * assertions spread over the renderers. **The token has to be a prefix of the
@@ -77,6 +81,46 @@ function everyTappableLine(): Line[] {
   ]
 }
 
+/** A runner over the seed content, for the assertions that go through a command. */
+function tapHarness(env: Env = fixtureEnv()) {
+  const written: { room: string; postNo: number; body: string }[] = []
+
+  const api: SignupApi = {
+    async checkName() {
+      return { available: true, alternates: [] }
+    },
+    async create(n) {
+      return { ok: true as const, name: n }
+    },
+    async logout() {
+      return { ok: true as const }
+    },
+    async login(n) {
+      return { ok: true as const, name: n, note: 'sent' }
+    },
+    async loginCode(n) {
+      return { ok: true as const, name: n }
+    },
+    async resend() {
+      return { note: '' }
+    },
+  }
+  const writer: Writer = {
+    async post() {
+      return 1
+    },
+    async reply(room, postNo, body) {
+      written.push({ room, postNo, body })
+      return written.length
+    },
+    async rename(n) {
+      return { ok: true as const, name: n }
+    },
+  }
+
+  return { written, env, run: createRunner(env, ['commons'], new Session(api, writer, 'ryan')) }
+}
+
 describe('the token is a slice of the line it sits on', () => {
   it('holds for every line any renderer produces', () => {
     /*
@@ -114,43 +158,7 @@ describe('what it types is a line the site accepts', () => {
   })
 
   it('and typing it, with words after, actually sends the reply', async () => {
-    const written: { room: string; postNo: number; body: string }[] = []
-
-    const api: SignupApi = {
-      async checkName() {
-        return { available: true, alternates: [] }
-      },
-      async create(n) {
-        return { ok: true as const, name: n }
-      },
-      async logout() {
-        return { ok: true as const }
-      },
-      async login(n) {
-        return { ok: true as const, name: n, note: 'sent' }
-      },
-      async loginCode(n) {
-        return { ok: true as const, name: n }
-      },
-      async resend() {
-        return { note: '' }
-      },
-    }
-    const writer: Writer = {
-      async post() {
-        return 1
-      },
-      async reply(room, postNo, body) {
-        written.push({ room, postNo, body })
-        return written.length
-      },
-      async rename(n) {
-        return { ok: true as const, name: n }
-      },
-    }
-
-    const env = fixtureEnv()
-    const run = createRunner(env, ['commons'], new Session(api, writer, 'ryan'))
+    const { run, written, env } = tapHarness()
 
     // The address a room listing actually prints, taken from the line itself
     // rather than written down here — this is the round trip, not a fixture.
@@ -203,46 +211,32 @@ describe('which lines offer it, and which deliberately do not', () => {
     expect(body?.tap).toBeUndefined()
   })
 
+  it('offers it on a search hit, which was the last listing without one', async () => {
+    /*
+     * `find` prints the same `address  who, when` shape as everything else, and
+     * searching for a thing and then answering it is an ordinary path. Left
+     * out, it would be the one listing where the number is not tappable — and
+     * "why does it work everywhere except here" is a worse interface than not
+     * having it at all.
+     */
+    const { run } = tapHarness()
+    const lines = (await run('find records', {} as Location)).lines
+    const tapped = lines.filter((l) => l.tap)
+
+    expect(tapped.length).toBeGreaterThan(0)
+    for (const line of tapped) {
+      expect(line.text.startsWith(line.tap!.token)).toBe(true)
+      expect(line.tap!.insert).toBe(`reply ${line.tap!.token} `)
+    }
+  })
+
   it('offers it on every line of mail, which is the list of things to answer', async () => {
     const items: MailItem[] = [
       { room: 'music', postId: 8431, author: 'ren', body: 'still play', createdAt: at(50) },
       { room: 'poker', postId: 4, author: 'tuck', body: 'in', createdAt: at(55) },
     ]
     const base = fixtureEnv()
-    const env: Env = { ...base, async readMail() { return items } }
-
-    const api: SignupApi = {
-      async checkName() {
-        return { available: true, alternates: [] }
-      },
-      async create(n) {
-        return { ok: true as const, name: n }
-      },
-      async logout() {
-        return { ok: true as const }
-      },
-      async login(n) {
-        return { ok: true as const, name: n, note: 'sent' }
-      },
-      async loginCode(n) {
-        return { ok: true as const, name: n }
-      },
-      async resend() {
-        return { note: '' }
-      },
-    }
-    const writer: Writer = {
-      async post() {
-        return 1
-      },
-      async reply() {
-        return 1
-      },
-      async rename(n) {
-        return { ok: true as const, name: n }
-      },
-    }
-    const run = createRunner(env, ['commons'], new Session(api, writer, 'jameson'))
+    const { run } = tapHarness({ ...base, async readMail() { return items } })
 
     const lines = (await run('mail', {} as Location)).lines
     const inserts = lines.filter((l) => l.tap).map((l) => l.tap!.insert)

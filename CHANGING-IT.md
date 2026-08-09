@@ -580,11 +580,11 @@ Two things hold this up, and both are load-bearing:
   outside, it is the only place the address is ever said.
 
 **The address at the head of a line is a button, and it inserts rather than
-runs.** Post numbers are allocated per room, so a busy room reaches `music/8431`
-and answering it means thumbing a number that is already on the screen. (Reply
-numbers are per *post*, so they stay small — a thread would need a quarter of a
-million answers to get long. The complaint that prompted this named a reply
-number and was pointing at the right work under the wrong number.)
+runs.** `post_no` is allocated per room and never reused, so a room busy for a
+year hands out five-digit addresses, and answering one means thumbing a number
+already on the screen. Reply numbers are per *post* and stay small; they get the
+same treatment anyway, because one rule over every address is a rule and two
+would be a thing to remember.
 
 `Line.tap` is `{token, insert}`; `Scrollback` draws `token` as a button and
 `text.slice(token.length)` after it, so **`token` must be a prefix of `text`** or

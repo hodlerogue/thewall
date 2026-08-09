@@ -22,6 +22,7 @@ import {
   renderProfile,
   renderRoom,
   renderRoomList,
+  saidBy,
 } from '@/lib/shell/render'
 import type { RoomList } from '@/lib/shell/model'
 import type { Session } from '@/lib/shell/session'
@@ -1291,19 +1292,18 @@ export const COMMANDS: readonly Command[] = [
          * an alert — and here it is also the thing you tap to answer, which is
          * why this list exists at all.
          *
-         * `renderPosts` and the feed use `saidBy` for this shape; this one
-         * stays local because the whole line is `accent` rather than an accent
-         * address on a dim header. Mail is a list of things demanding an answer
-         * and nothing else, so there is no hierarchy to draw here.
+         * Whole-line accent rather than an accent address on a dim header: mail
+         * is a list of things asking for an answer and nothing else, so there
+         * is no hierarchy to draw. The shape and the tap still come from the
+         * one helper, or this would be the line that quietly stopped matching.
          */
-        lines.push({
-          text: `${item.room}/${item.postId}  ${item.author}, ${formatAgo(item.createdAt)}`,
-          tone: 'accent',
-          tap: {
-            token: `${item.room}/${item.postId}`,
-            insert: `reply ${item.room}/${item.postId} `,
-          },
-        })
+        lines.push(
+          saidBy(
+            `${item.room}/${item.postId}`,
+            `${item.author}, ${formatAgo(item.createdAt)}`,
+            { tone: 'accent' },
+          ),
+        )
         lines.push({ text: item.body, depth: 1 })
       }
       lines.push({ text: '' })
@@ -1824,10 +1824,12 @@ function renderHits(hits: readonly PostHit[], term?: string): Line[] {
     // "(reply)" rather than a different address: a reply has no address of its
     // own (§4.3), so the one shown is the post it is under — which is exactly
     // what you type to go and read it, and would be a lie without the marker.
-    lines.push({
-      text: `${hit.room}/${hit.id}  ${hit.author}, ${formatAgo(hit.createdAt)}${hit.isReply ? '  (reply)' : ''}`,
-      tone: 'dim',
-    })
+    lines.push(
+      saidBy(
+        `${hit.room}/${hit.id}`,
+        `${hit.author}, ${formatAgo(hit.createdAt)}${hit.isReply ? '  (reply)' : ''}`,
+      ),
+    )
     lines.push({ text: hit.body, depth: 1 })
   }
   return lines

@@ -58,11 +58,15 @@ function oldestFirst<T>(items: readonly T[]): T[] {
  * Two spaces between the address and the name, everywhere, so a column of these
  * can be read down.
  */
-function saidBy(address: string, rest: string, depth?: 0 | 1 | 2): Line {
+export function saidBy(
+  address: string,
+  rest: string,
+  options: { depth?: 0 | 1 | 2; tone?: Line['tone'] } = {},
+): Line {
   return {
     text: `${address}  ${rest}`,
-    tone: 'dim',
-    depth,
+    tone: options.tone ?? 'dim',
+    depth: options.depth,
     tap: { token: address, insert: `reply ${address} ` },
   }
 }
@@ -406,7 +410,7 @@ export function renderPost(post: Post, now = new Date()): Line[] {
         `${reply.author}, ${formatAgo(reply.createdAt, now)}${
           reply.toReply === undefined ? '' : `  → ${reply.toReply}`
         }`,
-        1,
+        { depth: 1 },
       ),
     )
     lines.push({ text: reply.body, depth: 2 })
