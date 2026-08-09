@@ -453,11 +453,14 @@ and the first name's history stayed on the name they had abandoned. Nothing was
 wrong at any single step; the advice was wrong as a path. When you write an
 error that says "try X", type X into the thing and see what it answers.
 
-**Every contribution answers with exactly one line, in `accent`.** A room post
-gives its new address, a wall post gives `~name/7`, a reply gives the address of
-the post it is under (§4.3 — it has none of its own, and the post's is what you
-would type to come back), and commons gives the one surviving word, `said.`,
-because it is the only place with no address to give.
+**Every contribution answers with exactly one line, and that line is the thing's
+own header.** A room post gives `music/5  ryan, just now`, a wall post gives
+`~name/7`, a reply gives its number within the post — plus the post's address in
+front when it was aimed from somewhere else — and commons gives the one
+surviving word, `said.`, in `accent`, because it is the only place with no
+address to give. The headers are `dim`, which is what the room prints headers
+in: the point is that what you just wrote looks the same the moment you write it
+as it will when you read it back.
 
 Two things this went through, both worth not repeating. It printed `said.`
 everywhere, which is a delivery receipt under every sentence. Then it printed
@@ -491,6 +494,187 @@ last email* and reports *everything unread*, so the number still matches the
 badge. Three attempts at the test for this passed against the broken function,
 because everybody in the seed has replies at assorted recent ages; it needed its
 own person with every timestamp controlled.
+
+**`write` exists because the prompt is a single-line `<input>`, not because of
+a length cap.** The cap was already thousands of characters; there was no way to
+type a line break, and pasting one in flattens it. A compose mode takes lines
+until a line with just a dot — the `mail(1)` convention, and the only line it
+could be, since a blank line has to stay meaningful because a blank line is what
+a paragraph break *is*.
+
+Three things that are load-bearing. In compose mode the raw line is used, before
+the trim and before the generic escapes: `login ryan` is a plausible sentence
+mid-paragraph, and treating it as a command would discard everything written so
+far. The length is checked **per line**, not at the commit, because by the time
+the database refuses it the draft is gone and so is the writing. And the empty
+Enter is only meaningful here — `Terminal.submit` returned early on it, which
+swallowed paragraph breaks silently; found by walking the flow, not by a test.
+
+It is deliberately **not a second kind of post**. The idea that started it had a
+subject field and a 280-character floor to qualify; the floor was dropped
+because all twenty-one posts the site ships as its own example of good content
+are under it, the longest by half. The subject came free instead: a listing
+previews the *first line* rather than the first 56 characters, so a short
+opening line and an argument underneath is a subject and a body with nothing
+added to the schema. That change is also required — a newline inside a
+one-`Line` preview really does break the line, and a lobby of them comes apart.
+
+**The body limit is one number in five places, and a test reads the migration.**
+Migration, `Session.LIMIT`, `friendly()`, the prompt's `maxLength` and `what
+write`. A limit that disagrees with the one enforcing it is how a long piece of
+writing gets accepted by the prompt and refused by the server — §3.9's one
+promise, broken at its most expensive moment.
+
+**`help`'s first group is ten lines, so a new row means dropping one on
+purpose.** `write` earned one; `older` gave one up, because a room with more
+than a page prints the offer at the top of its own listing every time it is
+looked at, and a permanent row for a paging control is the redundancy. The first
+attempt instead folded `write` into `say`'s gloss — and the mobile gate caught
+it, because **a chip's label is its gloss**: the longer sentence pushed the
+primary action off the right edge of a 380px strip, which §8 makes the kill
+condition. Lengthening a gloss is a layout change.
+
+**A reply has a number within its post, and a pointer at the one it answers.**
+§4.3 gave replies no address, which is exactly why there was nothing to answer —
+"I want to be able to reply to replies". That half is reversed; the half about
+nesting is not. `music/12` still addresses the whole conversation, no URL grows
+a segment, and `to_reply_no` is a label for reading rather than a parent in a
+tree: the listing stays flat and in time order with `→ 2` on the header. §3.2
+caps depth at two steps, and a fourth level on a 380px screen leaves the words
+about two characters wide.
+
+The allocator is a **trigger on `replies`**, not a line inside `create_reply`.
+The first attempt put it in the function, which meant `seed.sql` and fifteen
+inserts in the schema tests each had to compute a number or fall foul of the
+not-null — fifteen places that can forget an invariant. On the table, an address
+is a property of the row and nothing that writes a reply needs to know reply
+numbers exist. The direct insert grant is gone, because a number has to be
+allocated somewhere two people cannot race for it.
+
+Only `reply` reads a leading number. `say 2 hello` posts the words "2 hello",
+and it has to: a verb that sometimes swallows its first word is one nobody can
+predict. The number also travels in `Held`, or answering somebody would quietly
+become answering the post the moment a new person finished signing up.
+
+**`reply` takes an aim, and it is `go`'s grammar, not a new one.** A bare number
+is the numbered thing where you are standing — inside a post that is a reply,
+in a room it is a post, on somebody's page it is a post on their wall — and
+`room/12` is a whole address that works from anywhere, which is the form `find`,
+`mail` and a profile already print. Asked for as `reply/5`, which is the one
+spelling it cannot have: `music/12` already means "post 12 in music", so a slash
+there would make the site's single address separator mean two different things
+depending on the word in front of it. Typed anyway, it is answered with the same
+line and a space in it, because the verb and the number were both right.
+
+Two things hold this up, and both are load-bearing:
+
+- **Nothing is written until the post named is known to exist.** `nothingAt()`
+  runs before any write and before any signup ask. Skip it and a mistyped number
+  either dies at the database with the sentence gone, or — worse — collects a
+  name and an email address first and *then* dies, which is §3.9's promise
+  turned into a trap.
+- **The confirmation names the address when, and only when, you were not
+  standing there.** `Session.write`'s `elsewhere` decides it, and `Held` carries
+  it across signup. Inside the post the address is in the prompt one line below,
+  so repeating it is the receipt line this codebase keeps deleting; from
+  outside, it is the only place the address is ever said.
+
+**The address at the head of a line is a button, and it inserts rather than
+runs.** `post_no` is allocated per room and never reused, so a room busy for a
+year hands out five-digit addresses, and answering one means thumbing a number
+already on the screen. Reply numbers are per *post* and stay small; they get the
+same treatment anyway, because one rule over every address is a rule and two
+would be a thing to remember.
+
+`Line.tap` is `{token, insert}`; `Scrollback` draws `token` as a button and
+`text.slice(token.length)` after it, so **`token` must be a prefix of `text`** or
+the line silently renders with characters missing. `render.ts`'s `saidBy` is the
+one place that builds this shape, and `tap.test.ts` walks every line every
+renderer produces to check both halves — the prefix rule, and that what it
+inserts parses to a real command.
+
+Three things it must not become:
+
+- **It must never run.** That is §3.6's contract for the palette and it is the
+  whole difference between an interface people graduate to typing and buttons in
+  a terminal costume (§9). It would also post an empty reply.
+- **It must not move the column.** The horizontal padding that makes a 9-pixel
+  digit a 24-pixel target is cancelled by an equal negative margin, and the
+  vertical padding is on an inline box, which does not affect the line at all.
+  There is an e2e assertion measuring the drift of the text against its own
+  line, because nothing else in the suite looks at pixels.
+- **It must not become a tab stop.** The scrollback is one focusable region on
+  purpose (WCAG 2.1.1); sixty buttons in a room listing would put sixty stops
+  between it and the prompt. `tabIndex={-1}` is defensible *only* because
+  everything the button does, typing also does — it is a shortcut, never the
+  only path. Add one that is the only path and it has to be focusable.
+
+`reply` is listed in commons now, which reverses an entry that used to be here.
+The old reasoning — a verb that can never work where it is listed is the same
+defect as a chip that always fails — was right about the verb it described.
+Naming a post changed the verb: the reply is not going *in* commons, it is going
+to music. What would have been wrong is keeping it off the list and answering
+`reply music/12 thanks` with "commons doesn't keep replies", which is a true
+sentence about a different question.
+
+**The feed does not page, and now says so.** `wall_feed` takes the newest 40 and
+`renderFeed` said nothing, so a busy feed ended on a blank line — the same
+silent cap the room listing was fixed for. It names a wall rather than an
+`older` command, because the feed crosses every wall at once and "the page
+before this one" is not a thing it has; naming a command that does not exist is
+worse than the silence.
+
+**The lobby fetches a page and counts the rest, and the two numbers are not the
+same.** `listRooms` returns `{ rooms, total }` because it used to select every
+listable room: measured on a database with 310 in it, 65 KB of JSON on every
+boot to draw twelve lines. `total` comes from PostgREST's exact count in the
+same request, so "294 more rooms" stays true — deriving it from the array would
+report the size of the page, which is the trap the room listing already fell
+into once.
+
+**Made rooms get a budget, not a remainder.** The rule was "twelve rooms,
+curated first, made ones fill what is left", written when six rooms were
+curated. Five more were added since, one at a time, each fine on its own —
+curated reached ten and made rooms were down to **two slots**, permanently, on a
+site with three hundred of them. Nothing failed: the only assertion was about
+the *total*, so it kept passing while the split rotted. `MADE_SLOTS` is theirs
+now, and adding an eleventh curated room costs a line of length instead.
+
+**An `or` in a lateral join costs the index.** `room_overview` found each room's
+newest post with `(feed case) or (ordinary case)`, and `p.room_slug = r.slug`
+inside an `or` cannot use `posts_room_recent` — so the lobby sequentially
+scanned every post on the site, once per room. 1112 ms at 310 rooms, 5.9 ms
+with the two cases split into two guarded laterals. The answer never changed,
+which is why nothing caught it: correct, and quadratic. Put the guard *inside*
+the subquery, not in the `ON` clause, or the lateral runs and is discarded.
+
+**The echo recedes, except the part a person wrote.** Every command echo is
+dimmed so the answer stands out, and that is right for the twenty-three verbs
+whose argument is an instruction — type `go music` and the answer is the point.
+`say` and `reply` are the two where the argument is not an instruction but the
+product, and dimming them the same way rendered somebody's own sentence at
+9.1:1 against the ground while the same words, read back in the room a moment
+later, were 14.0:1. The interface was using its own brightness hierarchy to rank
+a contribution below the reading of it. Reported exactly that way: "from your
+view it doesn't look like a typical sent message… the font isn't white."
+
+`Line.prefix` is the whole mechanism and exists for this one line: what the
+shell put there recedes, what a person typed does not, and it stays one line in
+the order it was typed. Splitting a contribution across two lines makes this a
+chat client; re-printing the words underneath shows them twice, which was a
+separate complaint about a separate bug. The verbs opt in with `contributes`,
+and a test asserts that set is exactly `say` and `reply` **by name** — a count
+would go on passing while the membership changed, and an instruction lit up like
+a sentence is the failure.
+
+**A contribution answers with the post's header, not a receipt.** `music/42` is
+a filing reference; everywhere else on the site a thing somebody said is headed
+`address  author, when`. Printing half that grammar meant your post had two
+appearances — a reference when you wrote it, a post when you read it back. The
+header is dim, which *reverts* the deliberate accent-not-dim change above it:
+that change was right when the echo was dimmed whole, because the address was
+then the only bright thing saying "that happened". The sentence carries that
+now.
 
 **Success prints a value, or it prints nothing. Never a status word.** `cp`
 says nothing when it works, and a prompt that answers `said.` under every
@@ -552,6 +736,30 @@ for *what* it printed and none for the order.
 **Mobile is the kill condition** (§8). Every e2e test runs at 380×740 and there
 is no desktop project. Measure what a thumb can reach — `.tap()` scrolls an
 element into view first, which is how an off-screen chip passed a green suite.
+
+**Never send to an address that cannot receive.** RFC 2606 and RFC 6761 reserve
+`.test`, `.example`, `.invalid`, `.localhost` and `example.com/net/org` so they
+can never resolve, which is why `seed.sql` uses `@seed.invalid` — and why the
+site was quietly willing to mail five accounts that will hard-bounce every time.
+They are verified, their posts are in the lobby, and the digest is on by
+default, so the first real answer to jameson put `jameson@seed.invalid` in front
+of the sender. The cost is not that the seed accounts miss their mail; it is
+that enough bounces throttle a sending domain and then nobody gets a sign-in
+key. The rule lives twice on purpose: `lib/auth/deliverable.ts` guards a route
+somebody types at, and `pending_digests` guards a cron job nobody is watching.
+
+Its probe in `migrations.sh` looks for the words in `pg_get_functiondef`, and
+passed against a first version whose regex was escaped wrong and matched
+nothing. A probe answers "was this applied"; only a behavioural assertion
+answers "does it work", and there is one in `schema.test.sql`.
+
+**Test accounts need deliverable addresses.** Half the digest tests used
+jameson, and jameson is one of the seeded five — so once the filter existed,
+"is this person due an email" was permanently false for him. Worse was
+`unproven@seed.invalid`, whose whole job is proving the *verified* gate works:
+on a reserved TLD it would have been excluded by the address filter instead, and
+passed with the gate deleted. Purpose-made people in that section use
+`@deliverable.seed`, which is neither real nor reserved.
 
 **Boot's requests overlap, and only one test can tell.** The reads on arrival
 ran nose to tail — session, profile, room list, room, mail count — because that

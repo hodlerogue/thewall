@@ -70,12 +70,12 @@ export const ROOMS: Room[] = [  {
         body: 'found my dad’s records in the garage. half of them are warped and i am keeping all of them anyway.',
         createdAt: minutes(128),
         replies: [
-          {
+          { id: 1,
             author: 'marisol',
             body: 'warped ones still play, they just wobble. it grows on you.',
             createdAt: minutes(70),
           },
-          { author: 'tuck', body: 'what was in there', createdAt: minutes(44) },
+          { id: 2, author: 'tuck', body: 'what was in there', createdAt: minutes(44) },
         ],
       },
       {
@@ -114,7 +114,7 @@ export const ROOMS: Room[] = [  {
         body: 'the bike is back together and there is exactly one bolt left over. i have decided it was spare.',
         createdAt: minutes(180),
         replies: [
-          {
+          { id: 1,
             author: 'marisol',
             body: 'there is always one bolt. it is a law of bicycles.',
             createdAt: minutes(120),
@@ -127,7 +127,7 @@ export const ROOMS: Room[] = [  {
         body: 'spent four hours on a shelf that is still not level and i have made my peace with it',
         createdAt: minutes(300),
         replies: [
-          {
+          { id: 1,
             author: 'jameson',
             body: 'level is a rumour. matchbook under the short leg and never speak of it again.',
             createdAt: minutes(240),
@@ -146,7 +146,7 @@ export const ROOMS: Room[] = [  {
         author: 'tuck',
         body: 'flopped a set, lost to runner-runner clubs, and then tipped the dealer anyway because i am a gentleman',
         createdAt: minutes(190),
-        replies: [{ author: 'jameson', body: 'the tip is the tell', createdAt: minutes(120) }],
+        replies: [{ id: 1, author: 'jameson', body: 'the tip is the tell', createdAt: minutes(120) }],
       },
       {
         id: 2,
@@ -175,7 +175,7 @@ export const ROOMS: Room[] = [  {
         body: 'made stock from a chicken carcass for the first time and now i understand why my grandmother never threw anything out',
         createdAt: minutes(300),
         replies: [
-          {
+          { id: 1,
             author: 'ren',
             body: 'freeze it flat in bags, it stacks and it thaws in about a minute',
             createdAt: minutes(240),
@@ -197,7 +197,7 @@ export const ROOMS: Room[] = [  {
         body: 'anyone else awake or is it just me and the refrigerator',
         createdAt: minutes(480),
         replies: [
-          {
+          { id: 1,
             author: 'marisol',
             body: 'the refrigerator and i are also here',
             createdAt: minutes(430),
@@ -229,7 +229,7 @@ export const ROOMS: Room[] = [  {
         body: 'bought the top in 2021 and have not looked since. genuinely no idea what it is worth and i think that is the healthiest thing i have ever done.',
         createdAt: minutes(95),
         replies: [
-          {
+          { id: 1,
             author: 'ren',
             body: 'the not-looking is the strategy. everyone finds this out eventually',
             createdAt: minutes(60),
@@ -256,7 +256,7 @@ export const ROOMS: Room[] = [  {
         body: 'watched the same film my dad had on every sunday. it is not a good film. i cried at the credits anyway.',
         createdAt: minutes(140),
         replies: [
-          { author: 'tuck', body: 'that is not about the film', createdAt: minutes(100) },
+          { id: 1, author: 'tuck', body: 'that is not about the film', createdAt: minutes(100) },
         ],
       },
       {
@@ -284,7 +284,7 @@ export const ROOMS: Room[] = [  {
         body: 'took me three goes to work out that go 12 opens a post rather than a room. once you know it is obvious, which is the problem.',
         createdAt: minutes(75),
         replies: [
-          {
+          { id: 1,
             author: 'marisol',
             body: 'same. the number being an address is the bit nobody says out loud',
             createdAt: minutes(40),
@@ -335,7 +335,7 @@ export const ROOMS: Room[] = [  {
         body: 'three days without AC and i have learned which of my neighbours own fans and which of them share',
         createdAt: minutes(15),
         replies: [
-          {
+          { id: 1,
             author: 'tuck',
             body: 'the fan people are the good people. remember them in winter.',
             createdAt: minutes(9),

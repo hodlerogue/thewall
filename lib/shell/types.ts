@@ -10,6 +10,47 @@ export interface Line {
   text: string
   tone?: Tone
   depth?: 0 | 1 | 2
+  /**
+   * Something to print in front of `text`, one step quieter than it.
+   *
+   * Exists for one line in the whole interface: the echo of a contribution.
+   *
+   * Every command echo is dimmed so the answer stands out, and that is right
+   * for the twenty-three verbs whose argument is an instruction — when you type
+   * `go music`, the answer is the point and the instruction should get out of
+   * the way. `say` is the one where the argument is not an instruction but the
+   * product. Dimming it uniformly rendered your own sentence at 9.1:1 while the
+   * same words, read back in the room a moment later, were 14.0:1. The site was
+   * using its brightness hierarchy to say your contribution mattered less than
+   * the reading of it.
+   *
+   * A prefix rather than two lines, because `ryan:poker$` and what you typed
+   * are one line in a terminal and splitting them would be a chat client. And a
+   * prefix rather than a second tone field, because the *only* thing that ever
+   * needs to recede is what the shell put there — the prompt and the verb — and
+   * `text` stays whatever the line's own tone says.
+   */
+  prefix?: string
+  /**
+   * The address at the head of this line, and what tapping it types for you.
+   *
+   * Every line on this site that says "somebody said this" starts with the
+   * thing's address — `8431`, `2`, `music/12` — and answering it means typing
+   * that address back. In a room with eight thousand posts in it that is real
+   * thumb work for something already on the screen, and getting a digit wrong
+   * is an error rather than a wrong reply, but it is still a retype.
+   *
+   * So the address becomes a button, and tapping it *inserts* `reply 8431 `
+   * with the cursor waiting — it never runs. That is the palette's contract
+   * (§3.6), and it is what keeps this an interface somebody graduates to
+   * typing rather than a set of buttons in a terminal costume (§9).
+   *
+   * `token` has to be a prefix of `text`, because the button is drawn by
+   * splitting the line at it — `render.test.ts` asserts that for every line any
+   * renderer produces. The rest of the line is untouched, which is why the
+   * assertions about header shapes elsewhere still read `text` whole.
+   */
+  tap?: { token: string; insert: string }
 }
 
 /**
@@ -63,6 +104,17 @@ export interface RunResult {
   retry?: string
   /** §4.1 — a fresh unread count, when the command changed it. */
   mail?: number
+  /**
+   * How much of a longer post has been written, or null when none is.
+   *
+   * Set on *every* result rather than only when it changes, which is the whole
+   * reason it can be trusted: compose mode is the one state where forgetting
+   * you are in it is expensive — every line typed disappears into a draft, and
+   * unlike the signup questions there is nothing being asked to remind you. A
+   * field that only appeared on some results would leave the indicator showing
+   * a stale count, which is worse than none.
+   */
+  composing?: { lines: number; chars: number } | null
 }
 
 export interface RunOptions {

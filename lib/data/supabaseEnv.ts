@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Live } from '@/lib/data/live'
-import { ROOM_PAGE, type Check, type Env, type MadeRoom, type MailItem } from '@/lib/shell/env'
-import type { Post, PostHit, Profile, Room, RoomHit, RoomSummary } from '@/lib/shell/model'
+import { ROOM_PAGE, type Check, type Env, type MadeRoom, type MailItem, LOBBY_FETCH } from '@/lib/shell/env'
+import type { Post, PostHit, Profile, Room, RoomHit, RoomSummary, RoomList } from '@/lib/shell/model'
+import { FEED_PAGE } from '@/lib/shell/render'
 
 /**
  * The Env the commands actually run against.
@@ -16,11 +17,27 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
   // Named rather than returned inline, so getProfile can call searchPosts
   // instead of restating the query that decides what a person's posts are.
   const env: Env = {
-    async listRooms(): Promise<RoomSummary[]> {
-      // §3.11 — one round trip for the whole lobby, including proof of life.
-      const { data, error } = await client
+    async listRooms(): Promise<RoomList> {
+      /*
+       * §3.11 — one round trip for the lobby, including proof of life.
+       *
+       * A page and a count, not the whole table. This used to select every
+       * listable room: measured against a database with 310 in it, that is
+       * **65 KB of JSON on every boot** to draw twelve lines, and it grows
+       * without limit.
+       *
+       * `count: 'exact'` rides along in the same request — PostgREST returns it
+       * in the Content-Range header — so the "298 more rooms" line stays true
+       * without a second round trip. Deriving it from `data.length` instead
+       * would report the size of the page, which is the trap a room listing
+       * already fell into once: asking for N and getting N is the same answer
+       * whether there is one more or four thousand.
+       */
+      const { data, error, count } = await client
         .from('room_overview')
-        .select('slug, gloss, ephemeral, curated, latest_body, latest_at, latest_author')
+        .select('slug, gloss, ephemeral, curated, latest_body, latest_at, latest_author', {
+          count: 'exact',
+        })
         // Curated first in their curated order, then whatever people have made,
         // liveliest first. The view has already dropped user rooms that went
         // quiet, so this is a listing of the building rather than of the
@@ -28,10 +45,11 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         .order('curated', { ascending: false })
         .order('sort_order')
         .order('latest_at', { ascending: false, nullsFirst: false })
+        .limit(LOBBY_FETCH)
 
       if (error) throw error
 
-      return (data ?? []).map((row) => ({
+      const rooms = (data ?? []).map((row) => ({
         slug: row.slug,
         gloss: row.gloss,
         ephemeral: row.ephemeral,
@@ -45,6 +63,14 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
               }
             : undefined,
       }))
+
+      /*
+       * `count` is null when PostgREST cannot supply one. Falling back to the
+       * page length is the only honest thing left: it makes the "more" line say
+       * nothing rather than say a number that is wrong, and a room reached by
+       * name still works either way.
+       */
+      return { rooms, total: count ?? rooms.length }
     },
 
     async makeRoom(slug: string, gloss: string, from?: string): Promise<MadeRoom> {
@@ -86,7 +112,7 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
     },
 
     async readFeed(): Promise<PostHit[]> {
-      const { data, error } = await client.rpc('wall_feed', { p_limit: 40 })
+      const { data, error } = await client.rpc('wall_feed', { p_limit: FEED_PAGE })
       if (error) throw error
 
       const rows = (data ?? []) as {
@@ -213,7 +239,7 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
       const { data, error } = await client
         .from('posts')
         .select(
-          'post_no, body, created_at, author:profiles(name), replies(body, created_at, author:profiles(name))',
+          'post_no, body, created_at, author:profiles(name), replies(reply_no, to_reply_no, body, created_at, author:profiles(name))',
         )
         .eq('room_slug', slug)
         .eq('post_no', id)
@@ -231,11 +257,17 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         createdAt: new Date(data.created_at),
         replies: replies
           .map((reply) => ({
+            id: reply.reply_no,
             author: authorName(reply.author),
             body: reply.body,
             createdAt: new Date(reply.created_at),
+            toReply: reply.to_reply_no ?? undefined,
           }))
-          // §4.3 — flat and chronological. There is no tree to sort.
+          /*
+           * Flat and chronological. There is still no tree to sort — a reply
+           * that answers another is not underneath it, it is after it, with a
+           * pointer saying which one it means.
+           */
           .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()),
       }
     },
@@ -408,6 +440,8 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
 }
 
 interface RawReply {
+  reply_no: number
+  to_reply_no: number | null
   body: string
   created_at: string
   author: { name: string } | { name: string }[] | null
@@ -472,7 +506,14 @@ function toPost(row: {
     body: row.body,
     createdAt: new Date(row.created_at),
     // The listing only needs the count; the bodies arrive when you go in.
-    replies: Array.from({ length: replyCount(row.replies) }, () => ({
+    /*
+     * The listing only needs the count; the bodies arrive when you go in. The
+     * ids are 1..n rather than 0 so that nothing downstream can mistake a
+     * placeholder for a real address — but nothing downstream reads them, and
+     * a `renderPosts` that started to would be reading a lie either way.
+     */
+    replies: Array.from({ length: replyCount(row.replies) }, (_, i) => ({
+      id: i + 1,
       author: '',
       body: '',
       createdAt: new Date(0),

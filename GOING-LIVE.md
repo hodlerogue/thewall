@@ -12,10 +12,11 @@ these fail silently — the site keeps loading and one feature is quietly dead.
 ## 1. The database
 
 Your project was set up when there were three migrations. There are now
-nineteen. What the rest add: the column-scoped grants that close two console
+twenty-three. What the rest add: the column-scoped grants that close two console
 bypasses, mail, the kill switch, rename, erasure, walls, rooms people make, the
-feed, three more rooms, the daily email, rooms that grew out of a room, and
-that email being on by default. **None of their features work until they are applied**, and none of them
+feed, three more rooms, the daily email, rooms that grew out of a room, that
+email being on by default, never mailing an address that cannot receive, and a
+lobby that uses its index, replies you can answer, and posts with paragraphs in them. **None of their features work until they are applied**, and none of them
 fail at build time — they fail in somebody's browser.
 
 The one to apply first if you apply nothing else is
@@ -60,7 +61,7 @@ This is safe to run repeatedly now. On its first run against an existing project
 it probes for each migration, records the ones already there, and applies only
 the rest — nothing runs twice and nothing is skipped.
 
-**Worked when:** `db-check.sh` shows all nineteen as `applied`, every room has
+**Worked when:** `db-check.sh` shows all twenty-three as `applied`, every room has
 something in the last two columns, and the anon role reads all five objects.
 
 ---

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { validateName } from '@/lib/auth/names'
 import { clientHash } from '@/lib/auth/clientHash'
+import { canReceiveMail } from '@/lib/auth/deliverable'
 import { sendMagicLink } from '@/lib/auth/mail'
 import { verifyUrl } from '@/lib/auth/links'
 import { createAdminClient } from '@/lib/supabase/server'
@@ -123,6 +124,29 @@ export async function POST(request: Request) {
   const { data: account, error: accountError } = await admin.auth.admin.getUserById(profile.id)
   if (accountError || !account?.user?.email) {
     return NextResponse.json({ error: 'couldn’t send to that account.' }, { status: 500 })
+  }
+
+  /*
+   * Never send to an address that cannot receive.
+   *
+   * The five seeded accounts live at `@seed.invalid`, a reserved TLD with no
+   * DNS behind it, so every key sent to one is a hard bounce against a domain
+   * that has only just been warmed. Their names are printed on the site and
+   * written in a public repository, so `login jameson` is something anyone can
+   * type, and each attempt is another bounce.
+   *
+   * Said plainly rather than pretended away. There is nothing to protect here:
+   * the seeded names head seeded posts in the lobby, so "this one shipped with
+   * the site" is visible to anybody reading it. Answering as though a key had
+   * been sent would leave somebody waiting for an email that is not coming.
+   */
+  if (!canReceiveMail(account.user.email)) {
+    return NextResponse.json(
+      {
+        error: `${profile.name} is one of the accounts this site shipped with — there’s no inbox behind it. say something and i’ll set you up with your own.`,
+      },
+      { status: 400 },
+    )
   }
 
   const { data: link, error: linkError } = await admin.auth.admin.generateLink({

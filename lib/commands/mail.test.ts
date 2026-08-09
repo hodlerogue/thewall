@@ -19,6 +19,7 @@ const text = (lines: Line[]) => lines.map((l) => l.text).join('\n')
 function harness(items: MailItem[]) {
   const base = fixtureEnv()
   const env: Env = { ...base, async readMail() { return items } }
+  const replied: { room: string; postNo: number; body: string }[] = []
 
   const api: SignupApi = {
     async checkName() {
@@ -44,13 +45,16 @@ function harness(items: MailItem[]) {
     async post() {
       return 1
     },
-    async reply() {},
+    async reply(room, postNo, body) {
+      replied.push({ room, postNo, body })
+      return replied.length
+    },
     async rename(name: string) {
       return { ok: true as const, name }
     },
   }
 
-  return { run: createRunner(env, ['commons'], new Session(api, writer, 'jameson')) }
+  return { replied, run: createRunner(env, ['commons'], new Session(api, writer, 'jameson')) }
 }
 
 const reply = (room: string, postId: number, author: string, body: string): MailItem => ({
@@ -98,16 +102,35 @@ describe('a pile of replies', () => {
     expect(out).toContain('warped ones still play')
   })
 
-  it('offers one step to the newest, not two', async () => {
-    // This said "go music then go 12", with a comment claiming `go music/12`
-    // was not a thing — true when written, and not since `go` learned to take a
-    // whole address. Two steps where one works, in the listing whose whole
-    // purpose is getting you there.
+  it('offers no steps to the newest, since answering needs none', async () => {
+    /*
+     * This said "go music then go 12", then one step once `go` learned to take
+     * a whole address. Answering is the whole reason anybody opens this list,
+     * and `reply music/12 <something>` needs no step at all — so the address
+     * printed against every line is something to answer *with*, not only to
+     * walk to. Reading it first is still offered, second.
+     */
     const { run } = harness([reply('music', 12, 'marisol', 'warped ones still play')])
     const out = text((await run('mail', ANYWHERE)).lines)
 
-    expect(out).toContain('go music/12 to answer the newest.')
+    expect(out).toContain('reply music/12 <something>')
+    expect(out).toContain('go music/12')
     expect(out).not.toContain('then go')
+  })
+
+  it('offers a line that the site actually accepts', async () => {
+    /*
+     * CHANGING-IT's own rule, and the one most often broken here: when an error
+     * or a hint says "try X", type X into the thing and see what it answers.
+     * This hint is printed from the lobby, where `reply` used to be a refusal.
+     */
+    const { run, replied } = harness([reply('music', 12, 'marisol', 'warped ones still play')])
+    await run('mail', ANYWHERE)
+    await run('reply music/12 they do', ANYWHERE)
+
+    expect(replied).toContainEqual(
+      expect.objectContaining({ room: 'music', postNo: 12, body: 'they do' }),
+    )
   })
 
   it('walks to it, so the instruction is not a guess', async () => {

@@ -22,7 +22,9 @@ import {
   renderProfile,
   renderRoom,
   renderRoomList,
+  saidBy,
 } from '@/lib/shell/render'
+import type { RoomList } from '@/lib/shell/model'
 import type { Session } from '@/lib/shell/session'
 import { ABOUT_SUMMARY } from '@/lib/guide/about'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
@@ -62,6 +64,39 @@ export interface Command {
   hidden?: boolean
   /** Opts into `|` splitting. Without it, a pipe is just a character. */
   pipeable?: boolean
+  /**
+   * Named on another verb's line in `help` rather than taking one of its own.
+   *
+   * Not `hidden`, which also removes a verb from the palette and the
+   * "did you mean" pool — this is only about the glossary's length. §3.6 caps
+   * the first group at ten lines because eleven is a wall again, so adding a
+   * row means choosing one to drop, deliberately, rather than letting the list
+   * grow past the point it can be read at a glance.
+   *
+   * The first attempt folded `write` into `say`'s gloss instead — and the
+   * mobile gate caught it, because a chip's label *is* its gloss and
+   * "post something here, or write for a longer one" pushed the primary action
+   * off the right edge of a 380px strip. §8 makes that the kill condition.
+   *
+   * The verb still has its own `what` entry, its own chip, and its own place in
+   * the alias table. Only the glossary row is folded.
+   */
+  folded?: boolean
+  /**
+   * The argument is content, not an instruction.
+   *
+   * True for exactly two verbs, and it changes one thing: the echo of what was
+   * typed keeps the words at full brightness and dims only the prompt and the
+   * verb in front of them. Everywhere else the whole echo recedes, which is
+   * right — when you type `go music`, the answer is the point.
+   *
+   * `say` and `reply` are the two where what you typed *is* the point, and
+   * dimming it uniformly meant somebody's own sentence rendered at 9.1:1 while
+   * the same words read back in the room a moment later were 14.0:1. The site
+   * was using its own hierarchy to rank your contribution below the reading
+   * of it.
+   */
+  contributes?: boolean
   /** `verb — what it does`, phrased for where you are standing. */
   gloss: (context: Context) => string
   /** Plain English, for `what <command>` (§3.8). */
@@ -102,6 +137,17 @@ function applyTheme(name: string): void {
 
 const error = (text: string): RunResult => ({ lines: [{ text, tone: 'error' }] })
 
+/**
+ * The lobby, from what the Env handed back.
+ *
+ * A helper because `listRooms` returns a page *and* a total now, and a caller
+ * that passes only the page silently under-reports how many rooms there are —
+ * "28 more" where the truth is "298 more". A wrong number reads as a fact, so
+ * there is one place that knows how to unpack this.
+ */
+const renderLobby = (lobby: RoomList): Line[] =>
+  renderRoomList(lobby.rooms, undefined, undefined, lobby.total)
+
 /** The one room that holds nothing of its own — see the feed migration. */
 const FEED = 'feed'
 
@@ -117,6 +163,86 @@ async function newestPostIn(env: Env, room: string | undefined): Promise<number 
   } catch {
     return 12
   }
+}
+
+/**
+ * What `reply` reads in front of the words: `5`, or `music/12`, or `~marisol/2`.
+ *
+ * Six digits, because `post_no` is allocated per room and a room with a million
+ * posts in it is not a thing this site will see — and because an unbounded run
+ * of digits at the front of a sentence is more likely to be somebody's phone
+ * number than an address.
+ *
+ * The slash form deliberately excludes a second slash. There are exactly two
+ * segments in every address on this site (§3.4), and matching loosely here
+ * would swallow a URL somebody pasted at the start of a reply.
+ */
+const NUMBER = /^\d{1,6}$/
+const ADDRESS = /^[^/\s]+\/\d{1,6}$/
+
+/**
+ * Why there is nothing to answer at an address, or null if there is.
+ *
+ * Checked before anything is written, because the alternative is worse than an
+ * error: `reply music/12 <something>` typed at a post that is not there would
+ * either fail at the database with whatever it says, or — for somebody with no
+ * account — ask two signup questions first and *then* fail, having spent the
+ * sentence §3.9 exists to protect.
+ */
+async function nothingAt(env: Env, room: string, id: number): Promise<string | null> {
+  const post = await env.getPost(room, id).catch(() => undefined)
+  if (post) return null
+
+  const found = await env.getRoom(room).catch(() => undefined)
+  // A wall is a room, and "there's no room called ~tuck" is the one place that
+  // equivalence leaks — nobody thinks of somebody's page as a room they might
+  // have misspelled.
+  if (!found) {
+    return room.startsWith('~')
+      ? `there’s nothing on ${room.slice(1)}’s wall yet.`
+      : `there’s no room called ${room}. try: look`
+  }
+  // `getPost` returns nothing for an ephemeral room whether or not the post is
+  // there, so this says which of the two happened rather than guessing.
+  if (found.ephemeral) {
+    return `${room} keeps nothing for longer than a day, so there’s nothing there to answer.`
+  }
+  const newest = found.posts[0]?.id
+  return newest === undefined
+    ? `there’s nothing in ${room} yet, so there’s nothing at ${room}/${id}.`
+    : `there’s nothing at ${room}/${id}. the newest one is ${room}/${newest}.`
+}
+
+/**
+ * The one write path a reply takes, wherever it was aimed from.
+ *
+ * `elsewhere` is the only thing that changes: when the reply is going somewhere
+ * you are not standing, the prompt does not say where it went, so the
+ * confirmation has to. See `Session.write`.
+ */
+async function sendReply(
+  args: HandlerArgs,
+  target: Location,
+  body: string,
+  toReply?: number,
+): Promise<RunResult> {
+  const { session, location } = args
+  const elsewhere = target.room !== location.room || target.postId !== location.postId
+
+  if (session.name() === null) {
+    /*
+     * §3.9 — the sentence is captured first, then the account is asked for.
+     * Where it was aimed goes with it: without that, two questions later,
+     * answering a particular post quietly becomes answering whatever you
+     * happened to be standing in.
+     */
+    return {
+      lines: session.begin({ location: target, body, addressed: true, toReply, elsewhere }),
+    }
+  }
+
+  const written = await session.write(target, body, { toReply, elsewhere })
+  return { lines: written.lines, retry: written.failed ? args.arg : undefined }
 }
 
 /** One line of `doctor`, aligned so a column of them can be read down. */
@@ -149,7 +275,7 @@ export const COMMANDS: readonly Command[] = [
       // again. Without this, `look` to get your bearings would leave `older`
       // continuing from wherever you had already walked back to.
       session.resetPaging()
-      if (context === 'lobby') return { lines: renderRoomList(await env.listRooms()) }
+      if (context === 'lobby') return { lines: renderLobby(await env.listRooms()) }
 
       if (context === 'person') {
         const profile = await env.getProfile(location.person!)
@@ -295,7 +421,7 @@ export const COMMANDS: readonly Command[] = [
           return error(`there’s no room called ${arg}. ${arg} is a person — try: go ~${arg}`)
         }
 
-        const rooms = await env.listRooms()
+        const { rooms } = await env.listRooms()
         const near = nearestSlug(
           arg,
           rooms.map((r) => r.slug),
@@ -433,7 +559,14 @@ export const COMMANDS: readonly Command[] = [
 
   {
     verb: 'say',
-    aliases: ['wall', 'post', 'write', 'talk'],
+    contributes: true,
+    /*
+     * `write` used to be here and is a verb of its own now — the longer form,
+     * with paragraphs. Leaving it as an alias would make one word mean two
+     * things, and the alias test caught it the moment the new verb landed,
+     * which is the second time that test has earned itself.
+     */
+    aliases: ['wall', 'post', 'talk'],
     /*
      * §3.3 — one verb for all contribution, and `say` is still it: inside a
      * post this is what adds a reply. `reply` used to be an alias here, which
@@ -530,6 +663,51 @@ export const COMMANDS: readonly Command[] = [
 
   {
     /*
+     * A post with paragraphs in it.
+     *
+     * The gap this fills is smaller than it looks and was never about length:
+     * the cap was already two thousand characters. The prompt is a single-line
+     * `<input>`, so there was no way to type a line break — a long post had to
+     * be one unbroken block, and pasting one in flattens it.
+     *
+     * Deliberately *not* a second kind of post. What comes out is an ordinary
+     * post at an ordinary address; nothing else in the system learns a new
+     * concept, no listing has to ask which kind a thing is, and the site never
+     * says "these are the real posts and those are the lesser ones". The idea
+     * that started this had a 280-character floor to qualify — dropped, because
+     * all twenty-one posts the site ships as its own example of good content
+     * are under it, the longest by half.
+     */
+    verb: 'write',
+    aliases: ['compose', 'longer', 'essay'],
+    // Wherever `say` starts something. Not commons — §3.10 keeps nothing there,
+    // and a page of writing is the worst thing to lose to a 24-hour expiry.
+    contexts: ['room', 'post', 'person'],
+    gloss: (c) => (c === 'post' ? 'a longer answer' : 'a longer post, with paragraphs'),
+    detail: () =>
+      'takes more than one line. type write, then the post — a line with just a dot on it ends it and sends it. blank lines are paragraph breaks, cancel throws it away, and the limit is 4000 characters. what comes out is an ordinary post at an ordinary address; say is the same thing for one line.',
+    insert: () => 'write',
+    wrongContext: () =>
+      'commons keeps nothing for longer than a day, so it is the wrong place for something you spent time on. try a room.',
+    async run({ arg, context, location, session }) {
+      if (arg !== '') {
+        // §3.7 — name the fix. Somebody typing `write about the thing` means to
+        // start, not to post those four words, and posting them would be a
+        // surprise nobody could undo.
+        return error('write takes no words on this line. type write on its own, then the post.')
+      }
+
+      if (context === 'person' && location.person !== session.name()) {
+        return error(`this is ${location.person}'s wall — only they can put things on it.`)
+      }
+
+      const target = context === 'person' ? { room: `~${location.person}` } : location
+      return { lines: session.compose(target, true) }
+    },
+  },
+
+  {
+    /*
      * Not a second way to contribute — inside a post this is `say`, exactly.
      * It exists because §3.3's "there is no reply verb to learn" turned out to
      * cost more than it saved: the one thing everybody wants to do second is
@@ -539,45 +717,139 @@ export const COMMANDS: readonly Command[] = [
      * teaches the step they are missing.
      */
     verb: 'reply',
+    contributes: true,
     aliases: ['re', 'answer'],
     /*
-     * Everywhere except commons.
+     * Everywhere, including commons — which it did not used to be.
      *
-     * `help` lists what you can type from where you are standing, so a verb
-     * that is listed and always fails is the same defect as a palette chip that
-     * always fails. In the lobby or on somebody's page `reply` is a step away
-     * from working — go to a room, open a post — and saying so teaches the
-     * step. In commons it can never work at all: §3.10 gives it no threads and
-     * a trigger in the schema refuses replies there. So it is not offered, and
-     * typing it still gets the sentence that explains why.
+     * The rule was "a verb that is listed and always fails is the same defect
+     * as a palette chip that always fails", and commons was the one place
+     * `reply` could never work: §3.10 gives it no threads and a trigger in the
+     * schema refuses replies there. That is still true of replying *in* commons
+     * and no longer true of the verb, because `reply music/12 <something>` names
+     * where it is going and works from wherever you are standing. Leaving
+     * commons out would have made the site answer that with "commons doesn't
+     * keep replies", which is a true sentence about a different question.
      */
-    contexts: ['lobby', 'room', 'post', 'person'],
+    contexts: ALL,
     // No dash inside a gloss: help renders `verb — gloss`, and a second one
     // turns the line into a puzzle.
-    gloss: (c) => (c === 'post' ? 'answer this' : 'answer a post, once you open it'),
+    gloss: (c) =>
+      c === 'post' ? 'answer this' : c === 'room' ? 'answer a post by its number' : 'answer a post',
     detail: () =>
-      'answers somebody. replies live inside a post, so open one first: go 12, then reply. inside a post this and say are the same thing. commons is the exception — nothing there keeps replies.',
-    insert: (c) => (c === 'post' ? 'reply ' : 'go '),
-    // Only ever commons, since that is the only context left out above.
-    wrongContext: () => 'commons doesn’t keep replies — say it as its own thing instead.',
+      'answers somebody. inside a post, reply <something> answers the post and reply 2 <something> answers reply 2, saying so on the line. from outside, name the post: in a room reply 5 <something> answers post 5 without opening it, and reply music/12 <something> works from anywhere — the same address find and mail print. commons is the one place nothing can be answered, because nothing there is kept.',
+    insert: (c) => (c === 'post' || c === 'room' ? 'reply ' : 'go '),
+    // Never used: `contexts` is ALL, so nothing is ever the wrong place. Kept
+    // because the interface requires it and an empty string is the honest
+    // answer rather than a sentence nobody will read.
+    wrongContext: () => '',
     async run(args) {
       const { context, location, env } = args
 
-      // Inside a post this *is* say — looked up rather than duplicated, so
-      // there is exactly one contribution path and §3.9's held-sentence
-      // machinery cannot be bypassed by a second door onto it.
-      if (context === 'post') return findCommand('say')!.run(args)
+      /*
+       * The first word, when there is a word after it, is where this is aimed.
+       *
+       * One grammar, borrowed whole from `go`, because `go` had already
+       * answered this question: a bare number is the numbered thing where you
+       * are standing, and `room/number` is a whole address that works from
+       * anywhere. Asked for as `reply/5`, which is the one spelling it cannot
+       * have — `music/12` already means "post 12 in music", so `reply/5` reads
+       * as post 5 in a room called reply. A space is the whole difference.
+       */
+      const split = /^(\S+)\s+([\s\S]+)$/.exec(args.arg.trim())
+      const aim = split ? split[1] : args.arg.trim()
+      const body = split ? split[2].trim() : ''
 
-      // §3.7 — name the fix, and name a real one. A post that is actually
-      // there beats an invented number, which is the difference between an
-      // instruction somebody can follow and one they have to decode.
-      const example = await newestPostIn(env, location.room)
+      /*
+       * Inside a post a bare number is a reply in this thread, and that is read
+       * first because it is the older meaning and the commoner one — the
+       * numbers are on the screen in front of you as you type.
+       *
+       * The number is only ever read by `reply`, never by `say`. `say 2 hello`
+       * has to keep posting the words "2 hello": `say` is content and nothing
+       * else, and a verb that sometimes eats its first word is a verb nobody
+       * can predict. That asymmetry is the point — `reply` is the one that
+       * takes an address, because it is the one with something to point at.
+       */
+      const inThread = context === 'post' && NUMBER.test(aim)
+      if (inThread && body !== '') return sendReply(args, location, body, Number(aim))
+
+      /*
+       * A number, or a whole address, naming a post you are not standing in.
+       *
+       * The address form is what `find`, `mail` and a profile all print, which
+       * is most of why this is worth having: the thing to type back is already
+       * on the screen. The bare number is the same convenience one step closer
+       * — in a room you can see the numbers in the listing, and answering one
+       * should not cost a round trip through `go`.
+       */
+      const numbered = context === 'room' || context === 'person'
+      const aimed = ADDRESS.test(aim) || (NUMBER.test(aim) && numbered)
+      if (aimed && body === '') {
+        // Not an error about the number. Somebody has typed the address and
+        // stopped, and the missing half is the sentence.
+        return error(`reply ${aim} <something> — what you want to say goes on the same line.`)
+      }
+
+      if (aimed) {
+        const target = ADDRESS.test(aim)
+          ? pathToLocation(`/${aim}`)
+          : // A wall is a room, so a number on somebody's page is a post on it
+            // — the same branch `go` takes, for the same reason.
+            { room: context === 'person' ? `~${location.person}` : location.room, postId: Number(aim) }
+
+        if (target.room === undefined || target.postId === undefined) {
+          return error(
+            `a number on its own needs a room here — try: reply ${await args.hint()}/12 <something>`,
+          )
+        }
+        if (target.room === FEED) {
+          /*
+           * Numbers are allocated per wall, so `5` on the feed is five or six
+           * different posts at once. Every line there already carries its whole
+           * address for exactly that reason, so the fix is to use one.
+           */
+          const feed = await env.readFeed().catch(() => [])
+          const example = feed[0] ? `${feed[0].room}/${feed[0].id}` : '~marisol/2'
+          return error(
+            `these live on people’s walls, so the number needs the name — try: reply ${example} ${body}`,
+          )
+        }
+
+        const missing = await nothingAt(env, target.room, target.postId)
+        return missing ? error(missing) : sendReply(args, target, body)
+      }
+
+      if (context === 'post') {
+        // Otherwise this *is* say — looked up rather than duplicated, so there
+        // is exactly one contribution path and §3.9's held-sentence machinery
+        // cannot be bypassed by a second door onto it.
+        return findCommand('say')!.run(args)
+      }
+
+      /*
+       * Words with no post named. §3.7 — name the fix, and name a real one: a
+       * post that is actually there beats an invented number, which is the
+       * difference between an instruction somebody can follow and one they have
+       * to decode. Their sentence is carried into the suggestion, so following
+       * it is one edit rather than retyping.
+       */
+      const words = args.arg.trim() === '' ? '<something>' : args.arg.trim()
+      if (context === 'room' || context === 'person') {
+        const room = context === 'person' ? `~${location.person}` : location.room!
+        const example = (await env.getRoom(room).catch(() => undefined))?.posts[0]?.id
+        return error(
+          example === undefined
+            ? context === 'person'
+              ? `there’s nothing on ${location.person}’s wall to answer yet.`
+              : `there’s nothing in ${room} to answer yet. say something instead.`
+            : `reply to which one? try: reply ${example} ${words}`,
+        )
+      }
       return error(
-        context === 'person'
-          ? `replies live inside a post. open one of ${location.person}'s first — try: go 1`
-          : context === 'lobby'
-            ? 'replies live inside a post. go to a room first, then open one.'
-            : `replies live inside a post. open one first — try: go ${example}`,
+        context === 'commons'
+          ? `commons keeps nothing, so there’s nothing here to answer — name a post elsewhere, like reply ${await args.hint()}/12 <something>`
+          : `reply to which one? name it — try: reply ${await args.hint()}/12 <something>`,
       )
     },
   },
@@ -646,7 +918,7 @@ export const COMMANDS: readonly Command[] = [
       }
       if (context === 'post') {
         const room = await env.getRoom(location.room!)
-        if (!room) return { lines: renderRoomList(await env.listRooms()), location: {} }
+        if (!room) return { lines: renderLobby(await env.listRooms()), location: {} }
 
         /*
          * Backing out of a wall post lands on the person, not on `{room:
@@ -661,7 +933,7 @@ export const COMMANDS: readonly Command[] = [
         }
         return { lines: renderRoom(room), location: { room: room.slug } }
       }
-      return { lines: renderRoomList(await env.listRooms()), location: {} }
+      return { lines: renderLobby(await env.listRooms()), location: {} }
     },
   },
 
@@ -681,6 +953,20 @@ export const COMMANDS: readonly Command[] = [
      * finite in that direction.
      */
     verb: 'older',
+    /*
+     * Folded out of the glossary, and it is the right one to fold.
+     *
+     * §3.6 caps the first group at ten lines because eleven is a wall again,
+     * and `write` earned a row — a genuinely new thing you can do. This is the
+     * entry that can spare one: a room that has more than a page prints
+     * "older — the page before this one" at the top of its own listing, every
+     * time it is looked at, which is exactly where and when it is useful. A
+     * permanent row for a paging control is the redundancy.
+     *
+     * `what older` still explains it, the chip is still there, and the alias
+     * table is untouched.
+     */
+    folded: true,
     // Not `back`: that is `leave`'s, and the signup flow says "type back to
     // change the name" out loud. Two meanings for one word in a shell whose
     // whole promise is that typing a word does the obvious thing.
@@ -844,7 +1130,7 @@ export const COMMANDS: readonly Command[] = [
 
       for (const command of COMMANDS) {
         // §4.8 — the pipe is not on this list. That is the point of it.
-        if (command.hidden || !command.contexts.includes(context)) continue
+        if (command.hidden || command.folded || !command.contexts.includes(context)) continue
         const line: Line = { text: `${command.verb} — ${command.gloss(context)}`, tone: 'dim' }
         if (ELSEWHERE.includes(command.verb)) elsewhere.set(command.verb, line)
         else here.push(line)
@@ -1001,22 +1287,39 @@ export const COMMANDS: readonly Command[] = [
       // scrollback's snap-to-bottom lands on it. See `oldestFirst` in
       // lib/shell/render.ts.
       for (const item of [...items].reverse()) {
-        // The address first, because a notification you cannot walk to is just
-        // an alert.
-        lines.push({
-          text: `${item.room}/${item.postId}  ${item.author}, ${formatAgo(item.createdAt)}`,
-          tone: 'accent',
-        })
+        /*
+         * The address first, because a notification you cannot walk to is just
+         * an alert — and here it is also the thing you tap to answer, which is
+         * why this list exists at all.
+         *
+         * Whole-line accent rather than an accent address on a dim header: mail
+         * is a list of things asking for an answer and nothing else, so there
+         * is no hierarchy to draw. The shape and the tap still come from the
+         * one helper, or this would be the line that quietly stopped matching.
+         */
+        lines.push(
+          saidBy(
+            `${item.room}/${item.postId}`,
+            `${item.author}, ${formatAgo(item.createdAt)}`,
+            { tone: 'accent' },
+          ),
+        )
         lines.push({ text: item.body, depth: 1 })
       }
       lines.push({ text: '' })
 
-      // One step, not two. This said "go music then go 12" and carried a
-      // comment claiming `go music/12` was not a thing — true when it was
-      // written, and not since `go` learned to take a whole address, which is
-      // the shape every listing on the site prints.
+      /*
+       * No steps at all, now that there are none to take.
+       *
+       * This said "go music then go 12", then one step once `go` learned to
+       * take a whole address — and answering is the whole reason anybody opens
+       * this list, so the address printed against every line is now something
+       * you can answer *with* rather than only walk to. Reading it is still
+       * offered second, because sometimes you want the thread first.
+       */
+      const newest = `${items[0].room}/${items[0].postId}`
       lines.push({
-        text: `go ${items[0].room}/${items[0].postId} to answer the newest.`,
+        text: `reply ${newest} <something> answers the newest — go ${newest} reads it first.`,
         tone: 'faint',
       })
 
@@ -1521,10 +1824,12 @@ function renderHits(hits: readonly PostHit[], term?: string): Line[] {
     // "(reply)" rather than a different address: a reply has no address of its
     // own (§4.3), so the one shown is the post it is under — which is exactly
     // what you type to go and read it, and would be a lie without the marker.
-    lines.push({
-      text: `${hit.room}/${hit.id}  ${hit.author}, ${formatAgo(hit.createdAt)}${hit.isReply ? '  (reply)' : ''}`,
-      tone: 'dim',
-    })
+    lines.push(
+      saidBy(
+        `${hit.room}/${hit.id}`,
+        `${hit.author}, ${formatAgo(hit.createdAt)}${hit.isReply ? '  (reply)' : ''}`,
+      ),
+    )
     lines.push({ text: hit.body, depth: 1 })
   }
   return lines

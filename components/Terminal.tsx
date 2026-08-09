@@ -2,9 +2,11 @@
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Palette } from '@/components/Palette'
+import { echoOf } from '@/lib/commands/run'
 import { describeError } from '@/lib/shell/errors'
 import type { Chip, Line, Location, Runner } from '@/lib/shell/types'
 import { locationToPath, pathToLocation, promptLabel } from '@/lib/shell/types'
+import { Session } from '@/lib/shell/session'
 
 /**
  * A stable identity per line.
@@ -34,7 +36,13 @@ type Keyed = Line & { key: number }
  * no longer touches this at all and the cap is free to be about memory and
  * usefulness instead of latency.
  */
-const Scrollback = memo(function Scrollback({ lines }: { lines: readonly Keyed[] }) {
+const Scrollback = memo(function Scrollback({
+  lines,
+  onInsert,
+}: {
+  lines: readonly Keyed[]
+  onInsert: (text: string) => void
+}) {
   return (
     <>
       {lines.map((line) => (
@@ -48,7 +56,42 @@ const Scrollback = memo(function Scrollback({ lines }: { lines: readonly Keyed[]
             .filter(Boolean)
             .join(' ')}
         >
-          {line.text === '' ? ' ' : line.text}
+          {line.prefix ? <span className="line-prefix">{line.prefix}</span> : null}
+          {line.tap ? (
+            <>
+              <button
+                type="button"
+                className="line-tap"
+                data-testid="tap"
+                /*
+                 * Not a tab stop. The scrollback is one focusable region on
+                 * purpose (WCAG 2.1.1, so a keyboard user can read their own
+                 * history), and a room listing would put sixty stops between
+                 * that region and the prompt. This is a shortcut for a thumb:
+                 * everything it does, typing does, so leaving it out of the tab
+                 * order costs a keyboard user nothing. The address itself stays
+                 * ordinary text in the log for anything reading the line aloud.
+                 */
+                tabIndex={-1}
+                aria-label={`answer ${line.tap.token}`}
+                // Same as a chip: never steal focus from the prompt, or the
+                // keyboard closes on every tap.
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onInsert(line.tap!.insert)}
+              >
+                {line.tap.token}
+              </button>
+              {line.text.slice(line.tap.token.length)}
+            </>
+          ) : line.text === '' ? (
+            ' '
+          ) : line.prefix ? (
+            // Explicit rather than leaning on `:has()`. The prefix recedes and
+            // this does not, which is the whole point of the pair existing.
+            <span className="line-typed">{line.text}</span>
+          ) : (
+            line.text
+          )}
         </p>
       ))}
     </>
@@ -146,6 +189,9 @@ export function Terminal({
 
   const [pending, setPending] = useState(false)
   const [mail, setMail] = useState(initialMail)
+  // Null unless a longer post is being written. Set from every result rather
+  // than only when it changes — see RunResult.composing for why that matters.
+  const [composing, setComposing] = useState<{ lines: number; chars: number } | null>(null)
   const [announcement, setAnnouncement] = useState('')
   /*
    * Whether the prompt holds the caret.
@@ -275,7 +321,17 @@ export function Terminal({
   const submit = useCallback(
     async (raw: string) => {
       const text = raw.trim()
-      if (text === '') return
+      /*
+       * An empty Enter is nothing to run — except while a longer post is being
+       * written, where it is a paragraph break and the single most important
+       * key in the mode.
+       *
+       * This swallowed it silently. Found by walking the flow rather than by a
+       * test: the indicator said three lines when four had been typed, and the
+       * post came out as one block — which is the entire thing `write` exists
+       * to make possible.
+       */
+      if (text === '' && composing === null) return
 
       // One at a time. Every command is a network round trip, and a second
       // Enter used to start a second command against the *pre-move* location:
@@ -289,10 +345,12 @@ export function Terminal({
 
       // Kept before anything can fail, so a command that errored is still
       // something you can press Up and edit rather than retype.
-      if (history.current[history.current.length - 1] !== text) history.current.push(text)
+      if (text !== '' && history.current[history.current.length - 1] !== text) {
+        history.current.push(text)
+      }
       historyAt.current = null
 
-      const echo: Line = { text: `${promptLabel(name, location)} ${text}`, tone: 'echo' }
+      const echo = echoOf(text, promptLabel(name, location))
       setInput('')
       setLines((prev) => append(prev, [echo]))
 
@@ -335,8 +393,11 @@ export function Terminal({
 
       // §4.1 — reading your mail is what clears it.
       if (result.mail !== undefined) setMail(result.mail)
+      setComposing(result.composing ?? null)
     },
-    [location, name, run],
+    //  is read to decide whether an empty Enter means anything, so
+    // a stale closure here would swallow paragraph breaks again.
+    [composing, location, name, run],
   )
 
   // Back and forward are navigation too, so they move you the same way `go`
@@ -489,7 +550,7 @@ export function Terminal({
           pinnedToBottom.current = el.scrollHeight - el.clientHeight - el.scrollTop < 40
         }}
       >
-        <Scrollback lines={lines} />
+        <Scrollback lines={lines} onInsert={insert} />
       </div>
 
       <div className="composer">
@@ -504,9 +565,19 @@ export function Terminal({
         {/* The Unix precedent §4.1 cites is the login line. This is the same
             idea, kept where you are already looking rather than shown once and
             gone. */}
-        {mail > 0 && !pending && (
+        {mail > 0 && !pending && !composing && (
           <p className="mail" data-testid="mail">
             you have {mail} {mail === 1 ? 'reply' : 'replies'} waiting — type mail
+          </p>
+        )}
+        {/* The one state where forgetting you are in it is expensive: every
+            line goes into a draft rather than being run, and unlike the signup
+            questions there is nothing being asked to remind you. So it says so
+            where you are already looking, and says how to get out. */}
+        {composing && !pending && (
+          <p className="composing" data-testid="composing">
+            writing — {composing.lines} {composing.lines === 1 ? 'line' : 'lines'},{' '}
+            {composing.chars}/{Session.LIMIT} · a dot ends it
           </p>
         )}
         <Palette chips={chipsFor(location, name)} onInsert={insert} />
@@ -550,10 +621,12 @@ export function Terminal({
                users and false for everyone else — and it fails WCAG 2.5.3,
                which wants the visible text inside the accessible name. */
             aria-label={`${label} command`}
-            /* The database caps a body at 2000. Without this the words are
+            /* The database caps a body at 4000. Without this the words are
                typed, sent, refused, and gone — which is the failure §3.9
-               exists to prevent. `say ` is the longest prefix. */
-            maxLength={2010}
+               exists to prevent. `reply 999 ` is the longest prefix a body can
+               follow, so the allowance is a little over the cap rather than
+               exactly it. */
+            maxLength={4020}
           />
         </form>
       </div>

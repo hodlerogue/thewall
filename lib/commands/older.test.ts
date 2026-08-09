@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createRunner } from '@/lib/commands/run'
+import { findCommand } from '@/lib/commands/registry'
 import { ROOM_PAGE, fixtureEnv, type Env } from '@/lib/shell/env'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
 import type { Post, Room } from '@/lib/shell/model'
@@ -64,7 +65,9 @@ function harness(rooms: Room[]) {
     async post() {
       return 1
     },
-    async reply() {},
+    async reply() {
+      return 1
+    },
     async rename(name) {
       return { ok: true as const, name }
     },
@@ -213,9 +216,25 @@ describe('older walks back a page at a time', () => {
     expect(out).not.toMatch(/^440\s/m)
   })
 
-  it('is offered in help, where somebody stuck at the top of a room would look', async () => {
+  it('is offered by the room itself, which is where it is useful', async () => {
+    /*
+     * This asserted a row in `help`, and `older` was folded out of that list
+     * when `write` earned one — §3.6 caps the first group at ten lines, so a
+     * new row means choosing one to drop.
+     *
+     * `older` is the right one to drop and this is why: a room with more than a
+     * page in it prints the offer at the top of its own listing, every time it
+     * is looked at. A permanent row for a paging control is the redundancy;
+     * the offer where the cut actually is, is not.
+     */
     const { run } = harness([bigRoom(500)])
-    expect(text((await run('help', AT)).lines)).toContain('older — the page before this one')
+    expect(text((await run('look', AT)).lines)).toContain('older — the page before this one')
+  })
+
+  it('is still explained by what, and still on the palette', async () => {
+    const { run } = harness([bigRoom(500)])
+    expect(text((await run('what older', AT)).lines)).toContain('older')
+    expect(findCommand('older')?.hidden).toBeFalsy()
   })
 
   it('is refused from the lobby, naming a room to try it in', async () => {
@@ -279,7 +298,21 @@ describe('typing does not re-render the scrollback', () => {
 
   it('renders the lines through a memo, not inline', () => {
     expect(code).toMatch(/const Scrollback = memo\(/)
-    expect(code).toContain('<Scrollback lines={lines} />')
+    expect(code).toContain('<Scrollback lines={lines} onInsert={insert} />')
+  })
+
+  it('hands the memo a callback that does not change on every letter', () => {
+    /*
+     * `memo` compares props, so an inline arrow or a `useCallback` that closes
+     * over `input` would defeat it completely — every keystroke would make a
+     * new function, the comparison would fail, and the whole scrollback would
+     * re-render exactly as it did before the memo existed. That is invisible:
+     * nothing breaks, the page size decision above just quietly stops being
+     * paid for.
+     *
+     * `insert` sets input rather than reading it, so it needs no dependencies.
+     */
+    expect(code).toMatch(/const insert = useCallback\([\s\S]*?\}, \[\]\)/)
   })
 
   it('keeps enough scrollback for older to be worth having', () => {

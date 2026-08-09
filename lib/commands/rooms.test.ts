@@ -3,7 +3,7 @@ import { CHIP_SETS, COMMANDS, findCommand } from '@/lib/commands/registry'
 import { createRunner } from '@/lib/commands/run'
 import { fixtureEnv } from '@/lib/shell/env'
 import { ROOMS } from '@/lib/shell/fixtures'
-import { renderRoomList, LOBBY_LIMIT } from '@/lib/shell/render'
+import { renderRoomList, MADE_SLOTS } from '@/lib/shell/render'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
 import type { RoomSummary } from '@/lib/shell/model'
 import type { Line, Location } from '@/lib/shell/types'
@@ -44,7 +44,9 @@ function harness(me: string | null = 'jameson') {
     async post() {
       return 1
     },
-    async reply() {},
+    async reply() {
+      return 1
+    },
     async rename(name: string) {
       return { ok: true as const, name }
     },
@@ -213,7 +215,8 @@ describe('the lobby stays a building, not a directory (§4.2)', () => {
     const lines = renderRoomList(many)
     const slugs = lines.filter((l) => l.tone === 'accent').map((l) => l.text)
 
-    expect(slugs.length).toBe(LOBBY_LIMIT)
+    // Every curated room, plus the made ones' own budget.
+    expect(slugs.length).toBe(6 + MADE_SLOTS)
     // Nothing is hidden — the rest are one command away, and the line says so.
     expect(text(lines)).toContain('14 more rooms')
     expect(text(lines)).toContain('find --rooms')
@@ -229,14 +232,68 @@ describe('the lobby stays a building, not a directory (§4.2)', () => {
     for (let i = 0; i < 6; i++) expect(shown).toContain(`curated${i}`)
   })
 
-  it('shows only curated ones if that is already the whole cap', () => {
+  it('does not let a curated room crowd out what people made', () => {
+    /*
+     * This used to assert the opposite — twelve curated rooms and five made
+     * ones showed twelve curated ones and *nothing* else, because made rooms
+     * got whatever was left of a cap of twelve.
+     *
+     * That rule was written when there were six curated rooms, so it left six
+     * slots. builders, crypto, movies, feedback and feed were added since, one
+     * at a time, each obviously fine on its own. Curated reached ten and the
+     * space for everything anybody had ever made was two — measured on a
+     * database with 310 rooms in it, which rendered the ten curated ones,
+     * `room-1`, `room-2`, and "298 more rooms".
+     *
+     * The old assertion passed the whole way, because it was a statement about
+     * the total rather than about either group.
+     */
     const many = [
       ...Array.from({ length: 12 }, (_, i) => room(`curated${i}`, true)),
       ...Array.from({ length: 5 }, (_, i) => room(`made${i}`, false)),
     ]
     const shown = renderRoomList(many).filter((l) => l.tone === 'accent').map((l) => l.text)
-    expect(shown.length).toBe(12)
-    expect(shown.every((slug) => slug.startsWith('curated'))).toBe(true)
+
+    for (let i = 0; i < 12; i++) expect(shown).toContain(`curated${i}`)
+    for (let i = 0; i < 5; i++) expect(shown).toContain(`made${i}`)
+  })
+
+  it('gives made rooms the same number of slots however many curated ones there are', () => {
+    // The property the old rule broke. Adding an eleventh curated room should
+    // cost a line of length, not a sixth of what everybody else made.
+    const withCurated = (n: number) =>
+      renderRoomList([
+        ...Array.from({ length: n }, (_, i) => room(`curated${i}`, true)),
+        ...Array.from({ length: 20 }, (_, i) => room(`made${i}`, false)),
+      ])
+        .filter((l) => l.tone === 'accent')
+        .map((l) => l.text)
+        .filter((slug) => slug.startsWith('made')).length
+
+    expect(withCurated(3)).toBe(MADE_SLOTS)
+    expect(withCurated(10)).toBe(MADE_SLOTS)
+    expect(withCurated(25)).toBe(MADE_SLOTS)
+  })
+
+  it('counts what is missing from the real total, not from the page it was given', () => {
+    /*
+     * The lobby fetches a page now. Counting "more" from the array would report
+     * the size of that page — "28 more" where the truth is "298 more" — and a
+     * wrong number reads as a fact, which is worse than saying nothing.
+     */
+    const page = [
+      ...Array.from({ length: 10 }, (_, i) => room(`curated${i}`, true)),
+      ...Array.from({ length: 30 }, (_, i) => room(`made${i}`, false)),
+    ]
+    const lines = renderRoomList(page, undefined, undefined, 310)
+    expect(text(lines)).toContain('294 more rooms')
+  })
+
+  it('says nothing about rooms people made when nobody has made one', () => {
+    // §5's empty room, as a section: a heading over nothing is worse than no
+    // heading, and a new project has exactly the curated set.
+    const only = Array.from({ length: 10 }, (_, i) => room(`curated${i}`, true))
+    expect(text(renderRoomList(only))).not.toContain('rooms people made')
   })
 })
 

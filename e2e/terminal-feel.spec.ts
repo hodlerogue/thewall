@@ -164,14 +164,53 @@ test('reply is in help, and says what it needs', async ({ page }) => {
   await expect(scrollback(page)).toContainText('reply')
 
   await type(page, 'reply nice one')
-  await expect(scrollback(page)).toContainText('replies live inside a post')
-  // Named with a post that is actually there, not an invented number.
-  await expect(scrollback(page)).toContainText('go 12')
+  // Named with a post that is actually there, not an invented number — and
+  // carrying the sentence, so following the instruction is one edit.
+  await expect(scrollback(page)).toContainText('reply 12 nice one')
 
   // And inside one, it is simply say.
   await type(page, 'go 12')
   await type(page, 'help')
   await expect(scrollback(page)).toContainText('answer this')
+})
+
+test('a post can be answered without opening it', async ({ page }) => {
+  /*
+   * "I want a command where you can reply to a post without opening it."
+   *
+   * Two things have to be true on the screen, and only a real browser can say
+   * so: the reply says which post it landed on — the prompt cannot, because you
+   * never went there — and the prompt is unchanged, because not moving is the
+   * entire feature.
+   */
+  await page.goto('/music')
+  await type(page, 'reply 12 the warped ones still play')
+  await type(page, 'ryan')
+  await type(page, 'ryan@example.com')
+
+  await expect(scrollback(page)).toContainText('music/12')
+  await expect(page.getByTestId('prompt-label')).toHaveText('ryan:music$')
+})
+
+test('and from another room entirely, by its whole address', async ({ page }) => {
+  // The form `find` and `mail` print back at you, which is most of the reason
+  // it is worth having: the thing to type is already on the screen.
+  await page.goto('/poker')
+  await type(page, 'reply music/12 i had that record too')
+  await type(page, 'ryan')
+  await type(page, 'ryan@example.com')
+
+  await expect(scrollback(page)).toContainText('music/12')
+  await expect(page.getByTestId('prompt-label')).toHaveText('ryan:poker$')
+})
+
+test('the slash spelling hands back the line with the space in it', async ({ page }) => {
+  // Asked for as `reply/5`, which is the one spelling it cannot have —
+  // `music/12` already means post 12 in music. So the answer is their own line,
+  // corrected, ready to run.
+  await page.goto('/music')
+  await type(page, 'reply/12 that is the one')
+  await expect(scrollback(page)).toContainText('reply 12 that is the one')
 })
 
 test('reply in a room no longer posts a brand new post', async ({ page }) => {
@@ -230,13 +269,134 @@ test('help in commons offers nothing commons cannot do', async ({ page }) => {
   await page.goto('/commons')
   await type(page, 'help')
 
-  // `reply` can never work here — §3.10 gives commons no threads and the schema
-  // refuses them — so listing it would be advertising a dead end.
-  await expect(scrollback(page)).not.toContainText('reply — answer')
-  // And `go` here means another room, not a post there are none of.
+  // `go` here means another room, not a post there are none of.
   await expect(scrollback(page)).toContainText('go — go to another room')
 
-  // Typed anyway, it still explains itself.
+  /*
+   * `reply` was left off this list, on the reasoning that it could never work
+   * here: §3.10 gives commons no threads and the schema refuses them, so
+   * listing it would be advertising a dead end. Naming a post changed that —
+   * the reply is not going *in* commons, it is going to music — and a verb
+   * that works from here belongs on the list of what you can type from here.
+   */
+  await expect(scrollback(page)).toContainText('reply — answer a post')
+
+  // Answering nothing in particular still says what commons cannot do, and
+  // then names the thing that does work from here (§3.7).
   await type(page, 'reply nice one')
-  await expect(scrollback(page)).toContainText('commons doesn’t keep replies')
+  await expect(scrollback(page)).toContainText('commons keeps nothing')
+})
+
+test('tapping an address types the reply for you, and does not send it', async ({ page }) => {
+  /*
+   * "What happens when we're on reply 239482 — typing that number in each time
+   * will be real annoying." Post numbers are the ones that grow (they are
+   * allocated per room), and answering means typing back a number already on
+   * the screen.
+   *
+   * The contract is the palette's, and it is the important half: tapping
+   * *inserts* and never runs. A button that posted something would make this a
+   * button UI in a terminal costume (§9) — and would post an empty reply.
+   */
+  await page.goto('/music')
+  const address = page.getByTestId('tap').first()
+  const number = await address.textContent()
+
+  await address.tap()
+
+  await expect(prompt(page)).toHaveValue(`reply ${number} `)
+  // Nothing ran: no confirmation, and no signup question either.
+  await expect(scrollback(page)).not.toContainText('what do you want to be called')
+  await expect(scrollback(page)).not.toContainText('just now')
+})
+
+test('and the keyboard stays up, with the cursor at the end', async ({ page }) => {
+  // Tapping anything that steals focus closes the keyboard on a phone, which
+  // costs a tap to reopen and scrolls the page out from under you.
+  await page.goto('/music')
+  await page.getByTestId('tap').first().tap()
+
+  await expect(prompt(page)).toBeFocused()
+  const [start, end] = await prompt(page).evaluate((el: HTMLInputElement) => [
+    el.selectionStart,
+    el.selectionEnd,
+  ])
+  expect(start).toBe(await prompt(page).inputValue().then((v) => v.length))
+  expect(end).toBe(start)
+})
+
+test('the address is big enough to hit with a thumb', async ({ page }) => {
+  /*
+   * WCAG 2.5.5, and §8's kill condition in miniature: a single digit at 15px
+   * monospace is about nine pixels wide, which is not a target. The padding
+   * that fixes it is invisible — horizontal padding cancelled by an equal
+   * negative margin, vertical padding on an inline box, which does not affect
+   * the line at all.
+   */
+  await page.goto('/music')
+  const box = await page.getByTestId('tap').first().boundingBox()
+
+  expect(box!.width).toBeGreaterThanOrEqual(24)
+  expect(box!.height).toBeGreaterThanOrEqual(24)
+})
+
+test('and the column of addresses does not move to make room for it', async ({ page }) => {
+  /*
+   * The reason the padding is cancelled rather than simply added. Every listing
+   * on this site prints `address  who, when` so a column of them can be read
+   * down; a button that shifted its own text right by eight pixels would break
+   * that alignment on exactly the lines it was added to, and nothing else in
+   * the suite looks at pixels.
+   */
+  await page.goto('/music')
+  // Same reason as below: `evaluate` does not retry, and an empty list here
+  // would read as "nothing drifted" rather than "nothing was measured".
+  await expect(page.getByTestId('tap').first()).toBeVisible()
+
+  const drift = await page.evaluate(() => {
+    const buttons = [...document.querySelectorAll('.line-tap')]
+    return buttons.map((button) => {
+      const range = document.createRange()
+      range.selectNodeContents(button)
+      // Where the address's first character actually sits, against where the
+      // line it belongs to begins.
+      return range.getBoundingClientRect().left - button.closest('p')!.getBoundingClientRect().left
+    })
+  })
+
+  expect(drift.length).toBeGreaterThan(0)
+  for (const offset of drift) expect(Math.abs(offset)).toBeLessThan(1)
+})
+
+test('a five-digit address still fits on a 380px screen', async ({ page }) => {
+  /*
+   * The case this was built for: `post_no` is allocated per room and never
+   * reused, so a room busy for a year hands out `239482` rather than `12`. The
+   * address is `white-space: pre` so a number can never break in half — which
+   * means a long one cannot wrap its way out of trouble, and §8 makes a
+   * horizontal scrollbar at 380px the kill condition.
+   *
+   * Done against the real line, with the real classes, because this is a CSS
+   * property and nothing else in the suite would notice it.
+   */
+  await page.goto('/music')
+  // Waited for rather than assumed: `evaluate` does not retry, and the room
+  // listing arrives a moment after the prompt does.
+  await expect(page.getByTestId('tap').first()).toBeVisible()
+
+  await page.evaluate(() => {
+    const button = document.querySelector<HTMLElement>('.line-tap')!
+    button.textContent = '239482'
+    // The longest address the site can produce: somebody's wall, and a name at
+    // the 20-character limit.
+    const line = button.closest('p')!
+    const clone = line.cloneNode(true) as HTMLElement
+    clone.querySelector('.line-tap')!.textContent = '~averylongnamehere12/239482'
+    line.after(clone)
+  })
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )
+  expect(overflow).toBeLessThanOrEqual(0)
 })

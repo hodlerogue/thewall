@@ -112,6 +112,80 @@ body {
   color: var(--fg-dim);
   margin-top: 10px;
 }
+
+/*
+ * The part of a line the shell put there, as opposed to the part a person did.
+ *
+ * Only the echo of a contribution uses this. `say good to be here` used to be
+ * dimmed whole — prompt, verb and sentence together — which rendered somebody's
+ * own words at 9.1:1 against the 14.0:1 the same words get when read back in
+ * the room. This lets `ryan:poker$ say ` recede and the sentence not.
+ */
+/* The same slot the mail count uses, and never both at once — while a post is
+   being written, "you have 3 replies waiting" is the wrong thing to be told. */
+.composing {
+  /* The same box the mail line uses. Written without the padding first, which
+     put it hard against the left edge and off the side of a 380px screen. */
+  margin: 0;
+  padding: 6px 12px 0;
+  color: var(--accent);
+}
+
+.line-prefix {
+  color: var(--fg-dim);
+}
+
+/*
+ * The address at the head of a line, which you can tap to answer it.
+ *
+ * A button that has to be invisible as a button: inside a scrollback, anything
+ * with a border or a background stops being a terminal and starts being a
+ * toolbar (§9). So it is the same monospace text in the same column, coloured
+ * `accent` — which is not decoration here, it is what this interface uses for a
+ * thing you can type, and this is exactly that.
+ *
+ * The padding is the whole trick. WCAG 2.5.5 wants a 24×24 target and a single
+ * digit at 15px monospace is about nine pixels wide, so the hit area is grown
+ * without moving anything: horizontal padding is cancelled by an equal negative
+ * margin, and vertical padding on an *inline* box does not affect the line box
+ * at all. The column of addresses stays aligned to the character grid and the
+ * thumb gets 28 pixels.
+ */
+.line-tap {
+  display: inline;
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  padding: 3px 8px;
+  margin: 0 -8px;
+  cursor: pointer;
+  /* The line is `pre-wrap`; a button resets that, and an address must not be
+     allowed to wrap in the middle. */
+  white-space: pre;
+}
+
+/* Touch has no hover, so the only feedback that matters is the press itself. */
+.line-tap:active {
+  color: var(--fg);
+}
+
+@media (hover: hover) {
+  .line-tap:hover {
+    color: var(--fg);
+  }
+}
+
+/* Clicked, not tabbed to — it is not in the tab order, so a ring on mouse-down
+   would be an outline nobody asked for around a word. */
+.line-tap:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* And what the person typed, at the brightness the room will give it back. */
+.line-typed {
+  color: var(--fg);
+}
 .line-dim {
   color: var(--fg-dim);
 }

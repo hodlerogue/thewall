@@ -50,6 +50,7 @@ function harness(me: string | null = 'jameson') {
     },
     async reply(room, postId, body) {
       replied.push({ room, postId, body })
+      return replied.length
     },
     async rename(name: string) {
       return { ok: true as const, name }

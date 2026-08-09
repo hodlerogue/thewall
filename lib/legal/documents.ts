@@ -119,7 +119,7 @@ export const PRIVACY: Document = {
       heading: 'What we hold if you make an account',
       body: [
         'Your name. Public — it appears on everything you post, and at thewall.social/~yourname.',
-        'Your email address. Never public, never shown to other users, never sold, never used for marketing. It is used to send you a sign-in link, because there are no passwords here — and, only if you switch it on yourself, one summary a day of replies waiting for you.',
+        'Your email address. Never public, never shown to other users, never sold, never used for marketing. It is used to send you a sign-in link, because there are no passwords here — and one summary a day of replies waiting for you, which is on from the moment you have an account and off the moment you type notify off.',
       'Whether you get that daily summary, and when the last one was sent. Not public, and held apart from the rest of your account so that neither the setting nor the unsubscribe link that goes with it is readable by anybody but the server. It is on from the moment you have an account and off the moment you type notify off. Nothing is sent to an address until somebody has followed a key that arrived in it, no summary is ever sent on a day when nobody answered you, and every one of them carries a link that stops it without signing in.',
         'What you post and reply. Public, along with the time you posted it.',
         'When you signed up, when you last read your mail, and when your current name was taken.',

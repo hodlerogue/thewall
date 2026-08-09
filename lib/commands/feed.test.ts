@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createRunner } from '@/lib/commands/run'
-import { renderFeed, renderRoomList } from '@/lib/shell/render'
+import { FEED_PAGE, renderFeed, renderRoomList } from '@/lib/shell/render'
 import { fixtureEnv } from '@/lib/shell/env'
 import { ROOMS } from '@/lib/shell/fixtures'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
@@ -48,7 +48,9 @@ function harness(me: string | null = 'jameson') {
       posted.push({ room, body })
       return 7
     },
-    async reply() {},
+    async reply() {
+      return 1
+    },
     async rename(name: string) {
       return { ok: true as const, name }
     },
@@ -143,7 +145,7 @@ describe('the feed', () => {
         async login(name: string) { return { ok: true as const, name, note: 'sent' } },
         async loginCode(name: string) { return { ok: true as const, name } },
         async resend() { return { note: '' } } },
-      { async post() { return 1 }, async reply() {}, async rename(n: string) { return { ok: true as const, name: n } } },
+      { async post() { return 1 }, async reply() { return 1 }, async rename(n: string) { return { ok: true as const, name: n } } },
       'jameson',
     ))
     const out = text((await empty('look', FEED)).lines)
@@ -183,7 +185,7 @@ describe('the feed is never rendered as an empty room', () => {
     const { run } = harness()
     void run
 
-    const rooms = await fixtureEnv().listRooms()
+    const { rooms } = await fixtureEnv().listRooms()
     const feed = rooms.find((room) => room.slug === 'feed')!
 
     expect(feed.latest, 'the feed line came back empty').toBeDefined()
@@ -191,7 +193,8 @@ describe('the feed is never rendered as an empty room', () => {
   })
 
   it('never says "quiet in here" under itself', async () => {
-    const lines = renderRoomList(await fixtureEnv().listRooms()).map((l) => l.text)
+    const { rooms, total } = await fixtureEnv().listRooms()
+    const lines = renderRoomList(rooms, undefined, undefined, total).map((l) => l.text)
     const at = lines.indexOf('feed')
     expect(at, 'feed is not in the lobby').toBeGreaterThan(-1)
     expect(lines[at + 1]).not.toBe('quiet in here')
@@ -251,5 +254,48 @@ describe('what the feed tells you after you say something', () => {
     const { run } = harness('jameson')
     const out = text((await run('say found my dad’s records', { room: 'music' })).lines)
     expect(out).toContain('music/7')
+  })
+})
+
+
+describe('the feed says when it has stopped', () => {
+  const hit = (i: number) => ({
+    room: `~person${i}`,
+    id: 1,
+    author: `person${i}`,
+    body: `something on a wall, number ${i}`,
+    createdAt: new Date(Date.now() - i * 60_000),
+  })
+
+  it('says so when it came back full', () => {
+    /*
+     * No silent caps — the rule the room listing was the last place to break,
+     * and the feed was quietly the next one. `wall_feed` takes the newest 40 and
+     * nothing said so, so a busy feed ended on a blank line, indistinguishable
+     * from having reached the bottom of everything anybody has ever put on a
+     * wall.
+     */
+    const full = Array.from({ length: FEED_PAGE }, (_, i) => hit(i))
+    const out = renderFeed(full).map((l) => l.text).join('\n')
+
+    expect(out).toContain(`the newest ${FEED_PAGE}`)
+    // A wall, not an `older` command. The feed crosses every wall at once, so
+    // "the page before this one" is not a thing it has — and naming a command
+    // that does not exist is worse than the silence it replaces.
+    expect(out).toContain('go ~name')
+    expect(out).not.toContain('older')
+  })
+
+  it('says nothing when it did not fill', () => {
+    const few = Array.from({ length: 3 }, (_, i) => hit(i))
+    expect(renderFeed(few).map((l) => l.text).join('\n')).not.toContain('the newest')
+  })
+
+  it('puts it at the top, where the cut is', () => {
+    // The listing runs oldest-first, so everything missing is older than the
+    // first line under this.
+    const full = Array.from({ length: FEED_PAGE }, (_, i) => hit(i))
+    const lines = renderFeed(full).map((l) => l.text)
+    expect(lines[0]).toContain(`the newest ${FEED_PAGE}`)
   })
 })

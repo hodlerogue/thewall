@@ -4,9 +4,30 @@
  */
 
 export interface Reply {
+  /**
+   * Its number within the post. Permanent and never reused, like a post's
+   * number within its room (§3.4).
+   *
+   * §4.3 gave replies no address, which is exactly why there was no way to
+   * answer one — "I want to be able to reply to replies". That half is
+   * reversed. The half about nesting is not: this is a number inside `music/12`,
+   * not a new segment of an address, so `go` learns nothing new and no URL
+   * grows.
+   */
+  id: number
   author: string
   body: string
   createdAt: Date
+  /**
+   * Which reply this answers, when it answers one rather than the post.
+   *
+   * A pointer for reading, never a parent in a tree — the listing stays flat and
+   * in time order, and this becomes a `→ 2` on the header. Same choice as rooms
+   * that grew out of a room: a tree is unreadable by the fourth level on a
+   * 380px screen, and what people actually want is to know what somebody is
+   * responding to.
+   */
+  toReply?: number
 }
 
 export interface Post {
@@ -85,6 +106,25 @@ export interface RoomSummary {
    */
   curated: boolean
   latest?: { author: string; body: string; createdAt: Date }
+}
+
+/**
+ * The lobby: a page of rooms, and how many there are.
+ *
+ * `total` is not `rooms.length`, and that is the whole reason this is an object.
+ * The lobby fetches a page — at three hundred rooms the whole table was 65 KB
+ * of JSON downloaded on every boot to draw twelve lines — and a page cannot say
+ * how much it is a page of. Asking for forty and getting forty is the same
+ * answer whether there are forty-one or four thousand.
+ *
+ * The same trap as a room listing, which once showed a slice with nothing
+ * saying so. Here it would silently turn "298 more rooms" into "28 more rooms",
+ * which is worse than saying nothing: a wrong number reads as a fact.
+ */
+export interface RoomList {
+  rooms: RoomSummary[]
+  /** Every listable room, including the ones this page does not carry. */
+  total: number
 }
 
 /**

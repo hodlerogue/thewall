@@ -428,9 +428,10 @@ select tests.ok(
 begin;
   set local role authenticated;
   set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
-  insert into public.replies (post_id, author_id, body)
-  select id, auth.uid(), 'a reply that should show up as mail'
-    from public.posts where room_slug = 'music' and post_no = 12;
+  -- Through `create_reply`, which is the only door a browser has now. The
+  -- direct insert grant is gone: a reply has a number within its post, and a
+  -- number has to be allocated somewhere that two people cannot race.
+  select public.create_reply('music'::citext, 12, 'a reply that should show up as mail');
 commit;
 
 begin;
@@ -730,9 +731,7 @@ begin;
   -- allowance, and it has to be one allowance rather than two.
   select public.create_post('poker', 'flooding ' || g) from generate_series(1, 19) g;
 
-  insert into public.replies (post_id, author_id, body)
-  select id, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'and a reply'
-    from public.posts where room_slug = 'music' and post_no = 12;
+  select public.create_reply('music'::citext, 12, 'and a reply');
 
   select tests.raises(
     $sql$select public.create_post('poker', 'and one more')$sql$,
@@ -1027,9 +1026,7 @@ begin;
   );
 
   -- The whole point of it being a wall rather than a diary.
-  insert into public.replies (post_id, author_id, body)
-  select id, '99999999-9999-4999-8999-999999999999', 'answering on somebody''s wall'
-    from public.posts where room_slug = '~waller' and post_no = 1;
+  select public.create_reply('~waller'::citext, 1, 'answering on somebody''s wall');
 commit;
 
 select tests.ok(
@@ -1537,10 +1534,26 @@ begin;
   set local role authenticated;
   set local request.jwt.claim.sub = '99999999-9999-4999-8999-999999999999';
 
-  -- §4.1 counts a reply unread while created_at > mail_seen_at, so a reply
-  -- dated next year sits in an inbox permanently and reading does not clear it.
-  -- §4.3 sorts replies chronologically, so a chosen past date puts an answer
-  -- above answers written before it.
+  /*
+   * The column-scoped insert grant on `replies` is gone, and this asserts the
+   * stronger thing that replaced it: `authenticated` cannot write this table at
+   * all. `create_reply` is the only door.
+   *
+   * The grant used to allow (post_id, author_id, body) and nothing else, which
+   * kept `created_at` and `hidden_at` out of a caller's hands — a reply dated
+   * next year sits in an inbox permanently (§4.1), and a pre-hidden one is the
+   * operator's column being set on the way in. Those are still refused, now by
+   * there being nothing to refuse with.
+   *
+   * Why it changed: a reply has a number within its post now, and a number has
+   * to be allocated somewhere two people cannot race for it.
+   */
+  select tests.raises(
+    $sql$insert into public.replies (post_id, author_id, body)
+         select id, '99999999-9999-4999-8999-999999999999', 'straight in'
+           from public.posts where room_slug = 'music' limit 1$sql$,
+    'a browser cannot write a reply directly at all any more'
+  );
   select tests.raises(
     $sql$insert into public.replies (post_id, author_id, body, created_at)
          select id, '99999999-9999-4999-8999-999999999999', 'from the future',
@@ -1554,20 +1567,185 @@ begin;
            from public.posts where room_slug = 'music' limit 1$sql$,
     'nor set the operator''s column on the way in'
   );
-  -- And the three columns the client actually writes still go through. A plain
-  -- statement, not wrapped in a CTE: Postgres will not have a data-modifying
-  -- WITH anywhere but the top level, so the tidier-looking version does not run.
-  insert into public.replies (post_id, author_id, body)
-  select id, '99999999-9999-4999-8999-999999999999', 'an ordinary reply'
-    from public.posts where room_slug = 'music' limit 1;
 
+  -- And the door that is open still works.
+  select public.create_reply('music'::citext, 12, 'an ordinary reply');
   select tests.ok(
     exists (select 1 from public.replies where body = 'an ordinary reply'),
-    'while an ordinary reply is unaffected'
+    'while an ordinary reply, through create_reply, is unaffected'
   );
 commit;
 
+select tests.ok(
+  not has_table_privilege('authenticated', 'public.replies', 'insert'),
+  'and the grant it used to need is gone rather than narrowed'
+);
+
 delete from public.replies where body = 'an ordinary reply';
+
+\echo ''
+\echo '§4.3, revisited — a reply you can answer'
+
+/*
+ * "I want to be able to reply to replies."
+ *
+ * §4.3 gave replies no address, which is why there was nothing to answer. That
+ * half is reversed; the half about nesting is not. A reply is numbered within
+ * its post — `music/12` still addresses the whole conversation — and
+ * `to_reply_no` is a pointer for reading, never a parent in a tree.
+ */
+\set answerer '99999999-9999-4999-8999-999999999999'
+
+insert into public.posts (room_slug, post_no, author_id, body)
+select 'music', 960, '11111111-1111-4111-8111-111111111111'::uuid, 'a post with a conversation under it'
+ where not exists (select 1 from public.posts where room_slug = 'music' and post_no = 960);
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'answerer';
+
+  select tests.ok(
+    public.create_reply('music'::citext, 960, 'the first answer') = 1,
+    'the first reply on a post is 1'
+  );
+  select tests.ok(
+    public.create_reply('music'::citext, 960, 'the second answer') = 2,
+    'and they count up within the post, not across the site'
+  );
+  select tests.ok(
+    public.create_reply('music'::citext, 960, 'answering the first one', 1) = 3,
+    'answering a reply is still just the next reply'
+  );
+commit;
+
+select tests.ok(
+  (select to_reply_no from public.replies r
+     join public.posts p on p.id = r.post_id
+    where p.room_slug = 'music' and p.post_no = 960 and r.reply_no = 3) = 1,
+  'and it records which one it answers'
+);
+select tests.ok(
+  (select to_reply_no from public.replies r
+     join public.posts p on p.id = r.post_id
+    where p.room_slug = 'music' and p.post_no = 960 and r.reply_no = 1) is null,
+  'while one that answers the post itself points at nothing'
+);
+
+-- Numbering is per post. A second post's replies start at 1 again, or the
+-- number on screen would be a global counter wearing a local number's clothes.
+insert into public.posts (room_slug, post_no, author_id, body)
+select 'music', 961, '11111111-1111-4111-8111-111111111111'::uuid, 'a different post'
+ where not exists (select 1 from public.posts where room_slug = 'music' and post_no = 961);
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'answerer';
+  select tests.ok(
+    public.create_reply('music'::citext, 961, 'first here too') = 1,
+    'a different post starts at 1 again'
+  );
+commit;
+
+/*
+ * An address is never reused, one level down (§3.4). The allocator lives on the
+ * post rather than being derived from max(reply_no), because a hidden reply
+ * leaves a gap that max cannot see — and handing the next person an address
+ * somebody else already had is how a thread starts pointing at the wrong words.
+ */
+update public.replies r
+   set hidden_at = now()
+  from public.posts p
+ where p.id = r.post_id and p.room_slug = 'music' and p.post_no = 960 and r.reply_no = 3;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'answerer';
+  select tests.ok(
+    public.create_reply('music'::citext, 960, 'after one was hidden') = 4,
+    'hiding reply 3 does not free the number 3'
+  );
+commit;
+
+-- A pointer at a reply that is not there is dropped rather than refused: the
+-- same trade a room's `from_room` makes, and for the same reason — losing
+-- somebody's sentence over a mistyped label is the worse outcome.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'answerer';
+  select tests.ok(
+    public.create_reply('music'::citext, 960, 'answering nothing', 99) = 5,
+    'a pointer at a reply that does not exist still writes the reply'
+  );
+commit;
+
+select tests.ok(
+  (select to_reply_no from public.replies r
+     join public.posts p on p.id = r.post_id
+    where p.room_slug = 'music' and p.post_no = 960 and r.reply_no = 5) is null,
+  'with the pointer dropped, rather than pointing at nothing'
+);
+
+-- And a pointer at a hidden reply is dropped too, or the operator's lever
+-- leaves an arrow aimed at words nobody can read.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'answerer';
+  select public.create_reply('music'::citext, 960, 'answering the hidden one', 3);
+commit;
+
+select tests.ok(
+  (select to_reply_no from public.replies r
+     join public.posts p on p.id = r.post_id
+    where p.room_slug = 'music' and p.post_no = 960 and r.reply_no = 6) is null,
+  'a pointer at a hidden reply is dropped as well'
+);
+
+/*
+ * Every gate `create_post` has, one level down.
+ *
+ * A purpose-made account rather than one of the ones above, because §4.7 allows
+ * exactly one free contribution before asking for the email — so whether an
+ * existing unverified account is refused depends on what it has already done
+ * earlier in this file. This one spends its free contribution first, which is
+ * what makes the refusal about verification rather than about arithmetic.
+ */
+insert into auth.users (id, aud, role, email)
+values ('c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1', 'authenticated', 'authenticated', 'unproved@deliverable.seed')
+on conflict (id) do nothing;
+insert into public.profiles (id, name)
+values ('c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1', 'unproved')
+on conflict (id) do nothing;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1';
+
+  select tests.ok(
+    public.create_reply('music'::citext, 960, 'the one free contribution') > 0,
+    'an unverified account gets its one free contribution here too (§4.7)'
+  );
+  select tests.raises(
+    $sql$select public.create_reply('music'::citext, 960, 'and a second')$sql$,
+    'and the second is stopped at the same gate as a post'
+  );
+commit;
+
+begin;
+  set local role anon;
+  select tests.raises(
+    $sql$select public.create_reply('music'::citext, 960, 'from nobody')$sql$,
+    'and a signed-out reader cannot reach it at all'
+  );
+commit;
+
+select tests.ok(
+  not has_function_privilege('anon', 'public.create_reply(citext, integer, text, integer)', 'execute'),
+  'which is a grant, not a check that could be forgotten'
+);
+
+delete from public.replies r using public.posts p
+ where p.id = r.post_id and p.room_slug = 'music' and p.post_no in (960, 961);
+delete from public.posts where room_slug = 'music' and post_no in (960, 961);
 
 \echo ''
 \echo 'feed — every wall in one place, and nothing of its own'
@@ -1675,12 +1853,38 @@ select public.hide_post('~walled', 1, false);
 \set jameson '11111111-1111-4111-8111-111111111111'
 \set marisol '22222222-2222-4222-8222-222222222222'
 
+/*
+ * A person with an address that can actually receive mail.
+ *
+ * These tests used jameson, and jameson is one of the seeded five — his address
+ * is `jameson@seed.invalid`, a TLD the standards reserve so it can never
+ * resolve. Once `pending_digests` learned to skip undeliverable addresses, "is
+ * this person due an email" became permanently false for him, and half this
+ * section failed.
+ *
+ * Which is the guard working, not the guard being wrong: a test that asserts
+ * mail is due to an address nothing can deliver to was asserting something the
+ * site must never do. So the subject moves to somebody real, and jameson keeps
+ * the two assertions that are *about* being undeliverable, further down.
+ */
+-- `.seed` is not a real TLD and not a reserved one, which is the whole point:
+-- the filter has to accept it. `example.test` was the first attempt and is
+-- reserved twice over — that is how easy it is to write a "real" address that
+-- the thing under test correctly refuses.
+insert into auth.users (id, aud, role, email)
+values ('b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1', 'authenticated', 'authenticated', 'reachable@deliverable.seed')
+on conflict (id) do nothing;
+insert into public.profiles (id, name, verified_at)
+values ('b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1', 'reachable', now())
+on conflict (id) do nothing;
+\set reachable 'b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1'
+
 -- A post of jameson's and a fresh reply to it, rather than the seeded pair.
 -- `mail_seen_at` defaults to when the profile row was made, and the seed
 -- backdates its content, so everything shipped with the site is already read —
 -- which is right, and makes it useless for testing "waiting".
 insert into public.posts (room_slug, post_no, author_id, body)
-select 'music', 900, :'jameson'::uuid, 'a post with something waiting on it'
+select 'music', 900, :'reachable'::uuid, 'a post of reachable''s, with something waiting on it'
  where not exists (select 1 from public.posts where room_slug = 'music' and post_no = 900);
 
 insert into public.replies (post_id, author_id, body)
@@ -1741,7 +1945,10 @@ select tests.ok(
  * signup box.
  */
 insert into auth.users (id, aud, role, email)
-values ('a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2', 'authenticated', 'authenticated', 'unproven@seed.invalid')
+-- Deliverable on purpose. On a reserved TLD this account would be skipped by
+-- the address filter, and the assertion below would pass whether or not the
+-- verified gate existed — a test proving the wrong thing.
+values ('a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2', 'authenticated', 'authenticated', 'unproven@deliverable.seed')
 on conflict (id) do nothing;
 insert into public.profiles (id, name)
 values ('a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2', 'unproven')
@@ -1789,7 +1996,7 @@ select tests.ok(
 
 begin;
   set local role authenticated;
-  set local request.jwt.claim.sub = :'jameson';
+  set local request.jwt.claim.sub = :'reachable';
 
   select tests.ok(public.notify_state() = true, 'it is on without being asked for');
 
@@ -1811,16 +2018,16 @@ commit;
 
 select tests.ok(
   exists (select 1 from public.notify_settings
-           where profile_id = :'jameson'::uuid),
+           where profile_id = :'reachable'::uuid),
   'turning it off leaves a row saying so, rather than removing the row'
 );
 
 select tests.ok(
-  (select count(*) from public.pending_digests() where profile_id = :'jameson'::uuid) = 1,
+  (select count(*) from public.pending_digests() where profile_id = :'reachable'::uuid) = 1,
   'somebody with replies waiting is due an email'
 );
 select tests.ok(
-  (select unread from public.pending_digests() where profile_id = :'jameson'::uuid) > 0,
+  (select unread from public.pending_digests() where profile_id = :'reachable'::uuid) > 0,
   'and it says how many'
 );
 
@@ -1832,13 +2039,13 @@ select tests.ok(
 -- worth leaving written down: the guard caught its own test.
 select set_config(
   'tests.digest_unread',
-  (select unread::text from public.pending_digests() where profile_id = :'jameson'::uuid),
+  (select unread::text from public.pending_digests() where profile_id = :'reachable'::uuid),
   false
 );
 
 begin;
   set local role authenticated;
-  set local request.jwt.claim.sub = :'jameson';
+  set local request.jwt.claim.sub = :'reachable';
   select tests.ok(
     public.mail_count() = current_setting('tests.digest_unread')::int,
     'the digest count is the badge count, filter for filter'
@@ -1861,7 +2068,7 @@ commit;
  * replies at assorted ages.
  */
 insert into auth.users (id, aud, role, email)
-values ('a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3', 'authenticated', 'authenticated', 'optout@seed.invalid')
+values ('a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3', 'authenticated', 'authenticated', 'optout@deliverable.seed')
 on conflict (id) do nothing;
 insert into public.profiles (id, name, verified_at)
 values ('a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3', 'optout', now())
@@ -1922,16 +2129,16 @@ update public.notify_settings set daily = true where profile_id = :'marisol'::uu
 
 -- One a day, and the stamp is what enforces it.
 select tests.ok(
-  public.mark_digested(array[:'jameson'::uuid]) = 1,
+  public.mark_digested(array[:'reachable'::uuid]) = 1,
   'sending stamps the person who was sent to'
 );
 select tests.ok(
-  not exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  not exists (select 1 from public.pending_digests() where profile_id = :'reachable'::uuid),
   'and they are not due again the same day'
 );
 update public.notify_settings set notified_at = now() - interval '25 hours';
 select tests.ok(
-  exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  exists (select 1 from public.pending_digests() where profile_id = :'reachable'::uuid),
   'but they are tomorrow'
 );
 
@@ -1947,7 +2154,7 @@ select tests.ok(
 -- ages and none of the ones above could isolate this. The first three attempts
 -- at this assertion all passed against the broken function.
 insert into auth.users (id, email)
-values ('77777777-7777-4777-8777-777777777777', 'quiet@seed.invalid')
+values ('77777777-7777-4777-8777-777777777777', 'quiet@deliverable.seed')
 on conflict (id) do nothing;
 insert into public.profiles (id, name, verified_at, mail_seen_at)
 values ('77777777-7777-4777-8777-777777777777', 'quiet', now(), now() - interval '10 days')
@@ -2002,7 +2209,7 @@ delete from public.notify_settings where profile_id = '77777777-7777-4777-8777-7
 update public.replies set hidden_at = now()
  where post_id = (select id from public.posts where room_slug = 'music' and post_no = 900);
 select tests.ok(
-  not exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  not exists (select 1 from public.pending_digests() where profile_id = :'reachable'::uuid),
   'a hidden reply is not something anybody is emailed about'
 );
 update public.replies set hidden_at = null
@@ -2010,38 +2217,38 @@ update public.replies set hidden_at = null
 
 -- Banned, and it stops. Emailing somebody who has been removed is the site
 -- keeping in touch with a person it has just shown the door.
-update public.profiles set banned_at = now() where id = :'jameson'::uuid;
+update public.profiles set banned_at = now() where id = :'reachable'::uuid;
 select tests.ok(
-  not exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  not exists (select 1 from public.pending_digests() where profile_id = :'reachable'::uuid),
   'a banned account is not emailed'
 );
-update public.profiles set banned_at = null where id = :'jameson'::uuid;
+update public.profiles set banned_at = null where id = :'reachable'::uuid;
 
 -- Unverified means an address nobody has proved they can read, which probably
 -- belongs to somebody else.
-update public.profiles set verified_at = null where id = :'jameson'::uuid;
+update public.profiles set verified_at = null where id = :'reachable'::uuid;
 select tests.ok(
-  not exists (select 1 from public.pending_digests() where profile_id = :'jameson'::uuid),
+  not exists (select 1 from public.pending_digests() where profile_id = :'reachable'::uuid),
   'an unproven address is never written to'
 );
 begin;
   set local role authenticated;
-  set local request.jwt.claim.sub = :'jameson';
+  set local request.jwt.claim.sub = :'reachable';
   select tests.raises(
     $$select public.set_notify(true)$$,
     'an unproven address cannot turn email on in the first place'
   );
 commit;
-update public.profiles set verified_at = now() where id = :'jameson'::uuid;
+update public.profiles set verified_at = now() where id = :'reachable'::uuid;
 
 -- Unsubscribing works with no session at all, because the link is followed on
 -- whatever device the email was opened on.
 select tests.ok(
-  public.unsubscribe((select token from public.notify_settings where profile_id = :'jameson'::uuid)),
+  public.unsubscribe((select token from public.notify_settings where profile_id = :'reachable'::uuid)),
   'the token in the email turns it off, with nobody signed in'
 );
 select tests.ok(
-  (select daily from public.notify_settings where profile_id = :'jameson'::uuid) = false,
+  (select daily from public.notify_settings where profile_id = :'reachable'::uuid) = false,
   'and it is really off'
 );
 select tests.ok(
@@ -2051,8 +2258,61 @@ select tests.ok(
 
 -- It only ever turns things off. A leaked token is a nuisance, never a way in.
 select tests.ok(
-  (select daily from public.notify_settings where profile_id = :'jameson'::uuid) = false,
+  (select daily from public.notify_settings where profile_id = :'reachable'::uuid) = false,
   'and there is no token that turns it on'
+);
+
+/*
+ * Never to an address that cannot receive it.
+ *
+ * The seeded five live at `@seed.invalid`, a TLD the standards reserve so that
+ * it can never resolve. They are verified, their posts sit in the lobby, and
+ * the daily email is on by default — so the first time a real person answers
+ * jameson the job hands the sender `jameson@seed.invalid`, and does it again
+ * every day there is something new. Every one is a hard bounce against a
+ * freshly warmed sending domain, and enough of those means nobody gets a
+ * sign-in key.
+ *
+ * Asserted by *behaviour*, not by the function's text. `migrations.sh` probes
+ * this one by looking for the words in `pg_get_functiondef`, and that probe
+ * passed against a first version whose regex was escaped wrong and matched
+ * nothing — the words were there, the filter was not. A probe answers "was this
+ * applied"; only this answers "does it work".
+ */
+-- A post of its own. Hung on music/12 first, which is jameson's and is counted
+-- by three assertions above — so the extra reply moved a number they read and
+-- broke them. A test that disturbs the fixture it shares is a test that will be
+-- deleted by whoever it breaks next.
+insert into public.posts (room_slug, post_no, author_id, body)
+select 'music', 903, :'jameson'::uuid, 'a seeded account''s post, for the bounce test'
+ where not exists (select 1 from public.posts where room_slug = 'music' and post_no = 903);
+insert into public.replies (post_id, author_id, body)
+select id, 'a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3'::uuid, 'a real person answering a seeded post'
+  from public.posts where room_slug = 'music' and post_no = 903;
+
+select tests.ok(
+  exists (
+    select 1 from public.profiles p
+      join auth.users u on u.id = p.id
+      join public.notify_settings n on n.profile_id = p.id
+     where u.email like '%@seed.invalid' and p.verified_at is not null
+  ),
+  'the seeded accounts are here, verified, and would otherwise qualify'
+);
+select tests.ok(
+  not exists (
+    select 1 from public.pending_digests() d
+     where d.email like '%@seed.invalid'
+  ),
+  'and no undeliverable address is ever handed to the sender'
+);
+select tests.ok(
+  not exists (
+    select 1 from public.pending_digests() d
+     where d.email ~* '\.(test|example|invalid|localhost)$'
+        or d.email ~* '(@|\.)example\.(com|net|org)$'
+  ),
+  'nor any other address the standards reserve so it can never resolve'
 );
 
 -- Erasure takes it with the account ---------------------------------------------
@@ -2080,6 +2340,8 @@ delete from public.notify_settings;
 delete from public.posts where room_slug = 'music' and post_no = 900;
 
 \echo ''
+
+
 \echo 'rooms that grew out of a room — a label, never a nesting'
 
 -- Nesting was asked for ("can you create a room within a room, 3-5 deep, for

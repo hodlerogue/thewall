@@ -172,7 +172,8 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
       // Awaited once, from the single promise `startArrivalReads` made. Two
       // separate listRooms() calls could also disagree with each other if a
       // room's ephemeral flag changed between them.
-      const rooms = await reads.rooms
+      const lobby = await reads.rooms
+      const rooms = lobby.rooms
       const ephemeral = rooms.filter((room) => room.ephemeral).map((room) => room.slug)
       // `createLive` was handed this array before the rooms were known and
       // reads it at event time, so filling it here is what makes commons
@@ -193,7 +194,7 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
        * trip on the one screen nobody is looking at yet.
        */
       const [arrival, initialMail] = await Promise.all([
-        arriveAt(env, target, rooms, reads.room),
+        arriveAt(env, target, lobby, reads.room),
         existingName === null ? Promise.resolve(0) : env.mailCount().catch(() => 0),
       ])
       const { lines, location } = arrival
@@ -373,7 +374,7 @@ function takeKeyOutcome(): Line[] {
 async function arriveAt(
   env: Env,
   target: Location,
-  rooms: Awaited<ReturnType<Env['listRooms']>>,
+  lobby: Awaited<ReturnType<Env['listRooms']>>,
   /**
    * The room, if boot already started fetching it.
    *
@@ -387,7 +388,9 @@ async function arriveAt(
   // setup — and saying "there's no room called commons" makes it sound like a
   // typo. §5 is the reason this is worth its own message: rooms that arrive
   // empty are the failure mode, so an empty project should say so outright.
-  if (rooms.length === 0) {
+  const { rooms, total } = lobby
+
+  if (total === 0) {
     return {
       lines: [
         { text: 'this project has no rooms yet.', tone: 'error' },
@@ -405,7 +408,7 @@ async function arriveAt(
       return {
         lines: [
           { text: `there’s no one called ${target.person}.`, tone: 'error' },
-          ...renderRoomList(rooms),
+          ...renderRoomList(rooms, undefined, undefined, total),
         ],
         location: {},
       }
@@ -414,7 +417,7 @@ async function arriveAt(
   }
 
   if (target.room === undefined) {
-    return { lines: renderRoomList(rooms), location: {} }
+    return { lines: renderRoomList(rooms, undefined, undefined, total), location: {} }
   }
 
   /*
@@ -435,7 +438,7 @@ async function arriveAt(
     return {
       lines: [
         { text: `there’s no room called ${target.room}.`, tone: 'error' },
-        ...renderRoomList(rooms),
+        ...renderRoomList(rooms, undefined, undefined, total),
       ],
       location: {},
     }
@@ -465,12 +468,21 @@ async function arriveAt(
  */
 function fixtureWriter(): Writer {
   let next = 100
+  // Per post, because that is what a reply number is. A single counter would
+  // hand out 1, 2, 3 across different posts and teach the demo's visitor a
+  // rule the site does not have.
+  const replies = new Map<string, number>()
   const taken = new Set(['jameson', 'marisol', 'tuck', 'ren', 'dev'])
   return {
     async post() {
       return next++
     },
-    async reply() {},
+    async reply(room: string, postNo: number) {
+      const at = `${room}/${postNo}`
+      const no = (replies.get(at) ?? 0) + 1
+      replies.set(at, no)
+      return no
+    },
     async rename(name: string) {
       if (taken.has(name)) return { ok: false as const, reason: `${name} is taken` }
       return { ok: true as const, name }

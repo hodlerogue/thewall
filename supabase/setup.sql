@@ -3364,6 +3364,480 @@ grant execute on function public.set_notify (boolean) to authenticated;
 
 
 -- ==========================================================================
+-- 20260809000000_no_mail_to_nowhere.sql
+-- ==========================================================================
+
+-- No mail to an address that cannot receive it.
+--
+-- Found while working out what a public repository changes about this project,
+-- and it turned out to be a live defect rather than a disclosure: the five
+-- accounts `seed.sql` creates live at `@seed.invalid`, a TLD the standards
+-- reserve so that it can never resolve. They are verified, their posts are in
+-- the lobby, and the daily email is on by default — so the first time a real
+-- person answers jameson, the digest job tries `jameson@seed.invalid`, and
+-- tries again every day there is something new.
+--
+-- Every one of those is a hard bounce. Hard bounces are what gets a sending
+-- domain throttled or cut off, and they cost most on a domain that has just
+-- been warmed, which is the state this one is in. The failure is not that the
+-- seed accounts miss their email — it is that everybody else stops getting
+-- sign-in keys.
+--
+-- The public repository is what made the second half of it reachable on
+-- purpose: the seeded names are printed on the site and written down in a
+-- readable repo, so `login jameson` is something anyone can type, and each
+-- attempt is another bounce. That route is guarded in
+-- lib/auth/deliverable.ts; this file guards the one nobody is watching.
+
+create or replace function public.pending_digests ()
+returns table (
+  profile_id uuid,
+  name       citext,
+  email      text,
+  unread     integer,
+  token      uuid
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select p.id,
+         p.name,
+         u.email::text,
+         count(r.*)::integer,
+         n.token
+    from public.notify_settings n
+    join public.profiles p on p.id = n.profile_id
+    join auth.users u on u.id = p.id
+    join public.posts po on po.author_id = p.id
+    join public.rooms rm on rm.slug = po.room_slug
+    join public.replies r on r.post_id = po.id
+   where n.daily
+     and p.banned_at is null
+     and p.verified_at is not null
+     and u.email is not null
+     /*
+      * Never to an address that provably cannot receive.
+      *
+      * RFC 2606 and RFC 6761 reserve these so they can never resolve, which is
+      * exactly why `seed.sql` uses `@seed.invalid` for its five accounts. Those
+      * accounts are verified, their posts sit in the lobby, and the digest is
+      * on by default — so the first time a real person answers jameson, this
+      * query hands the job `jameson@seed.invalid` and keeps doing it every day
+      * there is something new. Every one is a hard bounce against a sending
+      * domain that has only just been warmed, and a steady trickle of those is
+      * a suspended account and no sign-in keys for anybody.
+      *
+      * Here as well as in lib/auth/deliverable.ts, because the two decide
+      * different sends: that one guards a route somebody types at, this one
+      * guards a cron job nobody is watching.
+      */
+     and u.email !~* '(@|\.)(example\.com|example\.net|example\.org)$'
+     and u.email !~* '\.(test|example|invalid|localhost)$'
+     and (n.notified_at is null or n.notified_at < now() - interval '20 hours')
+     -- The same three the badge uses: a reply under a hidden post, or in a
+     -- closed room, is a notification pointing at nothing.
+     and r.hidden_at is null
+     and po.hidden_at is null
+     and rm.hidden_at is null
+     and r.author_id <> p.id
+     and r.created_at > p.mail_seen_at
+   group by p.id, p.name, u.email, n.token, n.notified_at
+  /*
+   * Two different questions, and the first version answered only one.
+   *
+   * `unread` is everything waiting, so the number in the email is the number in
+   * the badge. Whether to send at all is a different question: has anything
+   * arrived *since the last email*. Gating on unread alone meant somebody who
+   * got a digest and never read their mail was sent the identical email every
+   * day for as long as the pile sat there — which is precisely the daily nag
+   * this feature is written to not be, and it contradicted the sentence the
+   * command itself prints.
+   *
+   * `greatest` ignores nulls, so a first-ever send compares against
+   * `mail_seen_at` alone and everything unread counts as new.
+   */
+  having count(*) filter (
+    where r.created_at > greatest(p.mail_seen_at, n.notified_at)
+  ) > 0;
+$$;
+
+-- Belt as well as braces: the seeded accounts are switched off explicitly.
+--
+-- The filter above is the rule and this is not a second copy of it — it is a
+-- statement about these five in particular, who did not ask for email and could
+-- not read it if they got it. `notify_default` gives every new profile a row
+-- saying on, and the seed makes profiles, so without this they are enrolled
+-- like everybody else and only the query above stands between them and a send.
+update public.notify_settings n
+   set daily = false
+  from auth.users u
+ where u.id = n.profile_id
+   and u.email like '%@seed.invalid';
+
+;
+
+
+-- ==========================================================================
+-- 20260810000000_lobby_uses_its_index.sql
+-- ==========================================================================
+
+-- The lobby stops reading every post on the site to draw itself.
+--
+-- Asked what happens to the lobby at hundreds of rooms. Built one with 310 and
+-- measured: **1112 ms**, on every page load, to show twelve rooms.
+--
+-- The cause is one `or`. `room_overview` finds each room's newest post with a
+-- lateral join, and when `feed` was added — a room that holds nothing itself and
+-- whose lobby line has to come from everybody's walls — the two cases were
+-- folded into a single predicate:
+--
+--   where ( (r.slug = 'feed' and pr.owner_id is not null and ...)
+--           or (r.slug <> 'feed' and p.room_slug = r.slug) )
+--
+-- `p.room_slug = r.slug` is exactly what `posts_room_recent (room_slug,
+-- created_at desc)` is for. Sitting inside an `or`, it stops being usable:
+-- Postgres cannot know which branch applies until it has the row, so it
+-- sequentially scans **every post on the site, once per room**. The plan says
+-- so plainly — `Seq Scan on posts ... loops=310`, `Rows Removed by Join Filter:
+-- 320`. That is rooms × posts, and it grows with the product of the two.
+--
+-- Nothing was wrong with the *answer*. It has always been right, and it was
+-- fast at nine rooms, which is why nothing caught it: the cost is invisible
+-- until the site works.
+--
+-- Split into two laterals, each guarded on the outer row, so the ordinary path
+-- gets its index back and the feed path runs for the one row it is about.
+-- Same query, measured again on the same 310 rooms: **5.9 ms**.
+
+create or replace view public.room_overview
+with (security_invoker = true) as
+select
+  r.slug,
+  r.gloss,
+  r.ephemeral,
+  r.sort_order,
+  -- One of the two is always null: the guards are mutually exclusive, so
+  -- coalesce is a choice between them rather than a fallback.
+  coalesce(own.body, feed.body)             as latest_body,
+  coalesce(own.created_at, feed.created_at) as latest_at,
+  coalesce(own_author.name, feed_author.name) as latest_author,
+  r.curated
+from public.rooms r
+
+-- An ordinary room: its own newest post.
+--
+-- `r.slug <> 'feed'` sits *inside* the subquery rather than in a join
+-- condition. In the ON clause the lateral would still be executed and then
+-- discarded; here it is a one-time filter on the outer row, and
+-- `p.room_slug = r.slug` is left alone as the only predicate the index has to
+-- serve.
+left join lateral (
+  select p.body, p.created_at, p.author_id
+    from public.posts p
+   where r.slug <> 'feed'
+     and p.room_slug = r.slug
+     and p.hidden_at is null
+     and public.is_visible (p.room_slug, p.created_at)
+   order by p.created_at desc
+   limit 1
+) own on true
+
+-- The feed: the newest thing on anybody's wall.
+--
+-- Same filters `wall_feed` uses, or the lobby advertises a post the feed itself
+-- will not show. Runs for one row of the whole query.
+left join lateral (
+  select p.body, p.created_at, p.author_id
+    from public.posts p
+    join public.rooms pr on pr.slug = p.room_slug
+   where r.slug = 'feed'
+     and pr.owner_id is not null
+     and pr.hidden_at is null
+     and pr.archived_at is null
+     and p.hidden_at is null
+     and public.is_visible (p.room_slug, p.created_at)
+   order by p.created_at desc
+   limit 1
+) feed on true
+
+left join public.profiles own_author on own_author.id = own.author_id
+left join public.profiles feed_author on feed_author.id = feed.author_id
+where r.hidden_at is null
+  and r.archived_at is null
+  and r.owner_id is null
+  and (
+    r.curated
+    or coalesce(own.created_at, r.created_at) > now() - interval '14 days'
+  );
+
+comment on view public.room_overview is
+  'The lobby (§3.11). One row per listable room with its newest post. Two '
+  'laterals rather than one predicate with an or in it — the or made this '
+  'rooms x posts, see the migration.';
+
+-- An index the fade in the WHERE clause can use once there are enough rooms for
+-- the sequential scan over `rooms` to matter. Cheap, and the query already
+-- filters on exactly these three.
+create index if not exists rooms_listable
+  on public.rooms (curated, sort_order)
+  where hidden_at is null and archived_at is null and owner_id is null;
+
+;
+
+
+-- ==========================================================================
+-- 20260811000000_reply_to_a_reply.sql
+-- ==========================================================================
+
+-- Answering a reply, without a tree.
+--
+-- Asked for directly: "I want to be able to reply to replies." Until now a post
+-- had a flat list of answers and there was no way to point at one of them, so a
+-- thread with six replies in it was six people talking past each other.
+--
+-- §4.3 decided replies get no address of their own, and this changes that half
+-- on purpose — you cannot answer a thing you cannot name. What it does *not*
+-- change is the other half of that decision, which was really about nesting:
+--
+--   * A reply is numbered **within its post**, not globally. `music/12` has
+--     replies 1, 2, 3, and the address of the conversation is still `music/12`.
+--     Nothing gains a segment, nothing new appears in a URL, and `go` learns no
+--     new shape.
+--   * `to_reply_no` is a *pointer*, not a parent in a tree. The list stays flat
+--     and in time order, and an answer to an answer says which one it is
+--     answering. Same choice as rooms that grew out of a room, for the same
+--     reason: a tree on a 380px screen is unreadable by the fourth level, and
+--     the thing people actually want is to know what somebody is responding to.
+--
+-- So a thread reads:
+--
+--   1  marisol, 2h ago
+--      warped ones still play, they just wobble
+--   2  tuck, 1h ago  → 1
+--      that is what makes them worth keeping
+--
+-- rather than drifting right until the words are two characters wide.
+
+-- The address, and the pointer ------------------------------------------------
+alter table public.replies
+  add column if not exists reply_no    integer,
+  add column if not exists to_reply_no integer;
+
+comment on column public.replies.reply_no is
+  'The reply''s number within its post. Permanent and never reused, like a '
+  'post''s number within its room (§3.4).';
+comment on column public.replies.to_reply_no is
+  'Which reply this answers, if it answers one rather than the post. A label '
+  'for reading, never a parent in a tree — the listing stays flat.';
+
+-- Backfill, in the order they were written, which is the order they have always
+-- been read in.
+with numbered as (
+  select id, row_number() over (partition by post_id order by created_at, id) as n
+    from public.replies
+)
+update public.replies r
+   set reply_no = numbered.n
+  from numbered
+ where numbered.id = r.id
+   and r.reply_no is null;
+
+alter table public.replies alter column reply_no set not null;
+
+-- Never reused, exactly like a post's number in a room.
+create unique index if not exists replies_address on public.replies (post_id, reply_no);
+
+-- The allocator ---------------------------------------------------------------
+--
+-- On `posts`, mirroring `rooms.next_post_no`. Kept on the row rather than
+-- derived from `max(reply_no) + 1`, for the reason §3.4 already gives: a hidden
+-- reply leaves a gap, and `max` cannot see it, so deriving would hand the next
+-- person an address somebody else already had.
+alter table public.posts
+  add column if not exists next_reply_no integer not null default 1;
+
+update public.posts p
+   set next_reply_no = coalesce(
+     (select max(r.reply_no) + 1 from public.replies r where r.post_id = p.id),
+     1
+   );
+
+-- Allocating one --------------------------------------------------------------
+--
+-- A trigger on the table rather than a line inside `create_reply`, and that is
+-- the second attempt. The first put the allocation in the function, which meant
+-- every *other* writer — `seed.sql`, and fifteen inserts in the schema tests —
+-- had to compute a number itself or fall foul of the not-null. Fifteen places
+-- that each have to remember an invariant is fifteen places that can forget it.
+--
+-- Here, an address is a property of the table: anything that inserts a reply
+-- gets a correct one, in insert order, without knowing that reply numbers
+-- exist. An explicit `reply_no` is still honoured, which is what lets a data
+-- move carry the original addresses across.
+create or replace function public.allocate_reply_no ()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.reply_no is null then
+    -- Read and bump in one statement, so two people answering at the same
+    -- moment cannot be handed the same number (§3.4).
+    update public.posts
+       set next_reply_no = next_reply_no + 1
+     where id = new.post_id
+    returning next_reply_no - 1 into new.reply_no;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists replies_allocate_no on public.replies;
+create trigger replies_allocate_no
+  before insert on public.replies
+  for each row execute function public.allocate_reply_no ();
+
+-- Writing one ------------------------------------------------------------------
+--
+-- Replies used to be inserted straight from the browser under a policy. That
+-- cannot allocate a number: two people answering at the same moment would read
+-- the same `next_reply_no` and write the same address. So this moves behind a
+-- `security definer` function, exactly as posts did, and the insert grant goes.
+--
+-- Everything the policy checked is checked here and in the same order, so no
+-- refusal changes wording: signed in, allowed to contribute (§4.7), and the post
+-- readable — which is what stops a reply landing on a hidden post or in a
+-- closed room.
+create or replace function public.create_reply (
+  p_room     citext,
+  p_post_no  integer,
+  p_body     text,
+  -- Which reply is being answered. Null means the post itself, which is what
+  -- `reply` with no number has always meant.
+  p_to_reply integer default null
+)
+returns integer
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  v_id      uuid := auth.uid ();
+  v_post_id bigint;
+  v_no      integer;
+begin
+  if v_id is null then
+    raise exception 'you have to be signed in to say something.'
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  if not public.may_contribute (v_id) then
+    raise exception 'check your email to keep saying things.'
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  select id into v_post_id
+    from public.posts
+   where room_slug = p_room and post_no = p_post_no;
+
+  if v_post_id is null or not public.post_is_readable (v_post_id) then
+    raise exception 'that post is not here.' using errcode = 'no_data_found';
+  end if;
+
+  /*
+   * A pointer at something that is not there is worse than no pointer: it
+   * renders as `→ 4` next to a thread that has three replies. Dropped rather
+   * than refused, on the same reasoning as a room's `from_room` — losing
+   * somebody's sentence over a label they mistyped is the worse trade.
+   */
+  if p_to_reply is not null
+     and not exists (
+       select 1 from public.replies
+        where post_id = v_post_id and reply_no = p_to_reply and hidden_at is null
+     ) then
+    p_to_reply := null;
+  end if;
+
+  -- The number comes from the trigger above, so this does not repeat it — the
+  -- one place that knows how an address is allocated is the table.
+  insert into public.replies (post_id, author_id, body, to_reply_no)
+  values (v_post_id, v_id, p_body, p_to_reply)
+  returning reply_no into v_no;
+
+  return v_no;
+end;
+$$;
+
+revoke all on function public.create_reply (citext, integer, text, integer)
+  from public, anon;
+grant execute on function public.create_reply (citext, integer, text, integer)
+  to authenticated;
+
+-- The browser no longer writes this table directly. The policy stays: it is
+-- what `post_is_readable` is enforced by for anything that still can.
+revoke insert on public.replies from authenticated;
+
+-- Reading the two new columns.
+--
+-- `grant select on public.replies` is table-wide and always has been, so these
+-- are already readable and this line changes nothing. It is here to be explicit
+-- about the decision rather than to make it: both are on the screen — a reply's
+-- number and which reply it answers are exactly what the thread prints — so
+-- publishing them is what is wanted. The rule is the one `profiles` has: a
+-- column on a table with a table-wide select grant is public the moment it
+-- exists, so ask whether you would publish it before adding it.
+grant select (reply_no, to_reply_no) on public.replies to anon, authenticated;
+
+;
+
+
+-- ==========================================================================
+-- 20260812000000_four_thousand.sql
+-- ==========================================================================
+
+-- Four thousand characters, and room for more than one paragraph.
+--
+-- The cap was 2000, and length was never actually the thing stopping a longer
+-- piece of writing: the prompt is a single-line `<input>`, so a body could be
+-- two thousand characters and had to be one unbroken block. `write` fixes that
+-- half; this is the other.
+--
+-- 4000 rather than "no limit". A limit has to exist — `body` is a `text` column
+-- with no ceiling of its own, and the one thing worse than a cap is a room
+-- listing that has to load somebody's novel to draw a one-line preview. Four
+-- thousand is roughly eight hundred words, which is a long blog post and a very
+-- long thing to read on a phone, and it is where the honest ceiling sits.
+--
+-- The check is on `char_length`, which counts characters rather than bytes, so
+-- the limit means the same thing in every language. That was already true and
+-- is worth not breaking.
+
+alter table public.posts drop constraint posts_body_length;
+alter table public.posts add constraint posts_body_length
+  check (char_length(body) between 1 and 4000);
+
+-- Replies get the same ceiling, and that is deliberate rather than tidy. A
+-- reply is a contribution like any other — §4.3 makes it addressable now, and
+-- the case that argues for four thousand characters in a post (somebody
+-- explaining something properly) argues at least as hard for four thousand in
+-- the answer to it.
+alter table public.replies drop constraint replies_body_length;
+alter table public.replies add constraint replies_body_length
+  check (char_length(body) between 1 and 4000);
+
+comment on constraint posts_body_length on public.posts is
+  'Between 1 and 4000 characters. Stated in three other places — the client '
+  'maxLength, friendly() and /about — and lib/data/writer.test.ts reads this '
+  'file to check they still agree.';
+
+;
+
+
+-- ==========================================================================
 -- seed.sql — §5, the rooms arrive warm
 -- ==========================================================================
 
@@ -3610,6 +4084,10 @@ on conflict do nothing;
 -- re-running the seed would quietly double them. The guard makes the whole
 -- file safe to run more than once, which matters because running it is the
 -- step people repeat while working out why a project looks empty.
+--
+-- No `reply_no` here. A reply is addressable now — `reply 2 <something>` answers
+-- reply 2 — but the number is allocated by a trigger on the table, so nothing
+-- that writes a reply has to know that reply numbers exist.
 insert into public.replies (post_id, author_id, body, created_at)
 select p.id, v.author_id::uuid, v.body, v.created_at
   from (values
@@ -3657,6 +4135,14 @@ update public.rooms r
      1
    );
 
+-- The same, one level down: a post's reply allocator above every reply number
+-- the seed used, or the first real answer collides with a seeded one.
+update public.posts p
+   set next_reply_no = coalesce(
+     (select max(r.reply_no) + 1 from public.replies r where r.post_id = p.id),
+     1
+   );
+
 -- The bookkeeping table db-deploy.sh keeps, created here so this project is
 -- indistinguishable from one deployed that way. Without it the first
 -- db-deploy.sh run against this project falls back to adopting it by probing —
@@ -3687,7 +4173,11 @@ insert into public.applied_migrations (filename) values
   ('20260806000000_three_more_rooms.sql'),
   ('20260806010000_notify_optin.sql'),
   ('20260806020000_rooms_grew_out_of.sql'),
-  ('20260808000000_notify_on_by_default.sql')
+  ('20260808000000_notify_on_by_default.sql'),
+  ('20260809000000_no_mail_to_nowhere.sql'),
+  ('20260810000000_lobby_uses_its_index.sql'),
+  ('20260811000000_reply_to_a_reply.sql'),
+  ('20260812000000_four_thousand.sql')
 on conflict do nothing;
 
 commit;

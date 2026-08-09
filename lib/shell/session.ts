@@ -31,6 +31,25 @@ export interface Held {
    */
   addressed?: boolean
   /**
+   * Which reply this was aimed at, when it was aimed at one.
+   *
+   * Held with the sentence for the same reason the sentence is held at all: two
+   * questions happen between typing `reply 2 <something>` and it landing, and
+   * dropping the number over that gap would turn answering somebody into
+   * answering the post — silently, at the one moment §3.9 promises nothing
+   * typed is lost.
+   */
+  toReply?: number
+  /**
+   * Whether it is going somewhere the person is not standing.
+   *
+   * `reply music/12 <something>` can be typed from anywhere, so the address is
+   * not in the prompt and the confirmation is the only place it appears. Held
+   * with the sentence for the same reason `toReply` is: two questions happen in
+   * between, and by the time it lands the location that started it is gone.
+   */
+  elsewhere?: boolean
+  /**
    * Send it to the wall of whoever this turns out to be.
    *
    * `location` cannot say that yet. Somebody typing on the feed with no account
@@ -81,7 +100,14 @@ export interface SignupApi {
 export interface Writer {
   /** Returns the new post's permanent address (§3.4). */
   post(room: string, body: string): Promise<number>
-  reply(room: string, postNo: number, body: string): Promise<void>
+  /**
+   * Returns the reply's number within the post (§3.4, one level down).
+   *
+   * `toReply` is which reply is being answered, when one is. It is a pointer
+   * for reading rather than a parent in a tree — see the migration — and the
+   * database drops it rather than refusing if it names nothing.
+   */
+  reply(room: string, postNo: number, body: string, toReply?: number): Promise<number>
   /**
    * §4.6 — change your name, as often as you like.
    *
@@ -94,7 +120,7 @@ export interface Writer {
   >
 }
 
-type Mode = 'command' | 'ask-name' | 'ask-email' | 'ask-one'
+type Mode = 'command' | 'ask-name' | 'ask-email' | 'ask-one' | 'writing'
 
 /**
  * A single question the prompt is waiting on, and what to do with the answer.
@@ -161,6 +187,8 @@ export class Session {
   private held: Held | null = null
   private pendingName: string | null = null
   private pending: OneQuestion | null = null
+  /** The post being written, while one is. See `compose`. */
+  private draft: { location: Location; addressed: boolean; lines: string[] } | null = null
   private who: string | null = null
   /**
    * Whether "what the post number is for" has been said yet in this sitting.
@@ -251,22 +279,153 @@ export class Session {
      * are already confused enough to be walking.
      */
     const held = this.held !== null
-    const asking = held || this.pending !== null || this.pendingName !== null
+    const writing = this.draft !== null
+    const asking = held || writing || this.pending !== null || this.pendingName !== null
     this.mode = 'command'
     this.held = null
     this.pendingName = null
     this.pending = null
+    this.draft = null
 
     if (!asking) return [{ text: 'nothing to cancel.', tone: 'faint' }]
     return [
       {
-        text: held ? 'no problem — nothing sent. keep looking around.' : 'no problem. keep looking around.',
+        text: writing
+          ? // Said plainly, because this one throws away work rather than a
+            // single sentence, and somebody who typed it by accident deserves
+            // to know exactly what just happened.
+            'thrown away. nothing was posted.'
+          : held
+            ? 'no problem — nothing sent. keep looking around.'
+            : 'no problem. keep looking around.',
         tone: 'faint',
       },
     ]
   }
 
+  /**
+   * The longest a body may be, stated once on this side of the wire.
+   *
+   * The database says the same number in a check constraint and
+   * `lib/data/writer.test.ts` reads that file to make sure the two agree — a
+   * limit that disagrees with the one enforcing it is how a long piece of
+   * writing gets accepted by the prompt and refused by the server, which is the
+   * one moment §3.9 promises cannot happen.
+   */
+  static readonly LIMIT = 4000
+
+  /**
+   * Start a longer post: lines, until a line with just a dot on it.
+   *
+   * The prompt is a single-line `<input>`, so until now a body could be
+   * thousands of characters and had to be one unbroken block — there was no
+   * way to type a line break, and pasting one in flattens it. That is the
+   * whole of what was missing; the length cap was never the thing in the way.
+   *
+   * A dot on its own line is the `mail(1)` and `ed(1)` convention, which is
+   * both the oldest answer to this problem and the one a terminal-literate
+   * visitor guesses first (§3.5). It is also the only line it could be: a
+   * blank line has to stay meaningful, because a blank line is what a
+   * paragraph break *is*.
+   */
+  compose(location: Location, addressed: boolean): Line[] {
+    this.mode = 'writing'
+    this.draft = { location, addressed, lines: [] }
+    return [
+      { text: 'writing. a line with just a dot on it ends the post.', tone: 'accent' },
+      { text: 'blank lines are paragraph breaks. cancel throws it away.', tone: 'faint' },
+    ]
+  }
+
+  /**
+   * How much has been written, for the line above the prompt.
+   *
+   * Null when nothing is being written, which is what lets the caller show the
+   * indicator without asking a second question. It exists because compose mode
+   * is the one state where forgetting you are in it is expensive: every line
+   * you type is swallowed into a draft, and unlike the signup questions there
+   * is nothing being asked to remind you.
+   */
+  composing(): { lines: number; chars: number } | null {
+    if (this.draft === null) return null
+    return { lines: this.draft.lines.length, chars: this.draftLength() }
+  }
+
+  private draftLength(): number {
+    return this.draft === null ? 0 : this.draft.lines.join('\n').length
+  }
+
   async answer(input: string): Promise<AnswerResult> {
+    /*
+     * Writing is handled before anything else, and on the *raw* line.
+     *
+     * Trimming would eat the indentation somebody typed on purpose, and the
+     * generic escapes below would eat their prose: `login ryan` is a plausible
+     * sentence in the middle of a paragraph, and treating it as a command would
+     * throw away everything written so far. In here only two lines mean
+     * anything other than themselves — a dot, and cancel.
+     */
+    if (this.mode === 'writing' && this.draft !== null) {
+      const line = input.replace(/\s+$/, '')
+
+      if (/^(cancel|nevermind|never mind|quit|stop)$/i.test(line.trim())) {
+        return { lines: this.cancel() }
+      }
+
+      if (line.trim() === '.') {
+        const draft = this.draft
+        // Trailing blank lines are what you get from pressing enter twice before
+        // the dot, and they are never meant.
+        const body = draft.lines.join('\n').replace(/\n+$/, '').trim()
+        this.draft = null
+        this.mode = 'command'
+
+        if (body === '') {
+          return { lines: [{ text: 'nothing written — nothing sent.', tone: 'faint' }] }
+        }
+
+        // §3.9 — the same held-sentence path a one-line `say` takes. A whole
+        // draft is a sentence as far as this is concerned, and losing one to a
+        // signup question would be the worst version of the bug that machinery
+        // exists to prevent.
+        if (this.who === null) {
+          return {
+            lines: this.begin({ location: draft.location, body, addressed: draft.addressed }),
+          }
+        }
+
+        const written = await this.write(draft.location, body, { addressed: draft.addressed })
+        return { lines: written.lines, retry: written.failed ? body : undefined }
+      }
+
+      /*
+       * Refused a line at a time, never the whole draft.
+       *
+       * The database would refuse the commit, and by then the draft is gone and
+       * so is the writing. Checking here means the answer arrives while there
+       * is still something to shorten, and the line that would not fit is
+       * handed straight back rather than swallowed.
+       */
+      const would = this.draftLength() + (this.draft.lines.length > 0 ? 1 : 0) + line.length
+      if (would > Session.LIMIT) {
+        return {
+          lines: [
+            {
+              text: `that would take it past ${Session.LIMIT} characters, which is the limit.`,
+              tone: 'error',
+            },
+            { text: 'end it with a dot, or shorten that line and try again.', tone: 'faint' },
+          ],
+          retry: line,
+        }
+      }
+
+      this.draft.lines.push(line)
+      // Nothing printed. The echo above is the record of what was typed, and a
+      // word under every line is how a prompt turns into a chat client.
+      return { lines: [] }
+    }
+
     const text = input.trim()
 
     // §3.9 — cancel at any point, and it costs nothing.
@@ -528,7 +687,13 @@ export class Session {
     lines.push({ text: 'and the thing you were trying to say is up.', tone: 'accent' })
     // The wall is named here, because here is the first moment there is a name.
     const target = held.toOwnWall ? { room: `~${this.who}` } : held.location
-    const written = await this.write(target, held.body, { addressed: held.addressed })
+    const written = await this.write(target, held.body, {
+      addressed: held.addressed,
+      // Carried across the two questions, or `reply 2 <something>` typed by
+      // somebody without an account would quietly become an answer to the post.
+      toReply: held.toReply,
+      elsewhere: held.elsewhere,
+    })
     lines.push(...written.lines)
 
     // Losing the sentence here would be the worst possible moment for it.
@@ -743,7 +908,7 @@ export class Session {
      * already knows — `commons` is its own context precisely because §3.10
      * makes it a different kind of place.
      */
-    options: { addressed?: boolean } = {},
+    options: { addressed?: boolean; toReply?: number; elsewhere?: boolean } = {},
   ): Promise<WriteResult> {
     if (!location.room) {
       return {
@@ -778,23 +943,46 @@ export class Session {
      */
     try {
       if (location.postId !== undefined) {
-        await this.writer.reply(location.room, location.postId, body)
+        const replyNo = await this.writer.reply(
+          location.room,
+          location.postId,
+          body,
+          options.toReply,
+        )
         /*
-         * The post's address, not silence.
+         * The reply's own header, in the grammar the thread prints.
          *
-         * §4.3 gives a reply no address of its own, and the first version of
-         * this printed nothing at all on that basis. From actually using it:
-         * "instead of just LOOKING like it's sent" — and nothing on screen is
-         * the strongest possible version of that, because `live.ts` drops your
-         * own words from the channel, so the thread you are staring at does not
-         * visibly gain your reply either.
+         * This used to be the post's address — `music/12` — on the reasoning
+         * that a reply had no address of its own (§4.3) and the post was the
+         * only true thing to give back. A reply has a number now, and that
+         * changes which fact is worth printing: the post address is already on
+         * the screen, in the prompt, one line below. The number is not, and it
+         * is the thing somebody else needs in order to answer *you*.
          *
-         * The post's address is the true and useful thing: it is where your
-         * words now live, and it is what you would type to come back and read
-         * the thread. Every contribution now answers with one line and the
-         * same shape.
+         * Same shape as a new post's confirmation, and the same shape the
+         * thread will show it in when it is read back — so what you see when
+         * you write it is what it looks like.
+         *
+         * The post's address comes back in front of it when the reply went
+         * somewhere you are not standing. `reply music/12 <something>` can be
+         * typed from another room entirely, and then the prompt does not say
+         * where it went — so this line is the only place it is ever said, and a
+         * bare reply number would be a receipt for a conversation you cannot
+         * see. The rule is the same one the rest of this function follows: print
+         * what is not otherwise on the screen.
          */
-        return { lines: [{ text: `${location.room}/${location.postId}`, tone: 'accent' }], failed: false }
+        const at = options.elsewhere ? `${location.room}/${location.postId}  ` : ''
+        return {
+          lines: [
+            {
+              text: `${at}${replyNo}  ${this.who ?? 'you'}, ${formatAgo(new Date())}${
+                options.toReply === undefined ? '' : `  → ${options.toReply}`
+              }`,
+              tone: 'dim',
+            },
+          ],
+          failed: false,
+        }
       }
       const postNo = await this.writer.post(location.room, body)
 
@@ -842,17 +1030,34 @@ export class Session {
        * how an interface that explains itself turns into one that nags.
        */
       /*
-       * Accent, not dim.
+       * The post's own header, in the room's own grammar — not a receipt.
        *
-       * Both tokens clear 4.5:1 against the ground, so this was never a
-       * legibility failure — it was a hierarchy one. `dim` is the tone this
-       * interface uses for context you skim past: post headers, timestamps,
-       * the body of a room listing. Rendering the one line that says "that
-       * happened" in the skim-past colour is how it came to read as though it
-       * had not. Accent is what room names, the prompt and mail's addresses
-       * already use: the colour of a thing you can act on, which an address is.
+       * `poker/5` alone is a filing reference. Everywhere else on this site a
+       * thing somebody said is headed `address  author, when`, so printing half
+       * that grammar at the one moment somebody has made such a thing meant
+       * your post had two appearances: a reference when you wrote it, and a
+       * post when you read it back. Reported that way — "if you press look and
+       * the page reloads, now your message shows in the same way other people's
+       * message shows."
+       *
+       * Same line count, no words repeated. `ryan, just now` is redundant to
+       * the author and that is the point: it is what everybody else will see,
+       * shown at the moment it becomes true.
+       *
+       * And dim, which reverts a deliberate change rather than forgetting it.
+       * That change made this accent because it was the only bright thing on
+       * screen after a contribution — the echo above it, including the sentence
+       * itself, was all `--fg-dim`, so the one line saying "that happened" had
+       * to carry the weight. `echoOf` moved that weight to where it belongs:
+       * the sentence is now the brightest thing on the line above. A header is
+       * a header, and the room prints headers dim.
        */
-      const lines: Line[] = [{ text: address, tone: 'accent' }]
+      const lines: Line[] = [
+        {
+          text: `${address}  ${this.who ?? 'you'}, ${formatAgo(new Date())}`,
+          tone: 'dim',
+        },
+      ]
       if (!this.explainedAddresses) {
         this.explainedAddresses = true
         lines.push({

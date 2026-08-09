@@ -77,7 +77,9 @@ function harness(options: { me?: string; codeSent?: boolean } = {}) {
     async post() {
       return 42
     },
-    async reply() {},
+    async reply() {
+      return 1
+    },
     async rename(name) {
       return { ok: true as const, name }
     },

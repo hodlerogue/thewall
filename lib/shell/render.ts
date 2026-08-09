@@ -42,6 +42,36 @@ function oldestFirst<T>(items: readonly T[]): T[] {
 }
 
 /**
+ * The header over something somebody said: its address, then who and when.
+ *
+ * One helper because every listing on the site prints this same shape, and
+ * because the address in front is now a tap target — `reply 8431 ` typed into
+ * the prompt for you, cursor waiting, nothing run. Written five times instead,
+ * the tap would have been added to four of them.
+ *
+ * The address is `accent` while the rest of the header stays `dim`, which is not
+ * decoration: accent is what this interface uses for a thing you can type, and
+ * this is now literally that. It is the same change the room a subject grew out
+ * of got, for the same reason — "that should be showing in orange to depict a
+ * room but it's just normal text."
+ *
+ * Two spaces between the address and the name, everywhere, so a column of these
+ * can be read down.
+ */
+export function saidBy(
+  address: string,
+  rest: string,
+  options: { depth?: 0 | 1 | 2; tone?: Line['tone'] } = {},
+): Line {
+  return {
+    text: `${address}  ${rest}`,
+    tone: options.tone ?? 'dim',
+    depth: options.depth,
+    tap: { token: address, insert: `reply ${address} ` },
+  }
+}
+
+/**
  * §3.11 — proof of life: the difference between a busy building and a list of
  * doors. And §4.2's mitigation, now that anybody can add a door.
  *
@@ -51,14 +81,48 @@ function oldestFirst<T>(items: readonly T[]): T[] {
  * and a line saying how to reach the rest. Everything stays addressable — this
  * hides nothing, it just refuses to make the front page a directory.
  */
-export const LOBBY_LIMIT = 12
+/**
+ * How many rooms people made the lobby always has space for.
+ *
+ * A separate number from the cap above, and the reason is a bug that grew
+ * quietly. The rule used to be "twelve rooms, curated first, made ones fill
+ * whatever is left" — written when there were six curated rooms, so made ones
+ * got six slots. builders, crypto, movies, feedback and feed were added since,
+ * one at a time, each obviously fine on its own. Curated reached ten, and the
+ * space left for everything anybody had ever made was **two**.
+ *
+ * Measured rather than reasoned: a database with 310 rooms in it rendered the
+ * ten curated ones, `room-1`, `room-2`, and "298 more rooms". Three hundred
+ * rooms could be alive and the front page would look identical to a site with
+ * two. Nothing failed, because no test asserted how many *made* rooms appear —
+ * only that the total was capped.
+ *
+ * The seed's own feedback room says the quiet part: "wanted a room for cycling
+ * and did not realise i could just make one. the lobby looks like a fixed
+ * list." It was a fixed list, with two slots on the end.
+ *
+ * So made rooms get a budget rather than a remainder, and adding an eleventh
+ * curated room now costs a line of length rather than a quarter of what
+ * everybody else made.
+ */
+export const MADE_SLOTS = 6
 
 export function renderRoomList(
   rooms: readonly RoomSummary[],
   now = new Date(),
   /** How much of the latest post to show. Narrower on a share card (1200px). */
   bodyWidth = 56,
-  limit = LOBBY_LIMIT,
+  /**
+   * Every listable room, not just the ones handed to this function.
+   *
+   * The lobby fetches a page now, so `rooms.length` is the size of that page —
+   * counting the "more" line from it would turn "298 more" into "28 more",
+   * which is worse than saying nothing, because a wrong number reads as a fact.
+   * Defaults to the array for the callers that genuinely have all of it: the
+   * share card, and the error paths that list what exists.
+   */
+  total = rooms.length,
+  slots = MADE_SLOTS,
 ): Line[] {
   const lines: Line[] = []
 
@@ -67,9 +131,9 @@ export function renderRoomList(
   // argument about it reading as a place survives.
   const curated = rooms.filter((room) => room.curated)
   const made = rooms.filter((room) => !room.curated)
-  const shown = [...curated, ...made.slice(0, Math.max(0, limit - curated.length))]
+  const shownMade = made.slice(0, Math.max(0, slots))
 
-  for (const room of shown) {
+  const print = (room: RoomSummary) => {
     lines.push({ text: room.slug, tone: 'accent' })
     lines.push({
       text: room.latest
@@ -80,7 +144,27 @@ export function renderRoomList(
     })
   }
 
-  const hidden = rooms.length - shown.length
+  for (const room of curated) print(room)
+
+  /*
+   * A gap and a line, before the ones people made.
+   *
+   * The two kinds used to run together, so the lobby read as one fixed list —
+   * and a newcomer had no way to learn that making a room was a thing that
+   * happens here, which is precisely the complaint the seeded feedback room
+   * makes. It is also where the "more" line belongs: the rooms not shown are
+   * all of this kind, never the furniture.
+   *
+   * Only when there are some. A site where nobody has made a room yet should
+   * not have a heading over nothing — §5's empty room, as a section.
+   */
+  if (shownMade.length > 0) {
+    lines.push({ text: '' })
+    lines.push({ text: 'and rooms people made:', tone: 'faint' })
+    for (const room of shownMade) print(room)
+  }
+
+  const hidden = total - curated.length - shownMade.length
   if (hidden > 0) {
     lines.push({ text: '' })
     lines.push({
@@ -92,6 +176,14 @@ export function renderRoomList(
 }
 
 /**
+ * How many the feed asks for, and the number it admits to when it fills.
+ *
+ * Shared with `supabaseEnv.readFeed` and `wall_feed`'s default so the listing
+ * and the sentence under it cannot disagree.
+ */
+export const FEED_PAGE = 40
+
+/**
  * The feed: everything on everybody's walls, newest first.
  *
  * Rendered like search hits rather than like a room, because that is what it
@@ -99,7 +191,12 @@ export function renderRoomList(
  * number is meaningless here — `2` is a different post on every wall. The
  * address carries the name, which is also what `go` wants back.
  */
-export function renderFeed(posts: readonly PostHit[], now = new Date()): Line[] {
+export function renderFeed(
+  posts: readonly PostHit[],
+  now = new Date(),
+  /** What the Env asked for, so a full page can say it was one. */
+  limit = FEED_PAGE,
+): Line[] {
   if (posts.length === 0) {
     return [
       { text: 'nothing on anybody’s wall yet.', tone: 'faint' },
@@ -109,10 +206,7 @@ export function renderFeed(posts: readonly PostHit[], now = new Date()): Line[] 
 
   const lines: Line[] = []
   for (const post of oldestFirst(posts)) {
-    lines.push({
-      text: `${post.room}/${post.id}  ${post.author}, ${formatAgo(post.createdAt, now)}`,
-      tone: 'dim',
-    })
+    lines.push(saidBy(`${post.room}/${post.id}`, `${post.author}, ${formatAgo(post.createdAt, now)}`))
     lines.push({ text: post.body, depth: 1 })
     if (post.replies) {
       lines.push({
@@ -123,6 +217,30 @@ export function renderFeed(posts: readonly PostHit[], now = new Date()): Line[] 
     }
     lines.push({ text: '' })
   }
+  /*
+   * No silent caps — the rule the room listing was the last place to break, and
+   * the feed was quietly the next one.
+   *
+   * `wall_feed` takes the newest 40 and this said nothing about it, so a busy
+   * feed ended on a blank line, indistinguishable from having reached the
+   * bottom. That is the site's own promise — "when you have read it you have
+   * read it" — being false again, in the one place somebody arriving from a
+   * link lands.
+   *
+   * At the top, because the listing runs oldest-first: everything missing is
+   * older than the first line under this. And it names walls rather than an
+   * `older` command, because there is no paging here to offer — the feed
+   * crosses every wall at once, so "the page before this one" is not a thing it
+   * has. Naming a command that does not exist would be worse than the silence.
+   */
+  if (posts.length >= limit) {
+    lines.unshift({ text: '' })
+    lines.unshift({
+      text: `the newest ${limit}. the feed doesn’t go back further — a wall does: go ~name.`,
+      tone: 'faint',
+    })
+  }
+
   lines.push({
     text: 'anybody can answer any of these. say something here and it goes on your own wall.',
     tone: 'faint',
@@ -194,8 +312,22 @@ function renderGrewOut(room: Room): Line[] {
     text: `${grew.length === 1 ? 'a room' : 'rooms'} that grew out of here:`,
     tone: 'faint',
   })
+  /*
+   * A room name is accent, everywhere, and this was the one list that forgot.
+   *
+   * Reported as "that room should be showing in orange to depict a room but
+   * it's just normal text" — and orange is not decoration here, it is the
+   * colour this interface uses for a thing you can type. Room names in the
+   * lobby, the prompt, addresses in `mail`. Printing one in the skim-past
+   * colour says the opposite of what the line is for.
+   *
+   * Two lines rather than `slug — gloss` on one, because that is the shape the
+   * lobby uses for exactly this — a list of rooms with a word about each — and
+   * a room should look the same wherever it is listed.
+   */
   for (const child of shown) {
-    lines.push({ text: `${child.slug} — ${child.gloss}`, tone: 'dim', depth: 1 })
+    lines.push({ text: child.slug, tone: 'accent', depth: 1 })
+    lines.push({ text: child.gloss, tone: 'dim', depth: 2 })
   }
 
   // No silent caps, here as everywhere. A room that spawned forty is not going
@@ -226,12 +358,13 @@ export function renderPosts(
   const lines: Line[] = []
   for (const post of oldestFirst(posts)) {
     // The number comes first because it is the address, and it is permanent.
-    lines.push({
-      text: ephemeral
-        ? `${post.author}, ${formatAgo(post.createdAt, now)}`
-        : `${post.id}  ${post.author}, ${formatAgo(post.createdAt, now)}`,
-      tone: 'dim',
-    })
+    lines.push(
+      // Commons has no addresses (§3.10), so there is nothing to print in front
+      // and nothing to tap — a header there is just who and when.
+      ephemeral
+        ? { text: `${post.author}, ${formatAgo(post.createdAt, now)}`, tone: 'dim' }
+        : saidBy(`${post.id}`, `${post.author}, ${formatAgo(post.createdAt, now)}`),
+    )
     lines.push({ text: post.body, depth: 1 })
     if (!ephemeral && post.replies.length > 0) {
       lines.push({
@@ -258,10 +391,39 @@ export function renderPost(post: Post, now = new Date()): Line[] {
     return lines
   }
 
+  /*
+   * Flat, numbered, and in time order — never a tree.
+   *
+   * "I want to be able to reply to replies." §4.3 gave replies no address,
+   * which is exactly why there was nothing to answer, so they have numbers now.
+   * What they did not get is nesting: an answer to an answer sits where it was
+   * written, with `→ 2` saying which one it means.
+   *
+   * The alternative is indentation per level, and §3.2 caps depth at two steps
+   * for a reason — a fourth level on a 380px screen leaves the words about two
+   * characters wide. A pointer costs four characters and reads at any depth.
+   */
   for (const reply of post.replies) {
-    lines.push({ text: `${reply.author}, ${formatAgo(reply.createdAt, now)}`, tone: 'dim', depth: 1 })
+    lines.push(
+      saidBy(
+        `${reply.id}`,
+        `${reply.author}, ${formatAgo(reply.createdAt, now)}${
+          reply.toReply === undefined ? '' : `  → ${reply.toReply}`
+        }`,
+        { depth: 1 },
+      ),
+    )
     lines.push({ text: reply.body, depth: 2 })
   }
+
+  // Said once, at the bottom, where somebody has just finished reading and is
+  // deciding what to answer. `reply` alone still answers the post, which is
+  // what it has always meant.
+  lines.push({ text: '' })
+  lines.push({
+    text: 'reply <something> answers the post — reply 2 <something> answers 2.',
+    tone: 'faint',
+  })
   return lines
 }
 
@@ -314,10 +476,12 @@ export function renderProfile(profile: Profile, now = new Date()): Line[] {
      * though the post were hers; following that address lands on his. `find`
      * grew the marker at the time and this did not.
      */
-    lines.push({
-      text: `${post.room}/${post.id}  ${formatAgo(post.createdAt, now)}${post.isReply ? '  (reply)' : ''}`,
-      tone: 'dim',
-    })
+    lines.push(
+      saidBy(
+        `${post.room}/${post.id}`,
+        `${formatAgo(post.createdAt, now)}${post.isReply ? '  (reply)' : ''}`,
+      ),
+    )
     lines.push({ text: post.body, depth: 1 })
   }
 
@@ -344,6 +508,29 @@ export function renderProfile(profile: Profile, now = new Date()): Line[] {
   return lines
 }
 
+/**
+ * A one-line preview of something that may not be one line.
+ *
+ * `write` means a body can have paragraphs in it, and every listing on this
+ * site shows a slice of one as a single `Line`. The scrollback renders with
+ * `white-space: pre-wrap`, so a newline inside that slice really does break the
+ * line — one preview would silently become two, and a lobby of them would come
+ * apart.
+ *
+ * So the *first line* is the preview, and then it is cut to length. That is
+ * also the better preview: somebody who writes a short opening line and then
+ * their argument underneath has written a subject and a body, and this shows
+ * the subject. Nothing had to be added to the schema for that to be true — it
+ * falls out of being able to type a line break at all.
+ *
+ * The ellipsis says the same thing either way, so a long first line and a
+ * second paragraph are not distinguished. They do not need to be: both mean
+ * "there is more of this than fits here", which is what the reader is deciding
+ * about.
+ */
 function truncate(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`
+  const first = text.split('\n', 1)[0].trimEnd()
+  const more = first.length < text.trimEnd().length
+  if (first.length <= max) return more ? `${first}…` : first
+  return `${first.slice(0, max - 1).trimEnd()}…`
 }

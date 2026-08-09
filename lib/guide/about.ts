@@ -53,18 +53,20 @@ export const ABOUT: readonly GuideSection[] = [
     heading: 'Where you are',
     body: [
       'The lobby is the list of rooms. Type look to see it, then go roomname to walk into one — go music.',
-      'A room holds posts. look shows them, each with a number in front: that number is its permanent address and is never reused. go 12 opens it and puts you inside the conversation. leave backs you out one step.',
+      'A room holds posts. look shows them, each with a permanent number in front, never reused. go 12 opens it and puts you inside the conversation. leave backs you out one step.',
       'The path in the prompt is also the web address: if it says music/12, then thewall.social/music/12 is that post, and a link you can send somebody.',
     ],
   },
   {
     heading: 'Saying something',
     body: [
-      'say, and then what you want to say. In a room that starts a new post; inside a post it adds a reply, as does reply.',
+      'say, and then what you want to say — a new post in a room, a reply inside a post. Replies are numbered too: reply 2 answers reply 2, where it was written.',
+      'You can answer without opening anything: in a room, reply 5 something goes to post 5, and reply music/12 something works from anywhere.',
+      'write takes more than one line: type it, then the post, and a line with just a dot ends it. Blank lines are paragraph breaks, up to 4,000 characters.',
       'You do not need an account to read. The first time you try to say something, you are asked what to call you and where to send a sign-in link — and the sentence you already typed is posted for you. You never type it twice.',
       'There are no passwords, and your address is never shown to anybody or sold. You can say one thing before you check that email — after that it asks, because an address nobody has proved they can read is no way back in.',
-      'On a new phone, or after clearing your browser, type login and your name: a key goes to the address that name signed up with, and typing the short code from it makes this browser you again. The same email has a link, which is easier on a computer. Never make a second account — your posts stay with the first name.',
-      'logout ends it on the device you are holding, and nothing else. On a borrowed phone that matters: signing in lasts over a year otherwise. Everything you said stays where it is.',
+      'On a new phone, type login and your name: a key goes to the address that name signed up with, and typing its short code makes this browser you again. Never make a second account — your posts stay with the first name.',
+      'logout ends it on the device you are holding and nothing else. Everything you said stays where it is.',
     ],
   },
   {
@@ -79,7 +81,7 @@ export const ABOUT: readonly GuideSection[] = [
     body: [
       'go ~yourname — with the tilde — shows somebody: when they arrived, and what they have said lately, each with the address it lives at.',
       'Your own page is also your wall. Say something there and it goes on the wall rather than into a room. Only you can start something there; anybody can answer it.',
-      'Walls never appear in the lobby — a room for every person would turn a building into a directory. go feed is where they all are instead: everything anybody has put on their own wall, each with its address. Say something there and it goes on your wall.',
+      'Walls never appear in the lobby — a room for every person would turn a building into a directory. go feed is where they all are instead: everything anybody has put on their own wall. Say something there and it goes on your wall.',
     ],
   },
   {
@@ -87,7 +89,7 @@ export const ABOUT: readonly GuideSection[] = [
     body: [
       'make garden asks what the room is for, then walks you into it. You need to have followed your sign-in link, and you can make three in any seven days.',
       'A room you make is not yours. No owner and no moderator — inside it you are another person in a room, like anywhere else.',
-      'Make one from inside another room and that room lists it at the bottom, as having grown out of it. That line is the whole of the connection: the new room has an ordinary name and is not inside anything. It is a signpost for whoever reads the room a subject wandered out of.',
+      'Make one from inside another room and that room lists it at the bottom, as having grown out of it. That line is the whole of the connection: the new room has an ordinary name and is not inside anything.',
       'It sits in the lobby while people are talking in it, and drops out of the listing after a fortnight of silence — not deleted, just unlisted. Search still finds it, and it returns the moment somebody says something in it.',
     ],
   },

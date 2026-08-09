@@ -41,6 +41,7 @@ const session = new Session(
     },
     async reply(_room, _no, body) {
       posted.push(body)
+      return posted.length
     },
   },
   'tester',

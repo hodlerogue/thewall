@@ -14,7 +14,7 @@ function harness(
   const posted: { room: string; body: string }[] = []
   const renamed: string[] = []
   let resends = 0
-  const replied: { room: string; postNo: number; body: string }[] = []
+  const replied: { room: string; postNo: number; body: string; toReply?: number }[] = []
 
   const api: SignupApi = {
     async checkName(name) {
@@ -45,8 +45,11 @@ function harness(
       posted.push({ room, body })
       return 42
     },
-    async reply(room, postNo, body) {
-      replied.push({ room, postNo, body })
+    async reply(room, postNo, body, toReply) {
+      replied.push({ room, postNo, body, toReply })
+      // Per post, like the real allocator — a single counter would teach these
+      // tests a numbering rule the site does not have.
+      return replied.filter((r) => r.room === room && r.postNo === postNo).length
     },
     async rename(name) {
       if (taken.has(name)) return { ok: false as const, reason: `${name} is taken` }
@@ -585,24 +588,47 @@ describe('what a post number is for, and where there isn’t one', () => {
     expect(out).not.toMatch(/\d/)
   })
 
-  it('prints the address in a room that keeps things, and nothing else', async () => {
+  it('prints the post as a header, in the room’s own grammar', async () => {
+    /*
+     * `address  author, when` — the same shape a room prints over every post,
+     * and the reason it is not just the address: your post used to have two
+     * appearances, a filing reference when you wrote it and a post when you
+     * read it back. "If you press look and the page reloads, now your message
+     * shows in the same way other people's message shows."
+     *
+     * Still no status word. `said.` was a delivery receipt and success does not
+     * need one; a header is not a receipt, it is the thing itself.
+     */
     const { run } = harness({ me: 'ryan' })
     const lines = (await run('say found my dad’s records', { room: 'music' })).lines
 
-    // The first line is the address and only the address — no verb, no status
-    // word. `said.` was a delivery receipt, and success does not need one.
-    expect(lines[0].text).toBe('music/42')
+    expect(lines[0].text).toBe('music/42  ryan, just now')
     expect(text(lines)).not.toMatch(/said/)
   })
 
-  it('prints the whole address, not a bare number', async () => {
+  it('heads it with the whole address, not a bare number', async () => {
     // A lone `42` under a sentence is cryptic, and `go 42` only works while you
     // are standing in the room it belongs to. What is printed is what `go`
     // takes from anywhere, which is what every other listing prints too.
     const { run } = harness({ me: 'ryan' })
     const lines = (await run('say hello', { room: 'music' })).lines
-    expect(lines[0].text).toBe('music/42')
-    expect(lines[0].text).not.toBe('42')
+    expect(lines[0].text.startsWith('music/42')).toBe(true)
+    expect(lines[0].text.startsWith('42')).toBe(false)
+  })
+
+  it('heads it dim, because the bright thing is now the sentence above it', async () => {
+    /*
+     * This was accent, deliberately, and reverting it needs the reason.
+     *
+     * It was accent because it was the only bright thing on screen after a
+     * contribution: the echo above it — including the sentence itself — was all
+     * dimmed, so the one line saying "that happened" had to carry the weight.
+     * `echoOf` moved that weight where it belongs. A header is a header, and
+     * every room on this site prints headers dim.
+     */
+    const { run } = harness({ me: 'ryan' })
+    const lines = (await run('say hello', { room: 'music' })).lines
+    expect(lines[0].tone).toBe('dim')
   })
 
   it('explains what the number is for once, and then stops', async () => {
@@ -670,34 +696,57 @@ describe('what a post number is for, and where there isn’t one', () => {
     expect(out).toMatch(/that’s where it lives/)
   })
 
-  it('answers a reply with the address of the post it is under', async () => {
+  it('answers a reply with the reply’s own number', async () => {
     /*
-     * §4.3 gives a reply no address of its own, and the post's is the true
-     * answer to "where did that go" — it is also what you would type to come
-     * back and read the thread. Printing nothing was the previous version, and
-     * nothing is exactly what "it doesn't look like it sent" is made of.
+     * This printed the *post's* address — `music/12` — because §4.3 gave a
+     * reply no address of its own, so the post was the only true thing to give
+     * back. A reply has a number now, and that changes which fact is worth a
+     * line: `music/12` is already on the screen, in the prompt directly below.
+     * The number is not, and it is what somebody else needs in order to answer
+     * you.
+     *
+     * Still one line, still no status word — the same shape a new post gets.
      */
     const { run } = harness({ me: 'ryan' })
     const out = text((await run('say i agree', { room: 'music', postId: 12 })).lines)
-    expect(out).toBe('music/12')
+    expect(out).toMatch(/^\d+ {2}ryan, just now$/)
   })
 })
 
 describe('help does not offer what commons cannot do', () => {
-  it('leaves reply out of commons, where it can never work', async () => {
+  it('lists reply in commons now that naming a post makes it work there', async () => {
+    /*
+     * This asserted the opposite, and the reasoning was right at the time:
+     * `reply` could never work in commons — §3.10 gives it no threads and a
+     * trigger in the schema refuses replies there — and a verb listed where it
+     * always fails is the same defect as a palette chip that always fails.
+     *
+     * What changed is the verb. `reply music/12 <something>` names where it is
+     * going, so it works from wherever you are standing, commons included.
+     * Keeping it off the list would have meant the site answering that line
+     * with "commons doesn't keep replies" — a true sentence about a different
+     * question, which is the §3.7 failure this pair of tests exists to catch.
+     */
     const { run } = harness()
-    const out = text((await run('help', { room: 'commons' })).lines)
-
-    expect(out).not.toMatch(/^reply — /m)
-    // Still listed where it is one step from working.
+    expect(text((await run('help', { room: 'commons' })).lines)).toMatch(/^reply — /m)
     expect(text((await run('help', { room: 'music' })).lines)).toMatch(/^reply — /m)
   })
 
-  it('still explains itself when somebody types it there anyway', async () => {
+  it('says what commons cannot do when somebody replies to nothing there', async () => {
     const { run } = harness()
     const out = text((await run('reply nice one', { room: 'commons' })).lines)
-    expect(out).toContain('commons doesn’t keep replies')
-    expect(out).toContain('say it as its own thing')
+    expect(out).toContain('commons keeps nothing')
+    // And names the thing that does work from here, rather than stopping at
+    // the refusal (§3.7).
+    expect(out).toMatch(/reply \S+\/\d+/)
+  })
+
+  it('answers a post in a room from commons, which is why it is listed', async () => {
+    const { run, replied } = harness({ me: 'ryan' })
+    await run('reply music/12 that was the good one', { room: 'commons' })
+    expect(replied).toContainEqual(
+      expect.objectContaining({ room: 'music', postNo: 12, body: 'that was the good one' }),
+    )
   })
 
   it('does not offer to open a post in a room that has none', async () => {

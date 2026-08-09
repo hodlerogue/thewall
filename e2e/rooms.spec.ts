@@ -231,7 +231,10 @@ test('a room made from inside a room is listed at the bottom of that room', asyn
 
   await type(page, 'go music')
   await expect(scrollback(page)).toContainText('grew out of here')
-  await expect(scrollback(page)).toContainText('bebop — the fast stuff')
+  // Two lines, the way the lobby lists a room: the name in accent, a word
+  // about it under. It was one dim line and read as prose.
+  await expect(scrollback(page).locator('p', { hasText: /^bebop$/ })).toHaveClass(/line-accent/)
+  await expect(scrollback(page)).toContainText('the fast stuff')
 
   // The line is navigation: typing what it shows walks you there.
   await type(page, 'go bebop')
@@ -256,4 +259,94 @@ test('create is on the help list, under the word somebody would look for', async
   const lines = (await scrollback(page).innerText()).split('\n')
   const make = lines.find((line) => line.startsWith('make —'))
   expect(make).toContain('create')
+})
+
+test('you can answer a reply, and the thread says which one', async ({ page }) => {
+  /*
+   * "I want to be able to reply to replies." §4.3 gave replies no address, so
+   * there was nothing to answer — a thread with six replies was six people
+   * talking past each other.
+   *
+   * Flat and pointed, not nested: reply 3 answers reply 1 and is still printed
+   * after reply 2, at the same indentation, with `→ 1` saying what it means.
+   */
+  await page.goto('/music/12')
+  await type(page, 'reply 1 that is exactly the bit i meant')
+  await type(page, 'threader')
+  await type(page, 'threader@example.com')
+
+  await expect(scrollback(page)).toContainText('→ 1')
+
+  // The aim is dim, with the verb — it is an address, not part of the sentence.
+  const echo = scrollback(page).locator('p', { hasText: 'that is exactly the bit i meant' }).first()
+  await expect(echo.locator('.line-prefix')).toHaveText('guest:music/12$ reply 1')
+
+  // And a plain reply still answers the post, which is what it always meant.
+  await type(page, 'reply and the rest of it too')
+  const plain = scrollback(page).locator('p', { hasText: /^\d+ {2}threader, just now$/ }).last()
+  await expect(plain).not.toContainText('→')
+})
+
+test('the post says how to answer one of its replies', async ({ page }) => {
+  await page.goto('/music/12')
+  await expect(scrollback(page)).toContainText('reply 2 <something> answers 2')
+  // Every reply carries the number you would use.
+  await expect(scrollback(page)).toContainText('1  marisol')
+})
+
+test('write takes more than one line, and the blank ones are paragraphs', async ({ page }) => {
+  /*
+   * The gap this fills was never length — the cap was already thousands of
+   * characters. The prompt is a single-line input, so there was no way to type
+   * a line break, and a long post had to be one unbroken block.
+   *
+   * The blank line is the whole feature and the thing that broke first: the
+   * submit handler ignored an empty Enter, so paragraph breaks were swallowed
+   * and the indicator said three lines when four had been typed. Found by
+   * walking it, which is why this walk exists.
+   */
+  await withName(page)
+
+  await type(page, 'write')
+  await expect(scrollback(page)).toContainText('a line with just a dot on it ends the post')
+
+  await type(page, 'the first paragraph')
+  await type(page, '')
+  await type(page, 'and the second, after a gap')
+
+  // The indicator is the only thing saying that typing goes into a draft.
+  // Three lines, the middle one blank — 19 + 1 + 0 + 1 + 27 characters. The
+  // count is of lines typed, and a paragraph break is one of them.
+  await expect(page.getByTestId('composing')).toContainText('3 lines')
+  await expect(page.getByTestId('composing')).toContainText('a dot ends it')
+
+  await type(page, '.')
+  await expect(page.getByTestId('composing')).toHaveCount(0)
+
+  // And it is an ordinary post at an ordinary address — not a second kind.
+  await expect(scrollback(page)).toContainText('roommaker, just now')
+})
+
+/*
+ * The lobby preview of a multi-line post is asserted in lib/commands/write.test.ts
+ * against `renderRoomList` directly, not here.
+ *
+ * It cannot be walked in the demo: `fixtureWriter.post` returns an address and
+ * does not add the post to the room, so the lobby keeps showing the seeded
+ * line. That is a real gap between the demo and the site — worth knowing about,
+ * and not worth papering over with a test that would pass by looking at
+ * somebody else's post.
+ */
+test('cancel throws a draft away and says so', async ({ page }) => {
+  await withName(page)
+  await type(page, 'write')
+  await type(page, 'something i spent time on')
+  await type(page, 'cancel')
+
+  await expect(scrollback(page)).toContainText('thrown away')
+  await expect(page.getByTestId('composing')).toHaveCount(0)
+
+  // And the prompt is a prompt again, not still swallowing lines.
+  await type(page, 'help')
+  await expect(scrollback(page)).toContainText('from here you can type')
 })

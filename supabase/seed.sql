@@ -241,6 +241,10 @@ on conflict do nothing;
 -- re-running the seed would quietly double them. The guard makes the whole
 -- file safe to run more than once, which matters because running it is the
 -- step people repeat while working out why a project looks empty.
+--
+-- No `reply_no` here. A reply is addressable now — `reply 2 <something>` answers
+-- reply 2 — but the number is allocated by a trigger on the table, so nothing
+-- that writes a reply has to know that reply numbers exist.
 insert into public.replies (post_id, author_id, body, created_at)
 select p.id, v.author_id::uuid, v.body, v.created_at
   from (values
@@ -285,5 +289,13 @@ select p.id, v.author_id::uuid, v.body, v.created_at
 update public.rooms r
    set next_post_no = coalesce(
      (select max(p.post_no) + 1 from public.posts p where p.room_slug = r.slug),
+     1
+   );
+
+-- The same, one level down: a post's reply allocator above every reply number
+-- the seed used, or the first real answer collides with a seeded one.
+update public.posts p
+   set next_reply_no = coalesce(
+     (select max(r.reply_no) + 1 from public.replies r where r.post_id = p.id),
      1
    );

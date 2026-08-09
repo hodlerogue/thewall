@@ -55,7 +55,9 @@ function harness(rooms: Room[], name: string | null = 'ryan') {
     async post() {
       return 1
     },
-    async reply() {},
+    async reply() {
+      return 1
+    },
     async rename(n) {
       return { ok: true as const, name: n }
     },
@@ -118,7 +120,11 @@ describe('the parent room says what grew out of it', () => {
 
     const out = text((await run('go music', {} as Location)).lines)
     expect(out).toContain('a room that grew out of here')
-    expect(out).toContain('bebop — the fast stuff')
+    // A room name and a word about it, the way the lobby lists a room — and the
+    // name in accent, because that is the colour this interface uses for a
+    // thing you can type. It was dim, on one line, and read as prose.
+    expect(out).toContain('bebop')
+    expect(out).toContain('the fast stuff')
     // Navigation, not content: below the last post, which is where the eye
     // lands after `Terminal` scrolls to the end.
     expect(out.indexOf('first')).toBeLessThan(out.indexOf('bebop'))
@@ -137,7 +143,8 @@ describe('the parent room says what grew out of it', () => {
 
     const out = text((await run('go music', {} as Location)).lines)
     expect(out).toContain('nothing here yet')
-    expect(out).toContain('bebop — the fast stuff')
+    expect(out).toContain('bebop')
+    expect(out).toContain('the fast stuff')
   })
 
   it('says how many it is not showing', async () => {
@@ -152,6 +159,22 @@ describe('the parent room says what grew out of it', () => {
     const out = text((await run('go music', {} as Location)).lines)
     expect(out).toContain('and 3 more')
     expect(out).toContain('find --rooms')
+  })
+
+  it('prints the name in the colour a room name always has', async () => {
+    /*
+     * Reported as "that room should be showing in orange to depict a room but
+     * it's just normal text." Orange is not decoration here — it is what this
+     * interface uses for a thing you can type, which is exactly what this line
+     * is for. It was `dim`, the skim-past colour.
+     */
+    const { run } = harness([room('music')])
+    await run('make bebop the fast stuff', { room: 'music' } as Location)
+
+    const lines = (await run('go music', {} as Location)).lines
+    const name = lines.find((l) => l.text === 'bebop')
+    expect(name, 'the room name is not on a line of its own').toBeDefined()
+    expect(name!.tone).toBe('accent')
   })
 
   it('says nothing at all when nothing grew out of it', async () => {

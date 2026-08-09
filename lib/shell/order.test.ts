@@ -119,9 +119,9 @@ describe('time runs down the screen, not up it', () => {
       body: 'found my dad’s records in the garage',
       createdAt: at(600),
       replies: [
-        { author: 'marisol', body: 'first, and the oldest', createdAt: at(500) },
-        { author: 'ren', body: 'second, in the middle', createdAt: at(50) },
-        { author: 'tuck', body: 'third, and the newest', createdAt: at(5) },
+        { id: 1, author: 'marisol', body: 'first, and the oldest', createdAt: at(500) },
+        { id: 2, author: 'ren', body: 'second, in the middle', createdAt: at(50) },
+        { id: 3, author: 'tuck', body: 'third, and the newest', createdAt: at(5) },
       ],
     }
     expectOldestOnTop(renderPost(post))
