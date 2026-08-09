@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { FRONT_DOOR } from '@/lib/shell/types'
 
 /**
  * The front door.
@@ -24,6 +25,11 @@ export default async function Page({
     else if (Array.isArray(value)) for (const one of value) params.append(key, one)
   }
 
+  /*
+   * A crawler follows this and never sees `/`, so the share card for the bare
+   * domain is whatever card the destination has — see that room's
+   * `opengraph-image`, which is why it is the fixed one.
+   */
   const query = params.toString()
-  redirect(query ? `/commons?${query}` : '/commons')
+  redirect(query ? `/${FRONT_DOOR}?${query}` : `/${FRONT_DOOR}`)
 }

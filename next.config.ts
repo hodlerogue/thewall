@@ -34,7 +34,9 @@ const nextConfig: NextConfig = {
   // production, as a card that 500s.
   outputFileTracingIncludes: {
     '/opengraph-image': ['./assets/**'],
-    '/[room]/opengraph-image': ['./assets/**'],
+    // And the fixed front-door card, which the commons branch of that route
+    // reads off disk for the same reason the font is read off disk.
+    '/[room]/opengraph-image': ['./assets/**', './app/opengraph-image.png'],
     '/[room]/[postId]/opengraph-image': ['./assets/**'],
     '/apple-icon': ['./assets/**'],
   },

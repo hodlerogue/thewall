@@ -625,7 +625,15 @@ post and its replies. That is the §3.11 argument: proof of life is what decides
 whether anybody clicks.
 
 **The front door is a fixed image** — `app/opengraph-image.png`, with its alt
-text beside it — and it is the one card that does not draw itself. It was
+text beside it — and it is the one card that does not draw itself.
+
+It is also served by **commons**, which is not a special case so much as the
+whole mechanism: `/` does not render, it redirects to commons (§3.10 puts you
+there), and a crawler follows the redirect and scrapes the destination. Without
+that branch the fixed card is never what a link to the bare domain previews as.
+It is the right card for commons on its own terms too — everything said there
+is gone in 24 hours and a scrape is cached for about a week, so a generated
+card would spend most of its life advertising posts that no longer exist. It was
 generated too, showing three seeded rooms, and the argument above is weaker
 there than it looks: somebody who has never heard of this is not asking "what is
 being said here", they are asking "what is this", and three room names answer

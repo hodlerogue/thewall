@@ -1,6 +1,9 @@
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { OG_CONTENT_TYPE, OG_SIZE, ogCard } from '@/lib/brand/og'
 import { ogEnv } from '@/lib/brand/ogData'
 import { renderFeed, renderRoom } from '@/lib/shell/render'
+import { FRONT_DOOR } from '@/lib/shell/types'
 
 /**
  * `thewall.social/music` — the link somebody sends as an invitation.
@@ -22,6 +25,34 @@ export const contentType = OG_CONTENT_TYPE
 
 export default async function Image({ params }: { params: Promise<{ room: string }> }) {
   const { room: slug } = await params
+
+  /*
+   * commons gets the fixed card, and this is where the front door's preview
+   * actually comes from.
+   *
+   * `/` does not render — it redirects here (§3.10 puts you in commons), and a
+   * crawler follows the redirect and scrapes *this* page. So the card at
+   * `app/opengraph-image.png` would never once have been shown for a link to
+   * the bare domain, which is the link people share.
+   *
+   * It is the right card for commons on its own merits, too. Everything said
+   * there is gone in 24 hours (§3.10) and a scraped card is cached for about a
+   * week, so a generated one is guaranteed to spend most of its life
+   * advertising posts that no longer exist — §5's empty room, at 1200×630, for
+   * six days. Every other room keeps what is said in it, so its card ages into
+   * something still true.
+   */
+  if (slug === FRONT_DOOR) {
+    const png = await readFile(join(process.cwd(), 'app', 'opengraph-image.png'))
+    return new Response(new Uint8Array(png), {
+      headers: {
+        'content-type': OG_CONTENT_TYPE,
+        // What Next serves the static card with. Matching it means the two
+        // URLs for the same picture cannot be cached for different lengths.
+        'cache-control': 'public, max-age=0, must-revalidate',
+      },
+    })
+  }
 
   /*
    * `feed` holds nothing of its own, so the ordinary path draws a card saying

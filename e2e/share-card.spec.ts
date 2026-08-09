@@ -85,6 +85,47 @@ test('the page points at its card, absolutely', async ({ page }) => {
   }
 })
 
+test('following the bare domain lands on the fixed card, not a room’s', async ({ page }) => {
+  /*
+   * The bug this exists for, end to end.
+   *
+   * `/` does not render — it redirects to commons (§3.10 puts you there), and a
+   * crawler follows the redirect and scrapes the destination. So
+   * `app/opengraph-image.png` was never once what a link to the bare domain
+   * previewed as: X would have shown whatever was being said in commons that
+   * hour, cached for a week, long after every one of those posts had expired.
+   *
+   * Nothing failed. The tags were present, the image was 1200×630, the alt text
+   * was there — every assertion above passed, on a page nobody sharing the
+   * domain ever reaches. This walks the redirect the way a crawler does and
+   * compares the bytes.
+   */
+  await page.goto('/')
+
+  const card = await page.locator('meta[property="og:image"]').first().getAttribute('content')
+  expect(card, 'no card on the page the domain redirects to').toBeTruthy()
+
+  const followed = await (await page.request.get(new URL(card!).pathname + new URL(card!).search)).body()
+  const fixed = await (await page.request.get('/opengraph-image.png')).body()
+
+  expect(followed.equals(fixed), 'the domain previews as something other than the drawn card').toBe(
+    true,
+  )
+})
+
+test('and every other room still previews as itself', async ({ page }) => {
+  // The split is the point: commons is the front door and gets the poster,
+  // because a card of things that expire in 24 hours is stale for six of the
+  // seven days it is cached. A room that keeps what is said in it does not have
+  // that problem, and what is being said there is the argument for turning up.
+  const fixed = await (await page.request.get('/opengraph-image.png')).body()
+
+  for (const room of ['/music', '/poker', '/feed']) {
+    const body = await (await page.request.get(`${room}/opengraph-image`)).body()
+    expect(body.equals(fixed), `${room} is showing the poster`).toBe(false)
+  }
+})
+
 test('the card for a post is the post, not a generic picture', async ({ page }) => {
   // Rendered text cannot be read back out of a PNG, so this checks the thing
   // that actually distinguishes them: a card built from real content differs

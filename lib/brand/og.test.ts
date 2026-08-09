@@ -2,6 +2,8 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { truncateForCard } from '@/lib/brand/og'
+import { DEFAULT_ROOM } from '@/lib/shell/env'
+import { FRONT_DOOR } from '@/lib/shell/types'
 
 /**
  * The share card is a fixed rectangle, so a line that does not fit is not
@@ -110,6 +112,51 @@ describe('the card at the front door', () => {
       /^opengraph-image\.(tsx|ts|jsx|js)$/.test(name),
     )
     expect(beside).toEqual([])
+  })
+})
+
+describe('the front door redirects, so its card is not its own', () => {
+  /*
+   * The whole of the bug this section exists for: `/` does not render. It
+   * redirects to commons (§3.10 puts you there), and a crawler follows the
+   * redirect and scrapes *that* page — so `app/opengraph-image.png` is never
+   * once what a link to the bare domain previews as. It was found by watching a
+   * `curl` against the built site, not by anything failing.
+   *
+   * The fix is that commons serves the same fixed card, which makes the room
+   * name a load-bearing constant in two files that have no other reason to
+   * agree.
+   */
+  const page = readFileSync(join(process.cwd(), 'app/page.tsx'), 'utf8')
+  const card = readFileSync(join(process.cwd(), 'app/[room]/opengraph-image.tsx'), 'utf8')
+
+  it('sends the bare domain to the room the card is pinned to', () => {
+    expect(page).toContain('FRONT_DOOR')
+    expect(page).toMatch(/redirect\(.*FRONT_DOOR/s)
+    expect(card).toContain('slug === FRONT_DOOR')
+  })
+
+  it('and that room is the one the shell opens in, in all four spellings', () => {
+    /*
+     * `FRONT_DOOR`, the fixtures' `DEFAULT_ROOM`, and the copy `Shell.tsx`
+     * declares for itself. Drift here is silent in the worst way: the redirect
+     * would point at one room and the fixed card at another, so the domain
+     * would preview as whatever is being said in a room nobody chose.
+     */
+    const shell = readFileSync(join(process.cwd(), 'components/Shell.tsx'), 'utf8')
+    const declared = /const DEFAULT_ROOM = '([a-z-]+)'/.exec(shell)?.[1]
+
+    expect(FRONT_DOOR).toBe(DEFAULT_ROOM)
+    expect(declared, 'Shell no longer declares one — drop this assertion').toBe(FRONT_DOOR)
+  })
+
+  it('reads the fixed card off disk, which the build has to be told about', () => {
+    // `outputFileTracingIncludes` is the only thing putting the PNG in the
+    // serverless bundle: Next cannot trace a path built from `process.cwd()`,
+    // and the failure shows up in production only, as a card that 500s.
+    expect(card).toMatch(/readFile\(join\(process\.cwd\(\), 'app', 'opengraph-image\.png'\)\)/)
+    const config = readFileSync(join(process.cwd(), 'next.config.ts'), 'utf8')
+    expect(config).toMatch(/'\/\[room\]\/opengraph-image':[^\]]*opengraph-image\.png/)
   })
 })
 

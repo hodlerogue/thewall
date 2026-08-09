@@ -79,6 +79,21 @@ export interface Location {
 
 export type Context = 'lobby' | 'room' | 'commons' | 'post' | 'person'
 
+/**
+ * The room typing the bare domain puts you in (§3.10).
+ *
+ * Here rather than beside the fixtures because two things outside the shell
+ * need it and neither should pull the seed content in to get it: `app/page.tsx`,
+ * which redirects `/` to it, and that room's share card, which has to be the
+ * front door's card precisely *because* of that redirect — a crawler follows it
+ * and never sees `/` at all.
+ *
+ * The same string is spelled in three other places. `lib/brand/og.test.ts` pins
+ * them together, because the failure when they drift is invisible: a link to
+ * the domain previews as whatever room the redirect happens to point at.
+ */
+export const FRONT_DOOR = 'commons'
+
 /** A palette entry reads `verb — what it does` (§3.6): a glossary, not a toolbar. */
 export interface Chip {
   verb: string
