@@ -40,6 +40,9 @@ MIGRATION_PROBES=(
   # Probed by the filter itself: the function could exist unchanged and this
   # migration would still not have been applied.
   "20260809000000_no_mail_to_nowhere.sql|select pg_get_functiondef('public.pending_digests()'::regprocedure) like '%invalid|localhost%'"
+  # Probed by the shape of the fix, not by the view existing: the whole point
+  # is that the `or` is gone, and the view answers identically either way.
+  "20260810000000_lobby_uses_its_index.sql|select pg_get_viewdef('public.room_overview'::regclass) not like '%OR%'"
 )
 
 probe_for() {

@@ -110,7 +110,7 @@ export function createRunner(
 
 /** A real room to name in an error, so "try: go music" is never a dead end. */
 async function roomHint(env: Env): Promise<string> {
-  const rooms = await env.listRooms()
+  const { rooms } = await env.listRooms()
   return rooms.find((room) => !room.ephemeral)?.slug ?? rooms[0]?.slug ?? 'commons'
 }
 

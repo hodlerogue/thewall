@@ -23,6 +23,7 @@ import {
   renderRoom,
   renderRoomList,
 } from '@/lib/shell/render'
+import type { RoomList } from '@/lib/shell/model'
 import type { Session } from '@/lib/shell/session'
 import { ABOUT_SUMMARY } from '@/lib/guide/about'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
@@ -117,6 +118,17 @@ function applyTheme(name: string): void {
 
 const error = (text: string): RunResult => ({ lines: [{ text, tone: 'error' }] })
 
+/**
+ * The lobby, from what the Env handed back.
+ *
+ * A helper because `listRooms` returns a page *and* a total now, and a caller
+ * that passes only the page silently under-reports how many rooms there are —
+ * "28 more" where the truth is "298 more". A wrong number reads as a fact, so
+ * there is one place that knows how to unpack this.
+ */
+const renderLobby = (lobby: RoomList): Line[] =>
+  renderRoomList(lobby.rooms, undefined, undefined, lobby.total)
+
 /** The one room that holds nothing of its own — see the feed migration. */
 const FEED = 'feed'
 
@@ -164,7 +176,7 @@ export const COMMANDS: readonly Command[] = [
       // again. Without this, `look` to get your bearings would leave `older`
       // continuing from wherever you had already walked back to.
       session.resetPaging()
-      if (context === 'lobby') return { lines: renderRoomList(await env.listRooms()) }
+      if (context === 'lobby') return { lines: renderLobby(await env.listRooms()) }
 
       if (context === 'person') {
         const profile = await env.getProfile(location.person!)
@@ -310,7 +322,7 @@ export const COMMANDS: readonly Command[] = [
           return error(`there’s no room called ${arg}. ${arg} is a person — try: go ~${arg}`)
         }
 
-        const rooms = await env.listRooms()
+        const { rooms } = await env.listRooms()
         const near = nearestSlug(
           arg,
           rooms.map((r) => r.slug),
@@ -663,7 +675,7 @@ export const COMMANDS: readonly Command[] = [
       }
       if (context === 'post') {
         const room = await env.getRoom(location.room!)
-        if (!room) return { lines: renderRoomList(await env.listRooms()), location: {} }
+        if (!room) return { lines: renderLobby(await env.listRooms()), location: {} }
 
         /*
          * Backing out of a wall post lands on the person, not on `{room:
@@ -678,7 +690,7 @@ export const COMMANDS: readonly Command[] = [
         }
         return { lines: renderRoom(room), location: { room: room.slug } }
       }
-      return { lines: renderRoomList(await env.listRooms()), location: {} }
+      return { lines: renderLobby(await env.listRooms()), location: {} }
     },
   },
 

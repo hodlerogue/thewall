@@ -51,14 +51,48 @@ function oldestFirst<T>(items: readonly T[]): T[] {
  * and a line saying how to reach the rest. Everything stays addressable — this
  * hides nothing, it just refuses to make the front page a directory.
  */
-export const LOBBY_LIMIT = 12
+/**
+ * How many rooms people made the lobby always has space for.
+ *
+ * A separate number from the cap above, and the reason is a bug that grew
+ * quietly. The rule used to be "twelve rooms, curated first, made ones fill
+ * whatever is left" — written when there were six curated rooms, so made ones
+ * got six slots. builders, crypto, movies, feedback and feed were added since,
+ * one at a time, each obviously fine on its own. Curated reached ten, and the
+ * space left for everything anybody had ever made was **two**.
+ *
+ * Measured rather than reasoned: a database with 310 rooms in it rendered the
+ * ten curated ones, `room-1`, `room-2`, and "298 more rooms". Three hundred
+ * rooms could be alive and the front page would look identical to a site with
+ * two. Nothing failed, because no test asserted how many *made* rooms appear —
+ * only that the total was capped.
+ *
+ * The seed's own feedback room says the quiet part: "wanted a room for cycling
+ * and did not realise i could just make one. the lobby looks like a fixed
+ * list." It was a fixed list, with two slots on the end.
+ *
+ * So made rooms get a budget rather than a remainder, and adding an eleventh
+ * curated room now costs a line of length rather than a quarter of what
+ * everybody else made.
+ */
+export const MADE_SLOTS = 6
 
 export function renderRoomList(
   rooms: readonly RoomSummary[],
   now = new Date(),
   /** How much of the latest post to show. Narrower on a share card (1200px). */
   bodyWidth = 56,
-  limit = LOBBY_LIMIT,
+  /**
+   * Every listable room, not just the ones handed to this function.
+   *
+   * The lobby fetches a page now, so `rooms.length` is the size of that page —
+   * counting the "more" line from it would turn "298 more" into "28 more",
+   * which is worse than saying nothing, because a wrong number reads as a fact.
+   * Defaults to the array for the callers that genuinely have all of it: the
+   * share card, and the error paths that list what exists.
+   */
+  total = rooms.length,
+  slots = MADE_SLOTS,
 ): Line[] {
   const lines: Line[] = []
 
@@ -67,9 +101,9 @@ export function renderRoomList(
   // argument about it reading as a place survives.
   const curated = rooms.filter((room) => room.curated)
   const made = rooms.filter((room) => !room.curated)
-  const shown = [...curated, ...made.slice(0, Math.max(0, limit - curated.length))]
+  const shownMade = made.slice(0, Math.max(0, slots))
 
-  for (const room of shown) {
+  const print = (room: RoomSummary) => {
     lines.push({ text: room.slug, tone: 'accent' })
     lines.push({
       text: room.latest
@@ -80,7 +114,27 @@ export function renderRoomList(
     })
   }
 
-  const hidden = rooms.length - shown.length
+  for (const room of curated) print(room)
+
+  /*
+   * A gap and a line, before the ones people made.
+   *
+   * The two kinds used to run together, so the lobby read as one fixed list —
+   * and a newcomer had no way to learn that making a room was a thing that
+   * happens here, which is precisely the complaint the seeded feedback room
+   * makes. It is also where the "more" line belongs: the rooms not shown are
+   * all of this kind, never the furniture.
+   *
+   * Only when there are some. A site where nobody has made a room yet should
+   * not have a heading over nothing — §5's empty room, as a section.
+   */
+  if (shownMade.length > 0) {
+    lines.push({ text: '' })
+    lines.push({ text: 'and rooms people made:', tone: 'faint' })
+    for (const room of shownMade) print(room)
+  }
+
+  const hidden = total - curated.length - shownMade.length
   if (hidden > 0) {
     lines.push({ text: '' })
     lines.push({

@@ -1,5 +1,5 @@
 import type { Env } from '@/lib/shell/env'
-import type { Room, RoomSummary } from '@/lib/shell/model'
+import type { Room, RoomList } from '@/lib/shell/model'
 import type { Location } from '@/lib/shell/types'
 
 /**
@@ -26,7 +26,7 @@ import type { Location } from '@/lib/shell/types'
  * a prompt in half a second and a prompt in three, spent looking at `…`.
  */
 export interface ArrivalReads {
-  rooms: Promise<RoomSummary[]>
+  rooms: Promise<RoomList>
   /**
    * The room being arrived at, when the address names one.
    *

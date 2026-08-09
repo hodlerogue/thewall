@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Live } from '@/lib/data/live'
-import { ROOM_PAGE, type Check, type Env, type MadeRoom, type MailItem } from '@/lib/shell/env'
-import type { Post, PostHit, Profile, Room, RoomHit, RoomSummary } from '@/lib/shell/model'
+import { ROOM_PAGE, type Check, type Env, type MadeRoom, type MailItem, LOBBY_FETCH } from '@/lib/shell/env'
+import type { Post, PostHit, Profile, Room, RoomHit, RoomSummary, RoomList } from '@/lib/shell/model'
 
 /**
  * The Env the commands actually run against.
@@ -16,11 +16,27 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
   // Named rather than returned inline, so getProfile can call searchPosts
   // instead of restating the query that decides what a person's posts are.
   const env: Env = {
-    async listRooms(): Promise<RoomSummary[]> {
-      // §3.11 — one round trip for the whole lobby, including proof of life.
-      const { data, error } = await client
+    async listRooms(): Promise<RoomList> {
+      /*
+       * §3.11 — one round trip for the lobby, including proof of life.
+       *
+       * A page and a count, not the whole table. This used to select every
+       * listable room: measured against a database with 310 in it, that is
+       * **65 KB of JSON on every boot** to draw twelve lines, and it grows
+       * without limit.
+       *
+       * `count: 'exact'` rides along in the same request — PostgREST returns it
+       * in the Content-Range header — so the "298 more rooms" line stays true
+       * without a second round trip. Deriving it from `data.length` instead
+       * would report the size of the page, which is the trap a room listing
+       * already fell into once: asking for N and getting N is the same answer
+       * whether there is one more or four thousand.
+       */
+      const { data, error, count } = await client
         .from('room_overview')
-        .select('slug, gloss, ephemeral, curated, latest_body, latest_at, latest_author')
+        .select('slug, gloss, ephemeral, curated, latest_body, latest_at, latest_author', {
+          count: 'exact',
+        })
         // Curated first in their curated order, then whatever people have made,
         // liveliest first. The view has already dropped user rooms that went
         // quiet, so this is a listing of the building rather than of the
@@ -28,10 +44,11 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         .order('curated', { ascending: false })
         .order('sort_order')
         .order('latest_at', { ascending: false, nullsFirst: false })
+        .limit(LOBBY_FETCH)
 
       if (error) throw error
 
-      return (data ?? []).map((row) => ({
+      const rooms = (data ?? []).map((row) => ({
         slug: row.slug,
         gloss: row.gloss,
         ephemeral: row.ephemeral,
@@ -45,6 +62,14 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
               }
             : undefined,
       }))
+
+      /*
+       * `count` is null when PostgREST cannot supply one. Falling back to the
+       * page length is the only honest thing left: it makes the "more" line say
+       * nothing rather than say a number that is wrong, and a room reached by
+       * name still works either way.
+       */
+      return { rooms, total: count ?? rooms.length }
     },
 
     async makeRoom(slug: string, gloss: string, from?: string): Promise<MadeRoom> {

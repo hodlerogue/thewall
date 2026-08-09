@@ -183,7 +183,7 @@ describe('the feed is never rendered as an empty room', () => {
     const { run } = harness()
     void run
 
-    const rooms = await fixtureEnv().listRooms()
+    const { rooms } = await fixtureEnv().listRooms()
     const feed = rooms.find((room) => room.slug === 'feed')!
 
     expect(feed.latest, 'the feed line came back empty').toBeDefined()
@@ -191,7 +191,8 @@ describe('the feed is never rendered as an empty room', () => {
   })
 
   it('never says "quiet in here" under itself', async () => {
-    const lines = renderRoomList(await fixtureEnv().listRooms()).map((l) => l.text)
+    const { rooms, total } = await fixtureEnv().listRooms()
+    const lines = renderRoomList(rooms, undefined, undefined, total).map((l) => l.text)
     const at = lines.indexOf('feed')
     expect(at, 'feed is not in the lobby').toBeGreaterThan(-1)
     expect(lines[at + 1]).not.toBe('quiet in here')

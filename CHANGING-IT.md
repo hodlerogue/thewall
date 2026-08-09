@@ -492,6 +492,30 @@ badge. Three attempts at the test for this passed against the broken function,
 because everybody in the seed has replies at assorted recent ages; it needed its
 own person with every timestamp controlled.
 
+**The lobby fetches a page and counts the rest, and the two numbers are not the
+same.** `listRooms` returns `{ rooms, total }` because it used to select every
+listable room: measured on a database with 310 in it, 65 KB of JSON on every
+boot to draw twelve lines. `total` comes from PostgREST's exact count in the
+same request, so "294 more rooms" stays true — deriving it from the array would
+report the size of the page, which is the trap the room listing already fell
+into once.
+
+**Made rooms get a budget, not a remainder.** The rule was "twelve rooms,
+curated first, made ones fill what is left", written when six rooms were
+curated. Five more were added since, one at a time, each fine on its own —
+curated reached ten and made rooms were down to **two slots**, permanently, on a
+site with three hundred of them. Nothing failed: the only assertion was about
+the *total*, so it kept passing while the split rotted. `MADE_SLOTS` is theirs
+now, and adding an eleventh curated room costs a line of length instead.
+
+**An `or` in a lateral join costs the index.** `room_overview` found each room's
+newest post with `(feed case) or (ordinary case)`, and `p.room_slug = r.slug`
+inside an `or` cannot use `posts_room_recent` — so the lobby sequentially
+scanned every post on the site, once per room. 1112 ms at 310 rooms, 5.9 ms
+with the two cases split into two guarded laterals. The answer never changed,
+which is why nothing caught it: correct, and quadratic. Put the guard *inside*
+the subquery, not in the `ON` clause, or the lateral runs and is discarded.
+
 **The echo recedes, except the part a person wrote.** Every command echo is
 dimmed so the answer stands out, and that is right for the twenty-three verbs
 whose argument is an instruction — type `go music` and the answer is the point.

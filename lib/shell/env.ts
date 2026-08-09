@@ -17,6 +17,7 @@ import type {
   Profile,
   Room,
   RoomHit,
+  RoomList,
   RoomSummary,
 } from '@/lib/shell/model'
 
@@ -45,7 +46,7 @@ export interface Check {
 export type MadeRoom = { ok: true; slug: string } | { ok: false; reason: string }
 
 export interface Env {
-  listRooms(): Promise<RoomSummary[]>
+  listRooms(): Promise<RoomList>
   /**
    * §4.2, reopened — anybody verified may make a room, three a week.
    *
@@ -163,6 +164,22 @@ const FADE_MS = 14 * 24 * 60 * 60 * 1000
  * about seven pages inside the scrollback cap so `older` can walk a long way
  * back without trimming away where you started.
  */
+/**
+ * How many rooms the lobby asks the database for.
+ *
+ * Not how many it shows — `renderRoomList` decides that, and shows far fewer.
+ * This is the size of the page, and it exists because the lobby used to fetch
+ * the whole table: 310 rooms measured at 65 KB of JSON on every boot, to draw
+ * twelve lines.
+ *
+ * Generous on purpose. The fetch cannot know how many curated rooms there are
+ * before it runs, and curated rooms are never dropped, so the page has to be
+ * comfortably larger than that set plus the handful of made rooms the lobby
+ * has slots for. Forty leaves room for the curated list to keep growing
+ * without the made ones quietly falling off the end of the page.
+ */
+export const LOBBY_FETCH = 40
+
 export const ROOM_PAGE = 60
 
 /**
@@ -210,7 +227,9 @@ export function fixtureEnv(
       // Walls are rooms everywhere except here (§4.2). The real Env gets this
       // for free — `room_overview` filters on `owner_id is null` — and this
       // mirrors it so the lobby reads the same against fixtures.
-      return rooms.filter((room) => room.owner === undefined).map((room) => {
+      const listable = rooms.filter((room) => room.owner === undefined)
+
+      const summaries = listable.map((room) => {
         const latest = room.slug === 'feed' ? newestOnAWall : visiblePosts(room)[0]
         return {
           slug: room.slug,
@@ -222,6 +241,24 @@ export function fixtureEnv(
             : undefined,
         }
       })
+
+      /*
+       * Paged and counted, like the database. Curated first, then the liveliest
+       * of what people have made — the same order `supabaseEnv` asks for.
+       *
+       * The demo has nine rooms and will never reach the cap, which is exactly
+       * why this is here: a fixture that returns the whole table while the site
+       * returns a page is how a room listing hid its own truncation for weeks.
+       * Small is allowed; a different shape is not.
+       */
+      const liveliest = (a: RoomSummary, b: RoomSummary) =>
+        (b.latest?.createdAt.getTime() ?? 0) - (a.latest?.createdAt.getTime() ?? 0)
+      const page = [
+        ...summaries.filter((room) => room.curated),
+        ...summaries.filter((room) => !room.curated).sort(liveliest),
+      ].slice(0, LOBBY_FETCH)
+
+      return { rooms: page, total: summaries.length }
     },
     async getRoom(slug) {
       const room = rooms.find((r) => r.slug === slug)

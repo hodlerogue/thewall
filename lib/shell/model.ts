@@ -88,6 +88,25 @@ export interface RoomSummary {
 }
 
 /**
+ * The lobby: a page of rooms, and how many there are.
+ *
+ * `total` is not `rooms.length`, and that is the whole reason this is an object.
+ * The lobby fetches a page — at three hundred rooms the whole table was 65 KB
+ * of JSON downloaded on every boot to draw twelve lines — and a page cannot say
+ * how much it is a page of. Asking for forty and getting forty is the same
+ * answer whether there are forty-one or four thousand.
+ *
+ * The same trap as a room listing, which once showed a slice with nothing
+ * saying so. Here it would silently turn "298 more rooms" into "28 more rooms",
+ * which is worse than saying nothing: a wrong number reads as a fact.
+ */
+export interface RoomList {
+  rooms: RoomSummary[]
+  /** Every listable room, including the ones this page does not carry. */
+  total: number
+}
+
+/**
  * A room as a search result, which is a different question from a room in the
  * lobby: here you already know it might not be in the lobby, and want to know
  * whether it is worth walking to.
