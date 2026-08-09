@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Palette } from '@/components/Palette'
+import { echoOf } from '@/lib/commands/run'
 import { describeError } from '@/lib/shell/errors'
 import type { Chip, Line, Location, Runner } from '@/lib/shell/types'
 import { locationToPath, pathToLocation, promptLabel } from '@/lib/shell/types'
@@ -48,7 +49,16 @@ const Scrollback = memo(function Scrollback({ lines }: { lines: readonly Keyed[]
             .filter(Boolean)
             .join(' ')}
         >
-          {line.text === '' ? ' ' : line.text}
+          {line.prefix ? <span className="line-prefix">{line.prefix}</span> : null}
+          {line.text === '' ? (
+            ' '
+          ) : line.prefix ? (
+            // Explicit rather than leaning on `:has()`. The prefix recedes and
+            // this does not, which is the whole point of the pair existing.
+            <span className="line-typed">{line.text}</span>
+          ) : (
+            line.text
+          )}
         </p>
       ))}
     </>
@@ -292,7 +302,7 @@ export function Terminal({
       if (history.current[history.current.length - 1] !== text) history.current.push(text)
       historyAt.current = null
 
-      const echo: Line = { text: `${promptLabel(name, location)} ${text}`, tone: 'echo' }
+      const echo = echoOf(text, promptLabel(name, location))
       setInput('')
       setLines((prev) => append(prev, [echo]))
 

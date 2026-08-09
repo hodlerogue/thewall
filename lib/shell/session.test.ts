@@ -585,24 +585,47 @@ describe('what a post number is for, and where there isn’t one', () => {
     expect(out).not.toMatch(/\d/)
   })
 
-  it('prints the address in a room that keeps things, and nothing else', async () => {
+  it('prints the post as a header, in the room’s own grammar', async () => {
+    /*
+     * `address  author, when` — the same shape a room prints over every post,
+     * and the reason it is not just the address: your post used to have two
+     * appearances, a filing reference when you wrote it and a post when you
+     * read it back. "If you press look and the page reloads, now your message
+     * shows in the same way other people's message shows."
+     *
+     * Still no status word. `said.` was a delivery receipt and success does not
+     * need one; a header is not a receipt, it is the thing itself.
+     */
     const { run } = harness({ me: 'ryan' })
     const lines = (await run('say found my dad’s records', { room: 'music' })).lines
 
-    // The first line is the address and only the address — no verb, no status
-    // word. `said.` was a delivery receipt, and success does not need one.
-    expect(lines[0].text).toBe('music/42')
+    expect(lines[0].text).toBe('music/42  ryan, just now')
     expect(text(lines)).not.toMatch(/said/)
   })
 
-  it('prints the whole address, not a bare number', async () => {
+  it('heads it with the whole address, not a bare number', async () => {
     // A lone `42` under a sentence is cryptic, and `go 42` only works while you
     // are standing in the room it belongs to. What is printed is what `go`
     // takes from anywhere, which is what every other listing prints too.
     const { run } = harness({ me: 'ryan' })
     const lines = (await run('say hello', { room: 'music' })).lines
-    expect(lines[0].text).toBe('music/42')
-    expect(lines[0].text).not.toBe('42')
+    expect(lines[0].text.startsWith('music/42')).toBe(true)
+    expect(lines[0].text.startsWith('42')).toBe(false)
+  })
+
+  it('heads it dim, because the bright thing is now the sentence above it', async () => {
+    /*
+     * This was accent, deliberately, and reverting it needs the reason.
+     *
+     * It was accent because it was the only bright thing on screen after a
+     * contribution: the echo above it — including the sentence itself — was all
+     * dimmed, so the one line saying "that happened" had to carry the weight.
+     * `echoOf` moved that weight where it belongs. A header is a header, and
+     * every room on this site prints headers dim.
+     */
+    const { run } = harness({ me: 'ryan' })
+    const lines = (await run('say hello', { room: 'music' })).lines
+    expect(lines[0].tone).toBe('dim')
   })
 
   it('explains what the number is for once, and then stops', async () => {

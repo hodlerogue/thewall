@@ -492,6 +492,34 @@ badge. Three attempts at the test for this passed against the broken function,
 because everybody in the seed has replies at assorted recent ages; it needed its
 own person with every timestamp controlled.
 
+**The echo recedes, except the part a person wrote.** Every command echo is
+dimmed so the answer stands out, and that is right for the twenty-three verbs
+whose argument is an instruction — type `go music` and the answer is the point.
+`say` and `reply` are the two where the argument is not an instruction but the
+product, and dimming them the same way rendered somebody's own sentence at
+9.1:1 against the ground while the same words, read back in the room a moment
+later, were 14.0:1. The interface was using its own brightness hierarchy to rank
+a contribution below the reading of it. Reported exactly that way: "from your
+view it doesn't look like a typical sent message… the font isn't white."
+
+`Line.prefix` is the whole mechanism and exists for this one line: what the
+shell put there recedes, what a person typed does not, and it stays one line in
+the order it was typed. Splitting a contribution across two lines makes this a
+chat client; re-printing the words underneath shows them twice, which was a
+separate complaint about a separate bug. The verbs opt in with `contributes`,
+and a test asserts that set is exactly `say` and `reply` **by name** — a count
+would go on passing while the membership changed, and an instruction lit up like
+a sentence is the failure.
+
+**A contribution answers with the post's header, not a receipt.** `music/42` is
+a filing reference; everywhere else on the site a thing somebody said is headed
+`address  author, when`. Printing half that grammar meant your post had two
+appearances — a reference when you wrote it, a post when you read it back. The
+header is dim, which *reverts* the deliberate accent-not-dim change above it:
+that change was right when the echo was dimmed whole, because the address was
+then the only bright thing saying "that happened". The sentence carries that
+now.
+
 **Success prints a value, or it prints nothing. Never a status word.** `cp`
 says nothing when it works, and a prompt that answers `said.` under every
 sentence is a chat client with delivery receipts wearing a terminal's clothes.

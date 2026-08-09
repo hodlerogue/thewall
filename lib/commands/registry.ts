@@ -62,6 +62,21 @@ export interface Command {
   hidden?: boolean
   /** Opts into `|` splitting. Without it, a pipe is just a character. */
   pipeable?: boolean
+  /**
+   * The argument is content, not an instruction.
+   *
+   * True for exactly two verbs, and it changes one thing: the echo of what was
+   * typed keeps the words at full brightness and dims only the prompt and the
+   * verb in front of them. Everywhere else the whole echo recedes, which is
+   * right — when you type `go music`, the answer is the point.
+   *
+   * `say` and `reply` are the two where what you typed *is* the point, and
+   * dimming it uniformly meant somebody's own sentence rendered at 9.1:1 while
+   * the same words read back in the room a moment later were 14.0:1. The site
+   * was using its own hierarchy to rank your contribution below the reading
+   * of it.
+   */
+  contributes?: boolean
   /** `verb — what it does`, phrased for where you are standing. */
   gloss: (context: Context) => string
   /** Plain English, for `what <command>` (§3.8). */
@@ -433,6 +448,7 @@ export const COMMANDS: readonly Command[] = [
 
   {
     verb: 'say',
+    contributes: true,
     aliases: ['wall', 'post', 'write', 'talk'],
     /*
      * §3.3 — one verb for all contribution, and `say` is still it: inside a
@@ -539,6 +555,7 @@ export const COMMANDS: readonly Command[] = [
      * teaches the step they are missing.
      */
     verb: 'reply',
+    contributes: true,
     aliases: ['re', 'answer'],
     /*
      * Everywhere except commons.

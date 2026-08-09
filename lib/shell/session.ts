@@ -842,17 +842,34 @@ export class Session {
        * how an interface that explains itself turns into one that nags.
        */
       /*
-       * Accent, not dim.
+       * The post's own header, in the room's own grammar — not a receipt.
        *
-       * Both tokens clear 4.5:1 against the ground, so this was never a
-       * legibility failure — it was a hierarchy one. `dim` is the tone this
-       * interface uses for context you skim past: post headers, timestamps,
-       * the body of a room listing. Rendering the one line that says "that
-       * happened" in the skim-past colour is how it came to read as though it
-       * had not. Accent is what room names, the prompt and mail's addresses
-       * already use: the colour of a thing you can act on, which an address is.
+       * `poker/5` alone is a filing reference. Everywhere else on this site a
+       * thing somebody said is headed `address  author, when`, so printing half
+       * that grammar at the one moment somebody has made such a thing meant
+       * your post had two appearances: a reference when you wrote it, and a
+       * post when you read it back. Reported that way — "if you press look and
+       * the page reloads, now your message shows in the same way other people's
+       * message shows."
+       *
+       * Same line count, no words repeated. `ryan, just now` is redundant to
+       * the author and that is the point: it is what everybody else will see,
+       * shown at the moment it becomes true.
+       *
+       * And dim, which reverts a deliberate change rather than forgetting it.
+       * That change made this accent because it was the only bright thing on
+       * screen after a contribution — the echo above it, including the sentence
+       * itself, was all `--fg-dim`, so the one line saying "that happened" had
+       * to carry the weight. `echoOf` moved that weight to where it belongs:
+       * the sentence is now the brightest thing on the line above. A header is
+       * a header, and the room prints headers dim.
        */
-      const lines: Line[] = [{ text: address, tone: 'accent' }]
+      const lines: Line[] = [
+        {
+          text: `${address}  ${this.who ?? 'you'}, ${formatAgo(new Date())}`,
+          tone: 'dim',
+        },
+      ]
       if (!this.explainedAddresses) {
         this.explainedAddresses = true
         lines.push({

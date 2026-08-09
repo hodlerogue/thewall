@@ -112,6 +112,23 @@ body {
   color: var(--fg-dim);
   margin-top: 10px;
 }
+
+/*
+ * The part of a line the shell put there, as opposed to the part a person did.
+ *
+ * Only the echo of a contribution uses this. `say good to be here` used to be
+ * dimmed whole — prompt, verb and sentence together — which rendered somebody's
+ * own words at 9.1:1 against the 14.0:1 the same words get when read back in
+ * the room. This lets `ryan:poker$ say ` recede and the sentence not.
+ */
+.line-prefix {
+  color: var(--fg-dim);
+}
+
+/* And what the person typed, at the brightness the room will give it back. */
+.line-typed {
+  color: var(--fg);
+}
 .line-dim {
   color: var(--fg-dim);
 }

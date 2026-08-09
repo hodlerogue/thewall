@@ -191,14 +191,59 @@ test.describe('a contribution says where it went', () => {
     await expect(scrollback(page)).toContainText('music/12')
   })
 
-  test('and the line is accent, not the colour used for things you skim past', async ({ page }) => {
+  test('and heads it the way the room heads every other post', async ({ page }) => {
+    /*
+     * The complaint this replaced an earlier fix over: "from your view it
+     * doesn't look like a typical sent message... but if you press look, now
+     * your message shows in the same way other people's message shows."
+     *
+     * It was true. The words you typed were `--fg-dim` (9.1:1) and the same
+     * words read back in the room were `--fg` (14.0:1), and the line under them
+     * was `music/42` — a filing reference where the room prints
+     * `address  author, when`. Your post had two appearances and the first one
+     * was the lesser.
+     */
     await page.goto('/music')
     await type(page, 'say found a second turntable')
     await type(page, 'toner')
     await type(page, 'toner@example.com')
 
-    const line = scrollback(page).locator('p', { hasText: /^music\/\d+$/ }).last()
-    await expect(line).toHaveClass(/line-accent/)
+    const header = scrollback(page).locator('p', { hasText: /^music\/\d+ / }).last()
+    await expect(header).toContainText('toner, just now')
+    // Dim, like every header in every room. It was accent while it was the only
+    // bright thing after a contribution; the sentence above it carries that now.
+    await expect(header).toHaveClass(/line-dim/)
+  })
+
+  test('and your own words are as bright as everybody else’s', async ({ page }) => {
+    await page.goto('/music')
+    await type(page, 'say found a second turntable')
+    await type(page, 'brightly')
+    await type(page, 'brightly@example.com')
+    await type(page, 'say and a third')
+
+    // The prompt and the verb recede; what a person wrote does not. Asserted as
+    // two spans in one line, because the fix that would look right and be wrong
+    // is splitting a contribution across two lines.
+    const echo = scrollback(page).locator('p', { hasText: 'and a third' }).last()
+    await expect(echo.locator('.line-prefix')).toHaveText('brightly:music$ say')
+    await expect(echo.locator('.line-typed')).toHaveText('and a third')
+
+    const dim = await echo.locator('.line-prefix').evaluate((n) => getComputedStyle(n).color)
+    const bright = await echo.locator('.line-typed').evaluate((n) => getComputedStyle(n).color)
+    expect(dim).not.toBe(bright)
+
+    /*
+     * And the same brightness the room gives *somebody else's* words, which is
+     * the whole claim — not merely "brighter than the prompt".
+     *
+     * Compared against a seeded post rather than this one: the demo's writer
+     * does not add to the room listing, so looking for your own sentence after
+     * `look` finds the echo again and compares a thing to itself.
+     */
+    await type(page, 'look')
+    const theirs = scrollback(page).locator('p', { hasText: 'found my dad’s records' }).last()
+    expect(await theirs.evaluate((n) => getComputedStyle(n).color)).toBe(bright)
   })
 })
 
