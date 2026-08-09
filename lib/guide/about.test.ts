@@ -1,6 +1,11 @@
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ABOUT, ABOUT_SUMMARY } from '@/lib/guide/about'
 import { COMMANDS, findCommand } from '@/lib/commands/registry'
+import { ROOM_PAGE } from '@/lib/shell/env'
+import { MADE_SLOTS } from '@/lib/shell/render'
+import { Session } from '@/lib/shell/session'
 
 /**
  * The rundown, checked for the two ways a page like this goes wrong.
@@ -16,6 +21,81 @@ import { COMMANDS, findCommand } from '@/lib/commands/registry'
  */
 
 const prose = ABOUT.flatMap((section) => section.body).join('\n')
+
+/** Every migration, in the order applying them would. */
+const schema = (() => {
+  const dir = join(__dirname, '..', '..', 'supabase', 'migrations')
+  return readdirSync(dir)
+    .sort()
+    .map((f) => readFileSync(join(dir, f), 'utf8'))
+    .join('\n')
+})()
+
+describe('every number in the prose comes from somewhere', () => {
+  /*
+   * Written after checking these by hand for the third time.
+   *
+   * A page that describes the product is only worth having while it is true,
+   * and the parts that rot first are the numbers: a page size, a limit, a rate,
+   * a decay window. Each one lives in exactly one place — a constant or a
+   * migration — and this reads that place rather than restating it, so raising
+   * a cap fails here instead of leaving a sentence that quietly lies.
+   *
+   * Each assertion checks it found its source first. A regex that stops
+   * matching would otherwise turn into a test that passes by comparing nothing.
+   */
+  it('a room shows a page, and older walks back by the same page', () => {
+    expect(prose).toContain('newest sixty posts')
+    expect(prose).toContain('walks back sixty at a time')
+    expect(ROOM_PAGE).toBe(60)
+  })
+
+  it('a post is as long as the database lets it be', () => {
+    const declared = [
+      ...schema.matchAll(/posts_body_length\s+check \(char_length\(body\) between 1 and (\d+)\)/g),
+    ]
+    expect(declared.length, 'the constraint is not in the migrations any more').toBeGreaterThan(0)
+
+    const limit = Number(declared[declared.length - 1][1])
+    expect(limit).toBe(Session.LIMIT)
+    expect(prose).toContain(`up to ${limit.toLocaleString('en-US')} characters`)
+  })
+
+  it('rooms can be made at the rate the function enforces', () => {
+    const rate = /if v_made >= (\d+) then/.exec(schema)?.[1]
+    const window = /and created_at > now\(\) - interval '(\d+) days';/.exec(schema)?.[1]
+    expect(rate, 'the rate limit moved').toBe('3')
+    expect(window, 'the window moved').toBe('7')
+    expect(prose).toContain('three in any seven days')
+  })
+
+  it('and drop out of the lobby after the window the view fades them on', () => {
+    // Two weeks, in `room_overview` — not the seven-day `archive_quiet_rooms`,
+    // which is a lever an operator pulls by hand and is not what anybody sees.
+    const fade = /coalesce\(own\.created_at, r\.created_at\) > now\(\) - interval '(\d+) days'/.exec(
+      schema,
+    )?.[1]
+    expect(fade, 'the lobby no longer fades quiet rooms').toBe('14')
+    expect(prose).toContain('a fortnight of silence')
+  })
+
+  it('commons keeps things for exactly as long as it says', () => {
+    const window = /interval '(\d+) hours'/.exec(schema)?.[1]
+    expect(window, 'the commons expiry moved').toBe('24')
+    expect(prose).toContain('gone in 24 hours')
+  })
+
+  it('and the lobby shows a selection, which the prose no longer calls the list', () => {
+    /*
+     * It said "the lobby is the list of rooms", which stopped being true when
+     * §4.2 was reopened and anybody could make one: what it shows is every
+     * curated room, the liveliest handful of the rest, and a count.
+     */
+    expect(MADE_SLOTS).toBeGreaterThan(0)
+    expect(prose).not.toContain('the list of rooms')
+    expect(prose).toContain('how many more there are')
+  })
+})
 
 describe('the rundown', () => {
   it('says what the place is before it says how to use it', () => {
@@ -101,7 +181,10 @@ describe('the rundown', () => {
      */
     expect(prose).toContain('reply 5')
     expect(prose).toContain('reply music/12')
-    expect(prose).toMatch(/tapping it types, never sends/)
+    expect(prose).toMatch(/number on screen is a button/)
+    // The contract itself — types rather than runs — is stated once, under
+    // "On a phone", and covers the chips and the numbers together.
+    expect(prose).toMatch(/tapping one puts the word in rather than running it/)
   })
 
   it('is short enough to read in one sitting', () => {
