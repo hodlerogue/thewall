@@ -617,13 +617,34 @@ which is adding it to the seed so a fresh deploy has it too.
 cost", which is true of the address and not of the preview — a link to a
 conversation that previews as a bare domain is a link nobody opens.
 
-So the card is a picture of the thing itself. It takes the same `Line[]` the
-shell renders, from the same `renderRoom`, `renderPost` and `renderRoomList`,
+So the card for a room or a post is a picture of the thing itself. It takes the
+same `Line[]` the shell renders, from the same `renderRoom` and `renderPost`,
 and paints them in the warm palette — so a preview cannot describe a site that
-does not look like this. A room shows what is being said in it; a post shows
-the post and its replies; the front door shows three rooms with proof of life
-(§3.11), because a card of rooms reading "quiet in here" is the §5 failure mode at
-1200×630.
+does not look like this. A room shows what is being said in it; a post shows the
+post and its replies. That is the §3.11 argument: proof of life is what decides
+whether anybody clicks.
+
+**The front door is a fixed image** — `app/opengraph-image.png`, with its alt
+text beside it — and it is the one card that does not draw itself.
+
+It is also served by **commons**, which is not a special case so much as the
+whole mechanism: `/` does not render, it redirects to commons (§3.10 puts you
+there), and a crawler follows the redirect and scrapes the destination. Without
+that branch the fixed card is never what a link to the bare domain previews as.
+It is the right card for commons on its own terms too — everything said there
+is gone in 24 hours and a scrape is cached for about a week, so a generated
+card would spend most of its life advertising posts that no longer exist. It was
+generated too, showing three seeded rooms, and the argument above is weaker
+there than it looks: somebody who has never heard of this is not asking "what is
+being said here", they are asking "what is this", and three room names answer
+the second question only by accident. The cost is worth stating plainly, because
+nothing enforces it: the poster does not follow the palette, the prompt or the
+chips when those change, and no test can notice that it has gone stale.
+
+It is 1200×630 and about 130 KB, both on purpose. That aspect is what every
+scraper crops to, and the ones that give up on a large image are the chat apps,
+where a pasted link either previews in a second or never does. `lib/brand/og.test.ts`
+reads the PNG header and the byte length rather than trusting either.
 
 Every route that a crawler can reach answers with an image, including a deleted
 post, a room that never existed and `~somebody`. A card that 500s is a link

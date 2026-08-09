@@ -1,0 +1,1 @@
+thewall.social — a social network, but in a command prompt. A terminal window listing rooms: poker, kitchen, latenight, crypto, movies, feedback, each with the last thing said in it, above a prompt reading ryan:lobby$.

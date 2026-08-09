@@ -313,6 +313,32 @@ callback ran on. If it says `thewallsocial.netlify.app` while you are reading
 `thewall.social`, following a key signs you in on the other origin and leaves
 you a guest on this one.
 
+### "I changed the share card and X is still showing the old one"
+
+Expected, and there is nothing to fix in the code. X caches a scrape for about
+a week, keyed on the URL, and the Card Validator that used to force a refresh
+was retired in 2022 — there is no public way to purge it. Deleting the post
+that showed the old card does not clear it either.
+
+Two things that do work:
+
+- **Share it once with a query string** — `thewall.social/?v=2`. X has never
+  seen that URL, so it scrapes it fresh, and the redirect carries the query
+  through to commons. Any word will do; it is thrown away by the app.
+- **Wait.** The bare domain re-scrapes on its own once the entry expires.
+
+Deliberately absent, and worth not adding by mistake: an `og:url` tag. It tells
+a crawler the canonical address of the page, which would let X fold `?v=2`
+straight back into the cached entry for the bare domain — turning the one
+workaround that exists into another way of seeing the old card.
+
+What is on our side of the line is already done. The image sits at a new path
+with a fresh content hash, so a crawler that does re-fetch cannot be handed the
+old bytes; and `/` redirects to commons, so **commons serves the fixed card** —
+without that, the poster is not what a link to the domain previews as at all.
+See `lib/brand/og.test.ts` and `e2e/share-card.spec.ts`, which walk the
+redirect the way a crawler does and compare the bytes.
+
 ### "The link says my domain, but following it lands on netlify.app"
 
 A different fault from the one below, with the same result. The callback used

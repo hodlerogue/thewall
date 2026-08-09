@@ -332,10 +332,6 @@ project you deploy will not have it.
 2. `lib/shell/fixtures.ts` — the same room with the same content, so
    `npm run dev:demo` and the e2e suite show what the site shows.
 
-If it should be on the share card, add the slug to `ON_THE_CARD` in
-`lib/brand/ogRooms.ts`. `lib/brand/og.test.ts` refuses a card that advertises a
-room which does not exist.
-
 Doing both is normal: `moderate.sh` opens it tonight, the seed edit means it is
 still there after the next `db-deploy.sh` on a fresh project.
 
@@ -393,6 +389,32 @@ the contrast ratio of every token in every theme, so a new palette cannot ship
 illegible and none can regress quietly. That test exists because the warm
 `faint` was 3.14:1 and the chip gloss 2.95:1 — and the gloss is the exact text
 §3.6 says makes this legible to someone who has never opened a terminal.
+
+## Replace the front-door share card
+
+`app/opengraph-image.png`, with `app/opengraph-image.alt.txt` beside it. Next's
+file convention does the rest: that image becomes `og:image` for `/` and every
+page under it without a card of its own, and the `.txt` becomes `og:image:alt`.
+Rooms and posts are unaffected — they have their own generated cards, and those
+should stay generated, because a link to `music/12` previewing the actual
+conversation is the whole §3.11 argument for clicking it.
+
+Four things, in order, and `lib/brand/og.test.ts` checks all of them:
+
+1. **1200×630.** Not "about that" — it is what every scraper crops to, and
+   anything else gets centre-cropped, which takes one edge off each side.
+2. **Under 300 KB.** The chat apps give up on large images, silently: the
+   preview simply does not appear. A 1200×630 PNG at `quality: 90` through
+   `sharp` lands around 130 KB with no visible banding on a dark gradient.
+   `sharp` is already a dependency — Next pulls it in.
+3. **No trailing newline in the alt file.** Next reads it raw and does not trim,
+   so one lands inside the HTML attribute.
+4. **Nothing else named `opengraph-image.*` in `app/`.** A leftover generator
+   beside the image is a coin toss over which one ships.
+
+What you are accepting by using an image at all: it does not follow the palette,
+the prompt or the chips when those change, and no test can tell that it has gone
+stale. It is a poster. Look at it whenever the interface changes shape.
 
 ---
 
