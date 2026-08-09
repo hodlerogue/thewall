@@ -27,8 +27,14 @@ function harness(me: string | null = 'jameson') {
     async create(name) {
       return { ok: true as const, name }
     },
+    async logout() {
+      return { ok: true as const }
+    },
     async login(name: string) {
       return { ok: true as const, name, note: 'sent' }
+    },
+    async loginCode(name: string) {
+      return { ok: true as const, name }
     },
     async resend() {
       return { note: '' }
@@ -120,7 +126,11 @@ describe('making a room', () => {
     await run('make onions', LOBBY)
     const out = text((await run('cancel', LOBBY)).lines)
 
-    expect(out).toContain('nothing sent')
+    // Not "nothing sent" any more: that sentence is about the held sentence,
+    // and cancelling the *code* question leaves a real key in a real inbox.
+    // There is no held sentence on this path either, so it says the neutral
+    // half and claims nothing about mail.
+    expect(out).toContain('no problem')
     expect(rooms.some((room) => room.slug === 'onions')).toBe(false)
   })
 

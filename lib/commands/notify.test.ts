@@ -8,21 +8,30 @@ import { digestSubject, digestText, unsubscribeUrl } from '@/lib/auth/digest'
 import type { Line, Location } from '@/lib/shell/types'
 
 /**
- * §4.1, decided differently — and the difference is consent.
+ * §4.1, decided differently — and then the default decided differently again.
  *
  * The document's lean is "pull-only, no push, no email", in the same section
  * that calls notifications its highest-priority unsolved item because "no
- * notification means no reason to return". Both are true. What holds them
- * together is that nobody is emailed who did not ask for it, which makes
- * "off until you type something" the load-bearing part rather than a setting.
+ * notification means no reason to return". The first build kept both halves
+ * with consent: nobody emailed who had not asked.
+ *
+ * That does not solve the problem it was written for. The people who type
+ * `notify on` are the people already coming back. The person who said one
+ * thing, was answered three days later and never found out is who the feature
+ * is for, and an opt-in never reaches them.
+ *
+ * So it is on by default, and the load-bearing parts moved. They are now: it is
+ * never sent to an address nobody has proved they can read, it is never more
+ * than one a day, it is never sent on a quiet day, and `off` is a stored fact
+ * that no default can overturn. Those are what these tests are about.
  */
 
 const text = (lines: Line[]) => lines.map((l) => l.text).join('\n')
 const LOBBY: Location = {}
 
-function harness(options: { me?: string | null; refuse?: string } = {}) {
+function harness(options: { me?: string | null; refuse?: string; on?: boolean } = {}) {
   const calls: boolean[] = []
-  let on = false
+  let on = options.on ?? false
 
   const base = fixtureEnv()
   const env: Env = {
@@ -45,8 +54,14 @@ function harness(options: { me?: string | null; refuse?: string } = {}) {
     async create(name) {
       return { ok: true as const, name }
     },
+    async logout() {
+      return { ok: true as const }
+    },
     async login(name) {
       return { ok: true as const, name, note: 'sent' }
+    },
+    async loginCode(name: string) {
+      return { ok: true as const, name }
     },
     async resend() {
       return { note: '' }
@@ -66,13 +81,16 @@ function harness(options: { me?: string | null; refuse?: string } = {}) {
   return { run: createRunner(env, ['commons'], session), calls, state: () => on }
 }
 
-describe('notify — off until you ask', () => {
-  it('is off, and says what turning it on would mean', async () => {
-    const { run, calls } = harness()
+describe('notify — on unless you say otherwise', () => {
+  it('says it is on, and that you did not do it', async () => {
+    // A bare "on" invites somebody to wonder what they clicked. This is also
+    // the most honest place to mention the default at all.
+    const { run, calls } = harness({ on: true })
     const out = text((await run('notify', LOBBY)).lines)
 
-    expect(out).toContain('off')
-    expect(out).toContain('notify on')
+    expect(out).toContain('on')
+    expect(out).toContain('where everyone starts')
+    expect(out).toContain('notify off')
     // Asking is not a toggle. Somebody typing `notify` to find out where they
     // stand should not have changed where they stand.
     expect(calls).toEqual([])
@@ -104,10 +122,20 @@ describe('notify — off until you ask', () => {
     expect(out).toContain('nothing more will be sent')
   })
 
-  it('reports the state it is actually in', async () => {
-    const { run } = harness()
+  it('reports the state it is actually in, both ways round', async () => {
+    // Both directions in one test, because "reports the state" is only worth
+    // anything if it can report either — a bare check of the on message passes
+    // against a function that always says on.
+    const { run } = harness({ on: true })
+    expect(text((await run('notify', LOBBY)).lines)).toContain('one email a day')
+
+    await run('notify off', LOBBY)
+    const off = text((await run('notify', LOBBY)).lines)
+    expect(off).toContain('off')
+    expect(off).toContain('notify on')
+
     await run('notify on', LOBBY)
-    expect(text((await run('notify', LOBBY)).lines)).toContain('on —')
+    expect(text((await run('notify', LOBBY)).lines)).toContain('one email a day')
   })
 
   it('refuses a word it does not know, rather than guessing', async () => {

@@ -324,14 +324,50 @@ export const COMMANDS: readonly Command[] = [
     verb: 'make',
     aliases: ['create', 'new', 'mkdir', 'open-room'],
     contexts: ALL,
-    gloss: () => 'start a new room',
+    /*
+     * "create doesn't appear to be showing in the help menu."
+     *
+     * It was showing — as `make — start a new room`, which is the right verb by
+     * §3.5 and the wrong word to go looking for. `create` is an alias, so it
+     * works when typed and is listed under `what make`, and neither of those
+     * helps somebody scanning a list for the word they already have in mind.
+     *
+     * Swapping the verb was the other option and is worse: `make` is shorter,
+     * it is what the palette and every error message already say, and moving it
+     * renames a verb people have learned. Putting the word in the gloss costs
+     * one word and makes the line findable by either name.
+     */
+    gloss: () => 'create a new room',
     detail: () =>
-      'makes a room: make garden what you are growing. the first word is its name, the rest says what it is for and shows under it in the lobby. you need a verified account, and you can make three a week. a room has no owner — once it exists it is everybody\u2019s.',
+      'makes a room: make garden what you are growing (create works too). the first word is its name, the rest says what it is for and shows under it in the lobby. you need a verified account, and you can make three a week. a room has no owner — once it exists it is everybody\u2019s. made from inside another room, that room lists it at the bottom as having grown out of it — it is still an ordinary room with an ordinary name, not something inside anything.',
     insert: () => 'make ',
     wrongContext: () => '',
-    async run({ arg, env, session }) {
+    async run({ arg, context, location, env, session }) {
       const [slug = '', ...rest] = arg.trim().split(/\s+/)
       const gloss = rest.join(' ')
+
+      /*
+       * Where you were standing, so a room made from inside one is recorded as
+       * having grown out of it — and shows up in a line at the bottom of that
+       * room. Subtopics without nesting; see the migration for why not nesting.
+       *
+       * From a post, the room the post is in: `make` from inside `music/12` is
+       * still `make` from music, and reading a thread is the commonest moment
+       * to want a room for the tangent.
+       *
+       * Never the feed (it holds nothing and is nobody's parent) and never a
+       * wall — "jazz grew out of ~marisol" is not a thing anybody means. The
+       * lobby has no room to be from. `create_room` checks all of this again
+       * rather than trusting it.
+       */
+      const from =
+        context === 'lobby' ||
+        context === 'person' ||
+        location.room === undefined ||
+        location.room === FEED ||
+        location.room.startsWith('~')
+          ? undefined
+          : location.room
 
       if (slug === '') {
         return error('make what? try: make garden')
@@ -341,7 +377,7 @@ export const COMMANDS: readonly Command[] = [
       }
 
       const open = async (line: string): Promise<RunResult> => {
-        const made = await env.makeRoom(slug, line)
+        const made = await env.makeRoom(slug, line, from)
         if (!made.ok) return error(made.reason)
 
         const room = await env.getRoom(made.slug)
@@ -791,6 +827,7 @@ export const COMMANDS: readonly Command[] = [
       const ELSEWHERE = [
         'about',
         'login',
+        'logout',
         'mail',
         'notify',
         'rename',
@@ -1003,9 +1040,16 @@ export const COMMANDS: readonly Command[] = [
     verb: 'notify',
     aliases: ['notifications', 'email', 'digest'],
     contexts: ALL,
-    gloss: () => 'email me when replies are waiting',
+    /*
+     * Named for the thing somebody is looking for, which changed with the
+     * default. While it was opt-in the interesting half was switching it on, so
+     * "email me when replies are waiting" was an offer. It is on now, so the
+     * person scanning this list is much more likely to be looking for the way
+     * out — and a gloss that reads as an offer hides it from them.
+     */
+    gloss: () => 'the daily email, and how to stop it',
     detail: () =>
-      'notify on sends you one email a day, but only on days somebody answered you. notify off stops it, and so does the link at the bottom of any of them. it is off until you turn it on, nothing else is ever sent to you, and your address is still never shown to anybody.',
+      'one email a day, and only on days somebody answered you — a quiet week is a silent week. it is on from the moment you have an account; notify off stops it, and so does the link at the bottom of any of them. nothing else is ever sent to you, there is no second kind of email to end up on, and your address is still never shown to anybody.',
     insert: () => 'notify ',
     wrongContext: () => '',
     async run({ arg, env, session }) {
@@ -1027,12 +1071,16 @@ export const COMMANDS: readonly Command[] = [
         return {
           lines: on
             ? [
-                { text: 'on — one email a day, only when something is waiting.', tone: 'accent' },
+                // "Which is where everyone starts" because somebody reading
+                // this did not turn it on, and a bare "on" invites them to
+                // wonder what they clicked. Telling them it is the default is
+                // also the most honest place to mention the default at all.
+                { text: 'on, which is where everyone starts — one email a day, only when something is waiting.', tone: 'accent' },
                 { text: 'notify off stops it.', tone: 'faint' },
               ]
             : [
-                { text: 'off. nothing is emailed to you.', tone: 'faint' },
-                { text: 'notify on sends one a day, but only on days somebody answered you.', tone: 'faint' },
+                { text: 'off. nothing is emailed to you but a sign-in key when you ask for one.', tone: 'faint' },
+                { text: 'notify on starts it again — one a day, only on days somebody answered you.', tone: 'faint' },
               ],
         }
       }
@@ -1226,7 +1274,7 @@ export const COMMANDS: readonly Command[] = [
     contexts: ALL,
     gloss: () => 'get back into your account',
     detail: () =>
-      'sends a key to the address a name signed up with. login ryan, then click the link in the inbox and this browser is ryan again. there are no passwords — the link is the whole of it. use this on a new phone, or after clearing your browser.',
+      'sends a key to the address a name signed up with. login ryan, then type the short code from the email and this browser is ryan again. there are no passwords — the key is the whole of it. the email also has a link, which is one click on a computer; on a phone use the code, because a link tapped in a mail app opens in that app\u2019s own browser and signs you in there instead of here. use this on a new phone, or after clearing your browser.',
     insert: () => 'login ',
     wrongContext: () => '',
     async run({ arg, session }) {
@@ -1254,6 +1302,36 @@ export const COMMANDS: readonly Command[] = [
         }
       }
       return { lines: await session.signIn(arg) }
+    },
+  },
+
+  {
+    /*
+     * Leaving a device.
+     *
+     * There was no way to do this at all, on a site whose session cookie lasts
+     * four hundred days. Signing in on a borrowed phone was therefore a
+     * four-hundred-day decision, taken by somebody who thought they were
+     * reading a website, with no way to undo it from inside.
+     *
+     * Not hidden, for the same reason `login` is not: the person who needs it
+     * is standing at somebody else's machine wanting to leave, and a verb they
+     * have to already know is a verb that is not there.
+     */
+    verb: 'logout',
+    aliases: ['signout', 'bye'],
+    contexts: ALL,
+    gloss: () => 'leave this device',
+    detail: () =>
+      'signs this browser out. everything you have said stays exactly where it is — login <yourname> comes back to it. only this device: anything else you are signed in on is untouched.',
+    insert: () => 'logout',
+    wrongContext: () => '',
+    async run({ session }) {
+      const { lines, identity } = await session.signOut()
+      // `identity` rather than nothing: the prompt says who you are, and it has
+      // to stop saying it in the same breath. Returning `null` is what makes it
+      // read `guest` again.
+      return { lines, identity }
     },
   },
 

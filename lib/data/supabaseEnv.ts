@@ -47,8 +47,14 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
       }))
     },
 
-    async makeRoom(slug: string, gloss: string): Promise<MadeRoom> {
-      const { data, error } = await client.rpc('create_room', { p_slug: slug, p_gloss: gloss })
+    async makeRoom(slug: string, gloss: string, from?: string): Promise<MadeRoom> {
+      const { data, error } = await client.rpc('create_room', {
+        p_slug: slug,
+        p_gloss: gloss,
+        // Where the person was standing. The function checks it rather than
+        // trusting it — a client is not a source of truth about anything.
+        p_from: from ?? null,
+      })
       // Every rule lives in the function, and every refusal arrives as a
       // sentence already written for a person to read (§3.7) — so this passes
       // it through rather than translating it into something vaguer.
@@ -137,12 +143,21 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
 
       if (postsError) throw postsError
 
+      // Subtopics, such as they are. A second round trip rather than an embed:
+      // `rooms.from_room` points at `rooms`, and a self-referencing embed is
+      // the same ambiguity that took the site down when `created_by` landed.
+      const { data: grew } = await client.rpc('rooms_from', { p_slug: slug })
+
       const page = posts ?? []
       return {
         slug: room.slug,
         gloss: room.gloss,
         ephemeral: room.ephemeral,
         owner: ownerName(room.owner),
+        grewOut: ((grew ?? []) as { slug: string; gloss: string }[]).map((row) => ({
+          slug: row.slug,
+          gloss: row.gloss,
+        })),
         more: page.length > ROOM_PAGE,
         posts: page.slice(0, ROOM_PAGE).map(toPost),
       }

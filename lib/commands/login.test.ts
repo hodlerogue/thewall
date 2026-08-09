@@ -38,6 +38,9 @@ function harness(options: { me?: string; accounts?: string[] } = {}) {
     async create(name) {
       return { ok: true as const, name }
     },
+    async logout() {
+      return { ok: true as const }
+    },
     async login(name) {
       asked.push(name)
       if (!accounts.has(name)) {
@@ -51,6 +54,9 @@ function harness(options: { me?: string; accounts?: string[] } = {}) {
         name,
         note: `sent a key to the address ${name} signed up with. click it and you’re back.`,
       }
+    },
+    async loginCode(name: string) {
+      return { ok: true as const, name }
     },
     async resend() {
       return { note: 'another key is on its way.' }
@@ -145,7 +151,7 @@ describe('login — the way back in', () => {
     const out = text((await run('login marisol', LOBBY)).lines)
 
     expect(out).toContain('sent a key')
-    expect(out).toContain('until you follow it')
+    expect(out).toContain('until you use it')
   })
 
   it('changes nothing about the session on its own', async () => {

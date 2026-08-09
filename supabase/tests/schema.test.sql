@@ -311,11 +311,32 @@ commit;
 
 begin;
   set local role anon;
+  /*
+   * By name, and by what is MISSING — not by a count.
+   *
+   * This said `count(*) ... = 7` and passed for a fortnight while three rooms
+   * in the lobby were empty. A count answers "how many worked", which is the
+   * same number whether seven of seven worked or seven of ten, so adding
+   * crypto, movies and feedback to `rooms` without adding anything to say in
+   * them moved the answer from right to right.
+   *
+   * What §5 actually asks is that *none* is empty, so that is what is asserted:
+   * the set of curated rooms with nothing to show, which must be empty and
+   * which names the offender when it is not. This is the rule already written
+   * down here after the last time — assert sets by name, never counts.
+   *
+   * Found by generating supabase/setup.sql and running it against a blank
+   * database, which prints a post count per room. No test could see it: the
+   * fixtures had content for all three.
+   */
   select tests.ok(
-    (select count(*) from public.room_overview where latest_body is not null) = 7,
-    -- Seven now, not six: `feed` is in the lobby and its line comes from the
-    -- walls rather than from posts of its own, which is the whole point of it.
-    'every seeded room has something recent to show'
+    not exists (
+      select 1 from public.room_overview where latest_body is null
+    ),
+    'no room in the lobby is empty — ' || coalesce(
+      (select string_agg(slug::text, ', ' order by slug)
+         from public.room_overview where latest_body is null),
+      'none are')
   );
   select tests.ok(
     (select latest_author from public.room_overview where slug = 'music') is not null,
@@ -1649,7 +1670,7 @@ commit;
 select public.hide_post('~walled', 1, false);
 
 \echo ''
-\echo '§4.1, decided differently — one email a day, only if asked'
+\echo '§4.1, decided differently — one email a day, unless you say otherwise'
 
 \set jameson '11111111-1111-4111-8111-111111111111'
 \set marisol '22222222-2222-4222-8222-222222222222'
@@ -1666,13 +1687,84 @@ insert into public.replies (post_id, author_id, body)
 select id, :'marisol'::uuid, 'a reply that has not been read'
   from public.posts where room_slug = 'music' and post_no = 900;
 
+/*
+ * On by default now, and the assertions below are the whole of what that means
+ * — because "on by default" is one sentence and four separate things have to be
+ * true for it to be safe.
+ *
+ * Everybody has a row, and it says on. The absence of a row used to mean off;
+ * it now means nothing at all, because there is a trigger making one.
+ */
 select tests.ok(
-  (select count(*) from public.notify_settings) = 0,
-  'nobody is signed up for email until somebody asks'
+  (select count(*) from public.notify_settings)
+    = (select count(*) from public.profiles where banned_at is null),
+  'everybody with an account has a setting, rather than nobody'
 );
 select tests.ok(
-  not exists (select 1 from public.pending_digests()),
-  'and nothing is due to be sent'
+  not exists (
+    select 1 from public.notify_settings n
+      join public.profiles p on p.id = n.profile_id
+     where not n.daily
+  ),
+  'and it is on for all of them — nobody has turned it off yet'
+);
+
+-- A profile made from here gets one too. The trigger is why this cannot be
+-- forgotten by a route: signup is not the only thing that makes a profile, and
+-- a second path that skipped this would leave somebody silently unreachable.
+insert into auth.users (id, aud, role, email)
+values ('a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1', 'authenticated', 'authenticated', 'fresh@seed.invalid')
+on conflict (id) do nothing;
+insert into public.profiles (id, name, verified_at)
+values ('a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1', 'freshface', now())
+on conflict (id) do nothing;
+
+select tests.ok(
+  (select daily from public.notify_settings
+    where profile_id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'::uuid) = true,
+  'a brand new account is on without asking'
+);
+select tests.ok(
+  (select token from public.notify_settings
+    where profile_id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'::uuid) is not null,
+  'and has an unsubscribe token, so its first email can be stopped'
+);
+
+/*
+ * The guard that makes defaulting on defensible rather than rude, and the one
+ * to break first if this is ever revisited: nothing is sent to an address until
+ * somebody has followed a key that arrived in it.
+ *
+ * Being on and being unverified is a normal state — you are enrolled from the
+ * moment the account exists, and the account exists before the key is followed.
+ * What must not happen is mail going to an address a stranger typed into a
+ * signup box.
+ */
+insert into auth.users (id, aud, role, email)
+values ('a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2', 'authenticated', 'authenticated', 'unproven@seed.invalid')
+on conflict (id) do nothing;
+insert into public.profiles (id, name)
+values ('a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2', 'unproven')
+on conflict (id) do nothing;
+
+insert into public.posts (room_slug, post_no, author_id, body)
+select 'music', 901, 'a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2'::uuid, 'a post by somebody who never followed the key'
+ where not exists (select 1 from public.posts where room_slug = 'music' and post_no = 901);
+insert into public.replies (post_id, author_id, body)
+select id, :'marisol'::uuid, 'an answer they will never be emailed about'
+  from public.posts where room_slug = 'music' and post_no = 901;
+
+select tests.ok(
+  (select daily from public.notify_settings
+    where profile_id = 'a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2'::uuid) = true,
+  'an unverified account is on, like everybody else'
+);
+select tests.ok(
+  not exists (
+    select 1 from public.pending_digests()
+     where profile_id = 'a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2'::uuid
+  ),
+  'and is sent nothing, because nobody has proved they can read that address'
 );
 
 -- The table is not readable from a browser. Every column in it is one somebody
@@ -1699,10 +1791,29 @@ begin;
   set local role authenticated;
   set local request.jwt.claim.sub = :'jameson';
 
-  select tests.ok(public.notify_state() = false, 'it is off before you ask');
-  select tests.ok(public.set_notify(true) = true, 'and on once you do');
-  select tests.ok(public.notify_state() = true, 'which sticks');
+  select tests.ok(public.notify_state() = true, 'it is on without being asked for');
+
+  /*
+   * Off, and then still off. This is the assertion the whole migration turns
+   * on: a default flip must never re-enable somebody who said no.
+   *
+   * It cannot here, and not by being careful — `set_notify(false)` writes a row
+   * saying false rather than deleting one, so "off" is a stored fact and only
+   * the absence of a fact becomes on. If off were ever implemented as a delete,
+   * the trigger and the backfill would both undo it, and this is what would
+   * notice.
+   */
+  select tests.ok(public.set_notify(false) = false, 'and can be turned off');
+  select tests.ok(public.notify_state() = false, 'which sticks');
+  select tests.ok(public.set_notify(true) = true, 'and back on');
+  select tests.ok(public.notify_state() = true, 'which also sticks');
 commit;
+
+select tests.ok(
+  exists (select 1 from public.notify_settings
+           where profile_id = :'jameson'::uuid),
+  'turning it off leaves a row saying so, rather than removing the row'
+);
 
 select tests.ok(
   (select count(*) from public.pending_digests() where profile_id = :'jameson'::uuid) = 1,
@@ -1734,11 +1845,80 @@ begin;
   );
 commit;
 
--- Nobody else was opted in, so nobody else is in the list.
+/*
+ * This used to assert `count(*) = 1` — "nobody who did not ask is in the list",
+ * which was the point of an opt-in and is meaningless now that everybody is in
+ * by default. Replaced rather than deleted, because the *inverse* is the
+ * assertion the new default lives or dies on: somebody who said no is sent
+ * nothing, however much is piled up waiting for them.
+ *
+ * A purpose-made person with purpose-made mail, rather than one of the seed
+ * five. Their replies are backdated and `mail_seen_at` defaults to when the
+ * profile row was made, so everything shipped with the site counts as already
+ * read — which is right, and makes the seed useless for testing "waiting". That
+ * is the lesson this file learned the hard way once already: three attempts at
+ * the digest test passed against a broken function because seeded people have
+ * replies at assorted ages.
+ */
+insert into auth.users (id, aud, role, email)
+values ('a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3', 'authenticated', 'authenticated', 'optout@seed.invalid')
+on conflict (id) do nothing;
+insert into public.profiles (id, name, verified_at)
+values ('a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3', 'optout', now())
+on conflict (id) do nothing;
+
+insert into public.posts (room_slug, post_no, author_id, body)
+select 'music', 902, 'a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3'::uuid, 'a post belonging to somebody who wants no email'
+ where not exists (select 1 from public.posts where room_slug = 'music' and post_no = 902);
+insert into public.replies (post_id, author_id, body)
+select id, :'marisol'::uuid, 'an answer that is genuinely waiting'
+  from public.posts where room_slug = 'music' and post_no = 902;
+
 select tests.ok(
-  (select count(*) from public.pending_digests()) = 1,
-  'and nobody who did not ask is in the list'
+  exists (select 1 from public.pending_digests()
+           where profile_id = 'a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3'::uuid),
+  'they are due an email without ever having asked for one'
 );
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3';
+  select tests.ok(public.set_notify(false) = false, 'and they can say no');
+commit;
+
+select tests.ok(
+  not exists (select 1 from public.pending_digests()
+               where profile_id = 'a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3'::uuid),
+  'after which they are sent nothing, however much is waiting'
+);
+
+-- And the link in the email does the same without a session, which is the only
+-- way an unsubscribe link is not a lie.
+update public.notify_settings set daily = true
+ where profile_id = 'a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3'::uuid;
+select tests.ok(
+  public.unsubscribe(
+    (select token from public.notify_settings
+      where profile_id = 'a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3'::uuid)
+  ),
+  'the token at the bottom of the email turns it off too'
+);
+select tests.ok(
+  not exists (select 1 from public.pending_digests()
+               where profile_id = 'a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3'::uuid),
+  'and that stops the mail just as surely'
+);
+select tests.ok(
+  public.unsubscribe(
+    (select token from public.notify_settings where profile_id = :'marisol'::uuid)
+  ),
+  'the token in the email turns it off too'
+);
+select tests.ok(
+  not exists (select 1 from public.pending_digests() where profile_id = :'marisol'::uuid),
+  'and that also stops the mail'
+);
+update public.notify_settings set daily = true where profile_id = :'marisol'::uuid;
 
 -- One a day, and the stamp is what enforces it.
 select tests.ok(
@@ -1779,8 +1959,14 @@ select id, :'marisol'::uuid, 'answered days ago, never read', now() - interval '
   from public.posts where room_slug = 'music' and post_no = 950;
 
 -- Emailed yesterday, about that reply.
+--
+-- An upsert rather than an insert: the row already exists, put there by the
+-- trigger the moment the profile was made. What this is setting is
+-- `notified_at`, which is the only part of it this test cares about.
 insert into public.notify_settings (profile_id, daily, notified_at)
-values ('77777777-7777-4777-8777-777777777777', true, now() - interval '25 hours');
+values ('77777777-7777-4777-8777-777777777777', true, now() - interval '25 hours')
+on conflict (profile_id) do update
+  set daily = excluded.daily, notified_at = excluded.notified_at;
 
 select tests.ok(
   not exists (
@@ -1892,6 +2078,200 @@ select tests.ok(
 
 delete from public.notify_settings;
 delete from public.posts where room_slug = 'music' and post_no = 900;
+
+\echo ''
+\echo 'rooms that grew out of a room — a label, never a nesting'
+
+-- Nesting was asked for ("can you create a room within a room, 3-5 deep, for
+-- subtopics") and argued down: an address that grows a segment per level stops
+-- being typable, and `go` would need to mean two different things. What was
+-- built instead is one nullable column. Everything below is about keeping it
+-- one nullable column — a label for discovery that no address, permission or
+-- listing is allowed to start depending on.
+--
+-- Each block rolls back rather than commits. Room creation is capped at three
+-- a week per account and these blocks make more than three between them; a
+-- committed room would also change the quota arithmetic of any test added
+-- after this one, which is a fine way to hand somebody a failure that has
+-- nothing to do with what they wrote.
+
+\set ren '44444444-4444-4444-8444-444444444444'
+\set tuck '33333333-3333-4333-8333-333333333333'
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'ren';
+
+  select tests.ok(
+    public.create_room('bebop'::citext, 'the fast stuff', 'music'::citext) = 'bebop',
+    'a room made while standing in another one is made'
+  );
+  select tests.ok(
+    (select from_room from public.rooms where slug = 'bebop') = 'music'::citext,
+    'and records where the person was standing'
+  );
+  -- The whole of the argument against nesting, in one assertion: the address is
+  -- `bebop`, not `music/bebop`, and it is reachable without going through the
+  -- parent at all.
+  select tests.ok(
+    exists (select 1 from public.rooms where slug = 'bebop'),
+    'under its own plain top-level name'
+  );
+  select tests.ok(
+    (select owner_id from public.rooms where slug = 'bebop') is null,
+    'and it belongs to nobody, exactly like a room made from the lobby'
+  );
+
+  select tests.ok(
+    public.create_room('ska'::citext, 'offbeat', null) = 'ska',
+    'a room made from the lobby is made with no parent'
+  );
+  select tests.ok(
+    (select from_room from public.rooms where slug = 'ska') is null,
+    'and records none'
+  );
+rollback;
+
+-- A parent the caller made up ------------------------------------------------
+--
+-- `p_from` arrives from a browser, so it is a claim rather than a fact. The
+-- rule is that a bad claim is dropped and the room is still made: refusing here
+-- would lose the sentence somebody typed over a label they never asked for,
+-- which is the worst trade available.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'tuck';
+
+  select tests.ok(
+    public.create_room('dub'::citext, 'heavy on the bass', 'no-such-room'::citext) = 'dub',
+    'a made-up parent does not stop the room being made'
+  );
+  select tests.ok(
+    (select from_room from public.rooms where slug = 'dub') is null,
+    'it is just dropped'
+  );
+
+  select tests.ok(
+    public.create_room('jungle'::citext, 'breakbeats', 'jungle'::citext) = 'jungle',
+    'nor does a room naming itself as its own parent'
+  );
+  select tests.ok(
+    (select from_room from public.rooms where slug = 'jungle') is null,
+    'which is also dropped, rather than making a room point at itself'
+  );
+rollback;
+
+-- A wall as a parent ---------------------------------------------------------
+--
+-- Checked separately because it has to fail for the *right* reason. A wall that
+-- does not exist is dropped by the existence check, which would let a broken
+-- `~` check pass this unnoticed — so the wall is real here.
+begin;
+  insert into public.rooms (slug, gloss, ephemeral, sort_order, owner_id)
+  values ('~ren', 'ren’s wall', false, 900, :'ren'::uuid)
+  on conflict (slug) do nothing;
+
+  select tests.ok(
+    exists (select 1 from public.rooms where slug = '~ren'),
+    'the wall is really there, so the next assertion is about ~ and not absence'
+  );
+
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'tuck';
+
+  select tests.ok(
+    public.create_room('garage'::citext, 'two-step', '~ren'::citext) = 'garage',
+    'a wall named as a parent does not stop the room being made'
+  );
+  -- "garage grew out of ~ren" is not a thing anybody means, and a wall is one
+  -- person's — it is the one place lineage would read as ownership.
+  select tests.ok(
+    (select from_room from public.rooms where slug = 'garage') is null,
+    'and is dropped: a wall is nobody’s parent'
+  );
+rollback;
+
+-- What the parent room lists -------------------------------------------------
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = :'ren';
+  select public.create_room('bebop'::citext, 'the fast stuff', 'music'::citext);
+  set local role postgres;
+
+  select tests.ok(
+    (select count(*) from public.rooms_from('music'::citext)) = 1,
+    'the parent room lists what grew out of it'
+  );
+  select tests.ok(
+    (select slug from public.rooms_from('music'::citext)) = 'bebop'::citext,
+    'by name'
+  );
+  select tests.ok(
+    (select gloss from public.rooms_from('music'::citext)) = 'the fast stuff',
+    'and with the gloss, which is what makes the line worth reading'
+  );
+  select tests.ok(
+    (select count(*) from public.rooms_from('poker'::citext)) = 0,
+    'and a room nobody branched off lists nothing'
+  );
+
+  -- §6's lever reaches this listing too. A room hidden by the operator that
+  -- stayed visible as a child of somewhere busy would be the one place hiding
+  -- did not hide.
+  update public.rooms set hidden_at = now() where slug = 'bebop';
+  select tests.ok(
+    (select count(*) from public.rooms_from('music'::citext)) = 0,
+    'a hidden room drops out of its parent’s listing'
+  );
+rollback;
+
+-- Who may read the lineage, and who may write it ------------------------------
+select tests.ok(
+  has_function_privilege('anon', 'public.rooms_from(citext)', 'execute'),
+  'a signed-out reader can see what grew out of a room'
+);
+-- The column is on `rooms`, whose select grant is column-scoped — so adding a
+-- column there is a decision about what the browser can read, and this is that
+-- decision written down. `from_room` is public: it is on the screen.
+select tests.ok(
+  has_column_privilege('anon', 'public.rooms', 'from_room', 'select'),
+  'and can read the column the listing is built from'
+);
+-- Lineage is set once, by `create_room`, from where the person was standing.
+-- Table-wide UPDATE is the exact shape of the two console bypasses closed
+-- earlier; a writable `from_room` would let anybody hang their room off the
+-- busiest room on the site.
+select tests.ok(
+  not has_column_privilege('authenticated', 'public.rooms', 'from_room', 'update'),
+  'and nobody can reparent a room from the browser'
+);
+select tests.ok(
+  not has_column_privilege('authenticated', 'public.rooms', 'from_room', 'insert'),
+  'nor set it by writing the row directly'
+);
+
+-- The old two-argument signature is gone -------------------------------------
+--
+-- `create or replace function` cannot change an argument list, so this was a
+-- drop and a create. If the drop were ever dropped, both signatures would exist
+-- and PostgREST would resolve to whichever matched — silently ignoring `p_from`
+-- forever, with every test above still passing.
+select tests.ok(
+  to_regprocedure('public.create_room(citext, text)') is null,
+  'the two-argument create_room is gone, not shadowed'
+);
+select tests.ok(
+  to_regprocedure('public.create_room(citext, text, citext)') is not null,
+  'and the three-argument one is what is there'
+);
+select tests.ok(
+  has_function_privilege('authenticated', 'public.create_room(citext, text, citext)', 'execute'),
+  'with its grants reapplied — a drop takes them with it'
+);
+select tests.ok(
+  not has_function_privilege('anon', 'public.create_room(citext, text, citext)', 'execute'),
+  'and still closed to signed-out callers'
+);
 
 \echo ''
 \echo 'all schema tests passed'

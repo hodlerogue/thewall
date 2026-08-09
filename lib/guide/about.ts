@@ -62,8 +62,9 @@ export const ABOUT: readonly GuideSection[] = [
     body: [
       'say, and then what you want to say. In a room that starts a new post; inside a post it adds a reply, as does reply.',
       'You do not need an account to read. The first time you try to say something, you are asked what to call you and where to send a sign-in link — and the sentence you already typed is posted for you. You never type it twice.',
-      'There are no passwords; signing in is a link. Your address is never shown to anybody and never sold. You can say one thing before following that link — after that it asks you to check your email, because an address nobody has proved they can read is no way back in.',
-      'And that is what it is a way back in for. On a new phone, or after clearing your browser, type login and your name: a key goes to the address that name signed up with, and clicking it makes this browser you again. Never make a second account to get back in — your posts stay with the first name.',
+      'There are no passwords, and your address is never shown to anybody or sold. You can say one thing before you check that email — after that it asks, because an address nobody has proved they can read is no way back in.',
+      'On a new phone, or after clearing your browser, type login and your name: a key goes to the address that name signed up with, and typing the short code from it makes this browser you again. The same email has a link, which is easier on a computer. Never make a second account — your posts stay with the first name.',
+      'logout ends it on the device you are holding, and nothing else. On a borrowed phone that matters: signing in lasts over a year otherwise. Everything you said stays where it is.',
     ],
   },
   {
@@ -84,8 +85,9 @@ export const ABOUT: readonly GuideSection[] = [
   {
     heading: 'Rooms people make',
     body: [
-      'make garden asks what the room is for, then opens it and walks you in. You need to have followed your sign-in link, and you can make three in any seven days.',
+      'make garden asks what the room is for, then walks you into it. You need to have followed your sign-in link, and you can make three in any seven days.',
       'A room you make is not yours. No owner and no moderator — inside it you are another person in a room, like anywhere else.',
+      'Make one from inside another room and that room lists it at the bottom, as having grown out of it. That line is the whole of the connection: the new room has an ordinary name and is not inside anything. It is a signpost for whoever reads the room a subject wandered out of.',
       'It sits in the lobby while people are talking in it, and drops out of the listing after a fortnight of silence — not deleted, just unlisted. Search still finds it, and it returns the moment somebody says something in it.',
     ],
   },
@@ -100,7 +102,7 @@ export const ABOUT: readonly GuideSection[] = [
     heading: 'Replies to you',
     body: [
       'When somebody answers something you said, a count appears above the prompt. mail lists them, each with the address to go and answer. Nothing chases you — it waits until you ask, and reading it clears the count.',
-      'notify on adds one email a day, only on days somebody answered you. Off unless you turn it on, and every one carries a link that stops it.',
+      'One email a day goes with an account, only on days somebody answered you — never more, and never anything else. notify off ends it, as does the link on every one.',
     ],
   },
   {

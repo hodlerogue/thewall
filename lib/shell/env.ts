@@ -53,7 +53,7 @@ export interface Env {
    * this reports what the database decided. A refusal is a `reason` rather than
    * a throw because "you have made three this week" is an answer, not a fault.
    */
-  makeRoom(slug: string, gloss: string): Promise<MadeRoom>
+  makeRoom(slug: string, gloss: string, from?: string): Promise<MadeRoom>
   /**
    * Rooms by name or by what they are for.
    *
@@ -185,7 +185,10 @@ export function fixtureEnv(
       : room.posts
 
   // Demo-only, and per session: nothing is stored and nothing is sent.
-  let notifying = false
+  // On, like the database. A demo that shows `notify` as off would teach the
+  // opposite of what the real site does, and the whole point of the demo is
+  // that somebody arriving afterwards finds the same place.
+  let notifying = true
 
   // Named rather than returned inline, so getProfile can reuse searchPosts
   // instead of restating the query that decides what a person's posts are.
@@ -239,6 +242,11 @@ export function fixtureEnv(
       const visible = visiblePosts(room)
       return {
         ...room,
+        // Hidden rooms are excluded here as in `rooms_from`, so §6's lever
+        // reaches this listing too.
+        grewOut: rooms
+          .filter((other) => other.fromRoom === room.slug)
+          .map((other) => ({ slug: other.slug, gloss: other.gloss })),
         posts: visible.slice(0, ROOM_PAGE),
         more: visible.length > ROOM_PAGE,
       }
@@ -263,7 +271,7 @@ export function fixtureEnv(
       return { names: ['jameson', 'marisol', 'tuck'], guests: 2 }
     },
 
-    async makeRoom(slug, gloss) {
+    async makeRoom(slug, gloss, from) {
       /*
        * The checks are in the order `create_room` does them, and that ordering
        * is part of what is being mirrored rather than an accident of writing.
@@ -301,6 +309,20 @@ export function fixtureEnv(
           reason: 'say what it is for, in a few words — that is the line under the name in the lobby.',
         }
       }
+      /*
+       * Where it grew out of, checked the way `create_room` checks it: a parent
+       * that is not a real room, or is a wall, or is this room, is dropped and
+       * the room is still made. It is a label rather than a permission.
+       */
+      const parent = (from ?? '').trim().toLowerCase()
+      const grewFrom =
+        parent !== '' &&
+        parent !== clean &&
+        !parent.startsWith('~') &&
+        rooms.some((room) => room.slug === parent)
+          ? parent
+          : undefined
+
       // Pushed onto the same array the rest of this Env reads, so the demo can
       // make a room and then walk into it. Nothing is stored anywhere.
       rooms.push({
@@ -308,6 +330,7 @@ export function fixtureEnv(
         gloss: gloss.trim(),
         ephemeral: false,
         madeBy: 'you',
+        fromRoom: grewFrom,
         posts: [],
       })
       return { ok: true, slug: clean }

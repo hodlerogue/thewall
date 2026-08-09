@@ -56,7 +56,26 @@ export interface SignupApi {
    * a session and re-sends to the address on it, and this one exists precisely
    * for the case where there is no session to read an address off.
    */
-  login(name: string): Promise<{ ok: true; name: string; note: string } | { ok: false; reason: string }>
+  login(
+    name: string,
+  ): Promise<
+    { ok: true; name: string; note: string; codeSent?: boolean } | { ok: false; reason: string }
+  >
+  /**
+   * The other half of `login`: the short key, typed rather than followed.
+   *
+   * Exists because a link cannot sign you in where you are. A mail app opens
+   * links in a browser it owns, with its own cookies, so the key is spent over
+   * there and the browser you were reading in never gets a session. The code
+   * is read with the eyes and typed here, so the session lands in this browser
+   * — which is the one that asked.
+   */
+  loginCode(
+    name: string,
+    code: string,
+  ): Promise<{ ok: true; name: string } | { ok: false; reason: string }>
+  /** Ends the session on this device. Nothing anywhere else changes. */
+  logout(): Promise<{ ok: true } | { ok: false; reason: string }>
 }
 
 export interface Writer {
@@ -90,7 +109,26 @@ type Mode = 'command' | 'ask-name' | 'ask-email' | 'ask-one'
  * how to ask and how to hand the answer back, and nothing about rooms.
  */
 interface OneQuestion {
-  answer: (text: string) => Promise<{ lines: Line[]; location?: Location }>
+  /**
+   * `identity` is here because an answered question can now sign somebody in.
+   *
+   * It was `{ lines, location }` while the only thing `askOne` did was name a
+   * room, and the ask-one branch of `answer()` copied exactly those two fields
+   * across — so a third would have been dropped on the floor with nothing
+   * saying so. That branch forwards the whole result now.
+   */
+  answer: (
+    text: string,
+  ) => Promise<{ lines: Line[]; location?: Location; identity?: string | null }>
+  /**
+   * Kept so an empty answer can re-ask the actual question.
+   *
+   * It used to substitute one fixed line — "still waiting, say it in a few
+   * words" — which was written for the only caller there was, the room gloss.
+   * Told to somebody who has just been asked for a six-character code, "in a
+   * few words" is advice for a different question entirely.
+   */
+  question: readonly Line[]
 }
 
 export interface AnswerResult {
@@ -200,21 +238,29 @@ export class Session {
    */
   askOne(question: readonly Line[], answer: OneQuestion['answer']): Line[] {
     this.mode = 'ask-one'
-    this.pending = { answer }
+    this.pending = { answer, question }
     return [...question]
   }
 
   cancel(): Line[] {
-    const hadSomething = this.held !== null || this.pending !== null
+    /*
+     * "Nothing sent" is about the held sentence, and it stopped being true of
+     * every branch the moment a question could follow something that *was*
+     * sent. Cancelling the code question leaves a real key sitting in a real
+     * inbox; telling that person nothing was sent is a small lie on a path they
+     * are already confused enough to be walking.
+     */
+    const held = this.held !== null
+    const asking = held || this.pending !== null || this.pendingName !== null
     this.mode = 'command'
     this.held = null
     this.pendingName = null
     this.pending = null
+
+    if (!asking) return [{ text: 'nothing to cancel.', tone: 'faint' }]
     return [
       {
-        text: hadSomething
-          ? 'no problem — nothing sent. keep looking around.'
-          : 'nothing to cancel.',
+        text: held ? 'no problem — nothing sent. keep looking around.' : 'no problem. keep looking around.',
         tone: 'faint',
       },
     ]
@@ -265,15 +311,16 @@ export class Session {
       if (text === '') {
         // An empty answer is not an answer, and dropping back to the command
         // prompt would leave somebody wondering what happened to their room.
+        // The question comes back in full rather than a stand-in sentence —
+        // whatever was worth asking is worth asking the same way twice.
         return {
           lines: this.askOne(
-            [{ text: 'still waiting — say it in a few words.', tone: 'faint' }],
+            [{ text: 'still waiting.', tone: 'faint' }, ...pending.question],
             pending.answer,
           ),
         }
       }
-      const answered = await pending.answer(text)
-      return { lines: answered.lines, location: answered.location }
+      return await pending.answer(text)
     }
 
     return this.mode === 'ask-name' ? this.answerName(text) : this.answerEmail(text)
@@ -331,6 +378,19 @@ export class Session {
         // scrolls to is not that; a command they can type right now is.
         {
           text: 'type back to change the name. your address is never shown to anyone — type privacy for what’s kept.',
+          tone: 'faint',
+        },
+        /*
+         * Said here because this is the moment the address changes hands, and
+         * the daily summary is on from the moment the account exists.
+         *
+         * An opt-out somebody has to discover is a worse thing than an opt-in.
+         * An opt-out they were told about, in the sentence where they handed
+         * over the address, at the same volume as everything else — that is a
+         * default rather than a trick, and the difference is one line.
+         */
+        {
+          text: 'i’ll email you when somebody answers you, once a day at most. notify off stops that.',
           tone: 'faint',
         },
         /*
@@ -485,12 +545,63 @@ export class Session {
   }
 
   /**
+   * Leaving this device, and nothing else.
+   *
+   * The name goes from the prompt, the held sentence goes with it, and the
+   * posts stay exactly where they are — which is the part worth saying out
+   * loud, because "log out" reads as "remove me" to plenty of people.
+   */
+  async signOut(): Promise<{ lines: Line[]; identity: string | null }> {
+    if (this.who === null) {
+      return {
+        lines: [{ text: 'you’re already reading as a guest.', tone: 'faint' }],
+        identity: null,
+      }
+    }
+
+    const was = this.who
+    const result = await this.api.logout()
+    if (!result.ok) {
+      // Still signed in, and told so. Saying "you're out" while the cookie is
+      // there is the one answer that could actually hurt somebody, on the
+      // shared machine this command exists for.
+      return { lines: [{ text: result.reason, tone: 'error' }], identity: was }
+    }
+
+    // Everything the session was holding on this person's behalf.
+    this.who = null
+    this.mode = 'command'
+    this.held = null
+    this.pendingName = null
+    this.pending = null
+    this.explainedAddresses = false
+    this.paging = null
+
+    return {
+      lines: [
+        { text: `signed out. this browser isn’t ${was} anymore.`, tone: 'accent' },
+        { text: `everything ${was} said is still there — login ${was} comes back.`, tone: 'faint' },
+      ],
+      identity: null,
+    }
+  }
+
+  /**
    * Ask for a key by name, for a browser that has no session to read.
    *
-   * Nothing about the session changes here, and that is correct rather than
-   * unfinished: a key in an inbox is a claim nobody has proved yet, and the
-   * proof is following it. `/auth/callback` is the only thing that has ever
-   * made somebody signed in, and it stays that way.
+   * Nothing about the session changes *here* — a key in an inbox is a claim
+   * nobody has proved yet, and the proof is producing it. What changed is where
+   * the proof can happen: it used to be `/auth/callback` and nowhere else,
+   * which meant it happened in whichever browser opened the link.
+   *
+   * That is the bug, reported by hand. A mail app opens links in a browser it
+   * owns, with cookies of its own; the key gets spent there, and the browser
+   * the person is reading in stays a stranger. Choosing "open in Safari"
+   * afterwards cannot help, because by then the key is gone.
+   *
+   * So the same key also comes as six characters, and typing them proves the
+   * same thing without a browser being involved at all. The link still works,
+   * and on a computer it is still one click.
    */
   async signIn(raw: string): Promise<Line[]> {
     const name = raw.trim().toLowerCase()
@@ -516,11 +627,57 @@ export class Session {
     // find themselves switched, which is a surprise worth spending a line on.
     if (this.who !== null) {
       lines.push({
-        text: `you’re ${this.who} until you follow it — clicking it makes this browser ${result.name}.`,
+        text: `you’re ${this.who} until you use it — it makes this browser ${result.name}.`,
         tone: 'faint',
       })
     }
-    return lines
+
+    // No code on this deployment — no mail configured, or a provider that does
+    // not mint one. The link is the only door, so do not open a question whose
+    // answer never arrives.
+    if (!result.codeSent) return lines
+
+    return [...lines, ...this.askForCode(result.name)]
+  }
+
+  /**
+   * The question, and re-asking it, in one place.
+   *
+   * A wrong code has to come back to the same question rather than dropping to
+   * the command prompt: somebody who mistypes one character of six should be
+   * able to type six more, not work out that they need to run `login` again and
+   * wait for another email.
+   */
+  private askForCode(name: string, problem?: Line): Line[] {
+    const question: Line[] = problem ? [problem] : []
+    question.push(
+      { text: 'type the short code from the email.', tone: 'accent' },
+      {
+        // Said because it is the entire reason the code exists, and because
+        // somebody who has already tapped the link needs to know why they are
+        // being asked for something else.
+        text: 'it signs you in here, in this browser — a link opened from a mail app usually lands somewhere else.',
+        tone: 'faint',
+      },
+    )
+
+    return this.askOne(question, async (text) => {
+      const code = text.trim()
+      const result = await this.api.loginCode(name, code)
+
+      if (!result.ok) {
+        return { lines: this.askForCode(name, { text: result.reason, tone: 'error' }) }
+      }
+
+      this.who = result.name
+      return {
+        lines: [
+          { text: `you’re ${result.name} again, on this device.`, tone: 'accent' },
+          { text: 'say what you like, as often as you like.', tone: 'faint' },
+        ],
+        identity: result.name,
+      }
+    })
   }
 
   /**

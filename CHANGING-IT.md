@@ -63,6 +63,7 @@ Terminal.tsx ──typed text──> run.ts ──parse──> registry.ts ─�
 | `lib/shell/env.ts` | the `Env` interface, and the in-memory implementation |
 | `lib/shell/fixtures.ts` | the §5 seed content, in memory |
 | `lib/shell/session.ts` | §3.9 — the held sentence, the signup questions, your name |
+| `lib/shell/boot.ts` | the first screen's reads, started together rather than in a row |
 | `lib/shell/errors.ts` | anything thrown → something a person can act on |
 | `lib/shell/themes.ts` | §4.5 — the four palettes and their tokens |
 | `lib/pwa/install.ts` | adding it to a home screen, and the two platforms that differ |
@@ -84,6 +85,15 @@ Terminal.tsx ──typed text──> run.ts ──parse──> registry.ts ─�
 | `lib/data/writer.ts` | the writing half — posts, replies, renames |
 | `lib/data/live.ts` | realtime: presence, and posts arriving while you stand there |
 | `lib/supabase/{client,server,reader}.ts` | the three clients: browser, route handler, and unauthenticated read |
+
+**An instruction printed under a list has to be true of the whole list.** A
+profile closed with "these live in rooms — go poker, then go 4", built from
+whichever post was newest and printed under posts spanning several rooms. It was
+right for one line and wrong for the rest, which is worse than saying nothing:
+somebody who follows it once and finds it works learns a rule that then fails.
+A whole address works from anywhere, so the one-step form is true of every line
+and needs no branch for walls either. When a closing line names an example, make
+sure it is an example of a rule rather than a route.
 
 **Never decorate a value before comparing it.** Live arrivals suppress your own
 posts by comparing the author to your name — and the caller built the display
@@ -123,7 +133,9 @@ three of them mint magic links for different reasons.
 | `app/api/signup/route.ts` | §3.9 — makes the account, signs it in now, mails the key |
 | `app/api/verify/resend/route.ts` | another key for **this** session, when the first expired |
 | `app/api/login/route.ts` | a key for a name, for a browser with **no** session — the way back in |
-| `app/auth/callback/route.ts` | the only thing that has ever made somebody signed in |
+| `app/api/login/code/route.ts` | the short version of the same key, typed rather than followed |
+| `app/auth/callback/route.ts` | where a followed link lands |
+| `app/api/logout/route.ts` | ending it on this device, `scope: 'local'` |
 | `app/api/digest/route.ts` | the daily email, POST + shared secret, off when unconfigured |
 | `app/unsubscribe/page.tsx` | stopping it with no session, from the link in the email |
 
@@ -132,6 +144,37 @@ off `auth.getUser()`, so it cannot work without a session; `login` exists
 precisely for the case where there is none, takes a public name, and is
 therefore the one that needs two rate limits — one per caller, one per account
 aimed at, so nobody can fill a stranger's inbox with keys.
+
+**A key cannot sign you in in a browser it did not open, so it also comes as a
+code.** This is the reason `/api/login/code` exists and the thing to understand
+before touching any of it. A mail app opens links in a browser it owns, with
+cookie storage of its own — so tapping the key from Gmail signs you in *inside
+Gmail*, spends the single-use token doing it, and leaves the browser the person
+was reading in a stranger. Opening the same link in Safari afterwards lands on
+"that key had already been used", which is true and reads as nothing happening.
+No wording fixes it; a cookie set in one browser is not readable in another.
+
+So `generateLink` returns `email_otp` beside `hashed_token`, and it is sent too.
+Typing it proves the same thing with no browser involved, and
+`/api/login/code` verifies it through **`createRouteClient`** — the client that
+writes the session cookie into the response — so the session lands in the
+browser that asked. Verify it with the admin client and the whole feature is a
+no-op that looks like it works.
+
+Two rules that are not obvious and are load-bearing:
+
+- **Wrong codes are counted per account, not only per caller.** Six digits is a
+  million, which a script exhausts in minutes; a per-caller limit is defeated by
+  rotating addresses, and names here are public so choosing a target is free.
+  That is `login-code-to`, keyed on the profile id.
+- **A wrong code, a closed account and a name nobody has all get the same
+  sentence.** `/api/login` can say "no one here is called ren", because a name
+  is public. This cannot: a different refusal for a real name tells a guesser
+  the name is right and only the code is missing.
+
+The code is deliberately **not** in the subject line, where it would be most
+convenient. A subject shows on a locked phone, names here are public, and the
+whole reason the code exists is that somebody is on a phone.
 
 **React**, of which there is deliberately very little.
 
@@ -146,6 +189,22 @@ aimed at, so nobody can fill a stranger's inbox with keys.
 **The database.** `supabase/migrations/*.sql` in filename order, then
 `supabase/seed.sql`. `supabase/tests/schema.test.sql` runs against the real
 migrations on a throwaway database.
+
+`supabase/setup.sql` is **generated** — every migration and the seed, in one
+transaction, for pasting into a SQL editor when there is no psql to hand.
+Regenerate it with `scripts/db-bundle.sh` after adding a migration;
+`lib/data/bundle.test.ts` fails if you forget, which is the only thing standing
+between a new project and last month's schema. `scripts/db-move.sql` is for
+carrying an existing project's contents to a different Supabase account.
+
+**Seeding a new room means two files, and forgetting the second is invisible.**
+`supabase/seed.sql` warms it on a real project and `lib/shell/fixtures.ts` warms
+it in the demo. crypto, movies and feedback got the fixture and not the seed, so
+the demo showed three lively rooms and every real deployment came up with three
+dead ones — for a fortnight, past every suite, because everything that reads a
+room reads the fixtures. §5 is the whole reason this matters: "an empty room is
+worse than no room." The guard is in `schema.test.sql` now and it names the
+offender.
 
 ---
 
@@ -216,6 +275,21 @@ Still true, and still asserted: `anon` and `authenticated` hold `select` on
 and how often is unroutable-around rather than a policy somebody has to get
 right twice. Walls are the other narrow path: `create_post` makes a room only
 when the slug starts with `~` **and** matches the caller's own name.
+
+**A room made from inside another room records where it was made** — that is
+`rooms.from_room`, set by `create_room`'s third argument, and it is a label for
+discovery and nothing else. No address contains it (`bebop`, never
+`music/bebop`), no permission reads it, and the lobby ignores it. The parent
+lists its children at the bottom of the room listing via `rooms_from()`; that
+line is the entire feature. Nesting was asked for and argued down: an address
+that grows a segment per level stops being typable on a phone, `go` would have
+to mean two things, and a tree of near-empty rooms is §5's "an empty room is
+worse than no room" once per level.
+
+The claim is checked in `create_room` rather than trusted, because `p_from`
+comes from a browser: a parent that does not exist, is a wall, or is the room
+being made is dropped — **and the room is still made**. Refusing there would
+lose somebody's sentence over a label they never asked for.
 
 **Adding a route to `app/` means adding a row to `reserved_slugs`.** Every entry
 there is a real path. A room called `terms` would be shadowed by `/terms`
@@ -394,6 +468,19 @@ both tones clear 4.5:1, so it was never legibility, it was hierarchy. `dim` is
 what this interface uses for things you skim past, so the one line saying "that
 happened" was in the skim-past colour.
 
+**The daily email is on by default, and "off" is a stored fact rather than the
+absence of one.** That distinction is the whole safety of the default flip, and
+it is easy to destroy by accident. `set_notify(false)` and `unsubscribe` both
+write a row saying `false`; neither deletes. So a profile with no row has never
+chosen, and only that becomes on — via a trigger on `profiles` and a one-time
+backfill. Implement "off" as a delete and both of those would silently re-enable
+everybody who had opted out. There is a database assertion for exactly this.
+
+The gate that makes it defensible is `pending_digests`'s `verified_at is not
+null`, not the setting: being on and unverified is a normal state, and it sends
+nothing. That is what stops a stranger whose address somebody typed into a
+signup box from being emailed. Break it and the default becomes indefensible.
+
 **"Is there anything waiting" and "is there anything new" are different
 questions.** The daily digest gated on the first and had to gate on the second:
 somebody who is emailed and never reads their mail still has the same pile
@@ -466,13 +553,51 @@ for *what* it printed and none for the order.
 is no desktop project. Measure what a thumb can reach — `.tap()` scrolls an
 element into view first, which is how an off-screen chip passed a green suite.
 
+**Boot's requests overlap, and only one test can tell.** The reads on arrival
+ran nose to tail — session, profile, room list, room, mail count — because that
+is the order the lines were written in, not because they depended on each other.
+Only one of those is a real dependency: the profile lookup needs the id the
+session returns. Putting an `await` back would break no test, change no output
+and print no warning; the screen would only be slower, and on a free-tier
+project a continent away "only slower" is a prompt in three seconds instead of
+half of one. `lib/shell/boot.test.ts` asserts how many requests are in flight at
+once, which is the only shape of test that can see it. `startArrivalReads`
+returns *promises*, not values, and that is the mechanism — a promise runs when
+it is made, so the caller can go and check the session while these are in the
+air.
+
+It is called once, outside the fixtures/Supabase branch, for the same reason
+everything else here is: a timing property that held on the real site and not in
+the demo would be the fixture-is-a-different-shape trap again, and quieter than
+the last one.
+
 **A source-reading test must strip comments first.** Several guards here check
 the shape of code rather than its behaviour, because the failure they catch is
 invisible to anything that runs — a PostgREST embed, a redirect origin, a
 caching service worker. Every one of those files explains the bug it used to
 have, quoting the broken expression, and a raw text scan makes that explanation
-fail the check for the thing it explains. It has happened twice. Strip
-`/* */` and `//` before matching.
+fail the check for the thing it explains.
+
+It has now happened four times, and the fourth is the one worth reading. The
+rule had been applied to the TypeScript half of `lib/data/rpc.test.ts` and not
+to the SQL half, so a `--` comment sitting inside a parameter list —
+
+```sql
+create or replace function public.create_room (
+  p_slug  citext,
+  p_gloss text,
+  -- Where the person was standing.
+  p_from  citext default null
+)
+```
+
+— was split on the comma with the rest of that line and read as a parameter
+called `--`. `p_from` vanished, the scanner fell back to the older
+two-parameter signature, and the test reported a *correct* call site as wrong.
+A comment near the thing you match is not an edge case; it is where the
+reasoning lives in this codebase. Strip `/* */` and `//` on the TypeScript
+side and `/* */` and `--` on the SQL side, before matching, in every scanner —
+both halves, not the one that broke.
 
 **`request.url` is not the address anybody typed.** Behind a proxy — Netlify,
 here — a route handler sees an internal deploy URL. Reading the query string off

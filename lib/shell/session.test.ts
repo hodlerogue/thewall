@@ -25,8 +25,14 @@ function harness(
       if (options.failCreate) return { ok: false as const, reason: options.failCreate }
       return { ok: true as const, name }
     },
+    async logout() {
+      return { ok: true as const }
+    },
     async login(name: string) {
       return { ok: true as const, name, note: 'sent' }
+    },
+    async loginCode(name: string) {
+      return { ok: true as const, name }
     },
     async resend() {
       resends += 1

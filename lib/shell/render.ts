@@ -143,6 +143,10 @@ export function renderRoom(room: Room, now = new Date()): Line[] {
       text: 'nothing here yet. say something and it will be the first thing.',
       tone: 'faint',
     })
+    // Still listed. This branch returned early, which would have hidden the
+    // subtopics of exactly the room most likely to have them — an empty one
+    // that people walked out of into something more specific.
+    lines.push(...renderGrewOut(room))
     return lines
   }
 
@@ -164,6 +168,45 @@ export function renderRoom(room: Room, now = new Date()): Line[] {
   }
 
   lines.push(...renderPosts(room.posts, room.ephemeral, now))
+  lines.push(...renderGrewOut(room))
+  return lines
+}
+
+/**
+ * Subtopics, without a tree.
+ *
+ * Nesting was asked for and argued down — see the migration — so a room that
+ * grew out of this one is an ordinary room with an ordinary address, and this
+ * line is the only thing connecting them. It sits at the bottom because that is
+ * where the eye lands, and because it is navigation rather than content: read
+ * the room, then see where else it went.
+ */
+const GREW_OUT_LIMIT = 8
+
+function renderGrewOut(room: Room): Line[] {
+  const grew = room.grewOut ?? []
+  if (grew.length === 0) return []
+
+  const lines: Line[] = [{ text: '' }]
+  const shown = grew.slice(0, GREW_OUT_LIMIT)
+
+  lines.push({
+    text: `${grew.length === 1 ? 'a room' : 'rooms'} that grew out of here:`,
+    tone: 'faint',
+  })
+  for (const child of shown) {
+    lines.push({ text: `${child.slug} — ${child.gloss}`, tone: 'dim', depth: 1 })
+  }
+
+  // No silent caps, here as everywhere. A room that spawned forty is not going
+  // to list forty on a 380px screen, and the ones cut off are still findable.
+  if (grew.length > shown.length) {
+    lines.push({
+      text: `and ${grew.length - shown.length} more — find --rooms <word> reaches them.`,
+      tone: 'faint',
+      depth: 1,
+    })
+  }
   return lines
 }
 
@@ -278,18 +321,24 @@ export function renderProfile(profile: Profile, now = new Date()): Line[] {
     lines.push({ text: post.body, depth: 1 })
   }
 
-  // Still the newest — `profile.posts` arrives newest-first and only the
-  // printing was reversed, so this is the one now sitting directly above.
+  /*
+   * One instruction, and it is true of every line above it.
+   *
+   * This used to give a two-step recipe built from a single post: "these live
+   * in rooms — go poker, then go 4". Somebody who has posted in music and poker
+   * reads that as general advice, and it is only ever right for whichever post
+   * happens to be newest. Reported exactly that way: "that's true for the most
+   * recent post but not for any of the others, so it's just confusing."
+   *
+   * A whole address works from anywhere — `go` has taken them for a while — so
+   * the one-step form needs no branch, applies to every line, and collapses the
+   * wall case and the room case into the same sentence. The newest is used as
+   * the example because it is the one directly above.
+   */
   const newest = profile.posts[0]
   lines.push({ text: '' })
   lines.push({
-    // Two closing lines because there are now two kinds of address on this
-    // page, and the old one — "go to the room first" — is a wrong instruction
-    // for a post on their wall: you are already standing where that opens.
-    text:
-      newest.room === `~${profile.name}`
-        ? `the ~${profile.name} ones are here — go ${newest.id} opens that one.`
-        : `these live in rooms — go ${newest.room}, then go ${newest.id}.`,
+    text: `each of those is an address — go ${newest.room}/${newest.id} opens that one.`,
     tone: 'faint',
   })
   return lines

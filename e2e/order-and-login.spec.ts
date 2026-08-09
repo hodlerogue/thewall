@@ -15,6 +15,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 const prompt = (page: Page) => page.getByTestId('prompt-input')
 const scrollback = (page: Page) => page.getByTestId('scrollback')
+const label = (page: Page) => page.getByTestId('prompt-label')
 
 async function type(page: Page, text: string) {
   await prompt(page).fill(text)
@@ -201,16 +202,37 @@ test.describe('a contribution says where it went', () => {
   })
 })
 
-test.describe('the daily email is a thing you switch on', () => {
-  test('is off, and says so, without turning anything on to find out', async ({ page }) => {
+test.describe('the daily email is a thing you switch off', () => {
+  test('is on for a brand new account, and says they did not do it', async ({ page }) => {
+    /*
+     * The default flipped: an opt-in only ever reached people already coming
+     * back, which is the one group that needs no reminding. What has to be true
+     * of an opt-out is that somebody finds out — so this walks a fresh signup
+     * and asks, exactly as a person would.
+     */
     await page.goto('/commons')
     await type(page, 'say hello there')
     await type(page, 'notifier')
     await type(page, 'notifier@example.com')
 
+    // Told at the moment the address changes hands, which is the only moment
+    // this is a default rather than a trick.
+    await expect(scrollback(page)).toContainText('i’ll email you when somebody answers you')
+
+    await type(page, 'notify')
+    await expect(scrollback(page)).toContainText('where everyone starts')
+    await expect(scrollback(page)).toContainText('notify off')
+  })
+
+  test('and one word ends it', async ({ page }) => {
+    await page.goto('/commons')
+    await type(page, 'say hello there')
+    await type(page, 'quitter')
+    await type(page, 'quitter@example.com')
+
+    await type(page, 'notify off')
     await type(page, 'notify')
     await expect(scrollback(page)).toContainText('off. nothing is emailed to you')
-    await expect(scrollback(page)).toContainText('notify on')
   })
 
   test('turning it on names the bound and the way out together', async ({ page }) => {
@@ -228,7 +250,10 @@ test.describe('the daily email is a thing you switch on', () => {
   test('is findable in help, since a setting nobody can see is not a choice', async ({ page }) => {
     await page.goto('/lobby')
     await type(page, 'help')
-    await expect(scrollback(page)).toContainText('notify — email me when replies are waiting')
+    // Glossed for the way out, not the way in. It is on, so somebody scanning
+    // this list is far likelier to be looking for how to stop it, and a gloss
+    // that reads as an offer hides that from them.
+    await expect(scrollback(page)).toContainText('notify — the daily email, and how to stop it')
   })
 
   test('a guest is told there is nowhere to send anything', async ({ page }) => {
@@ -264,4 +289,85 @@ test.describe('the unsubscribe link in the email', () => {
     await page.goto('/unsubscribe?t=00000000-0000-4000-8000-000000000000')
     await expect(page.locator('main')).toContainText('notify off')
   })
+})
+
+test.describe('leaving a device', () => {
+  test('logout drops you back to guest, and the prompt says so', async ({ page }) => {
+    await page.goto('/commons')
+    await type(page, 'say hello there')
+    await type(page, 'leaver')
+    await type(page, 'leaver@example.com')
+    await expect(page.getByTestId('prompt-label')).toHaveText('leaver:commons$')
+
+    await type(page, 'logout')
+    // The prompt is the thing that says who you are. If it still said `leaver`
+    // after this, the message would be the only evidence and it would be wrong.
+    await expect(page.getByTestId('prompt-label')).toHaveText('guest:commons$')
+    await expect(scrollback(page)).toContainText('isn’t leaver anymore')
+  })
+
+  test('says the posts stay and names the way back', async ({ page }) => {
+    await page.goto('/commons')
+    await type(page, 'say hello there')
+    await type(page, 'stayer')
+    await type(page, 'stayer@example.com')
+    await type(page, 'logout')
+
+    await expect(scrollback(page)).toContainText('still there')
+    await expect(scrollback(page)).toContainText('login stayer')
+  })
+
+  test('is in help, where somebody at a borrowed machine would look', async ({ page }) => {
+    await page.goto('/lobby')
+    await type(page, 'help')
+    await expect(scrollback(page)).toContainText('logout — leave this device')
+  })
+})
+
+test('signing in with the code, which is the whole point of it', async ({ page }) => {
+  /*
+   * "When i click the link in my gmail and then select safari its still opening
+   * it in the gmail app." Not a browser-picker problem: a mail app opens links
+   * in a browser it owns, so the key is spent there, and the browser you were
+   * reading in never gets a session.
+   *
+   * This walk is the fix, on the phone the whole design is aimed at — ask,
+   * type, and be signed in *here*, with no browser handed off to anybody.
+   */
+  await page.goto('/music')
+  await type(page, 'login marisol')
+
+  // The demo build says out loud that it emails nothing and hands over the
+  // code, so the flow is walkable here rather than only on the real site.
+  await expect(scrollback(page)).toContainText('this is a demo')
+  await expect(scrollback(page)).toContainText('type the short code')
+  await expect(scrollback(page)).toContainText('this browser')
+
+  // Wrong first, because that is the common case on six characters by thumb —
+  // and coming back to the same question is what makes it survivable.
+  await type(page, '999999')
+  await expect(scrollback(page)).toContainText('didn’t work')
+  await expect(label(page)).toHaveText('guest:music$')
+
+  // Spaces are tolerated: a code read off a screen gets typed with them about
+  // as often as without, and refusing that is refusing somebody who was right.
+  await type(page, '123 456')
+  await expect(scrollback(page)).toContainText('you’re marisol again')
+  await expect(label(page)).toHaveText('marisol:music$')
+})
+
+test('the code question can be walked away from', async ({ page }) => {
+  await page.goto('/music')
+  await type(page, 'login marisol')
+  await type(page, 'cancel')
+
+  await expect(label(page)).toHaveText('guest:music$')
+  // A key really is sitting in a real inbox at this point, so the cancel line
+  // must not say nothing was sent.
+  await expect(scrollback(page)).not.toContainText('nothing sent')
+
+  // And reading carries on as normal, which is the promise cancel makes.
+  await type(page, 'leave')
+  await expect(scrollback(page)).toContainText('commons')
+  await expect(label(page)).toHaveText('guest:lobby$')
 })
