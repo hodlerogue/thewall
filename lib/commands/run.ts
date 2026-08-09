@@ -168,7 +168,31 @@ export function createRunner(
       })
     }
 
-    return answer(await parsed.command.run({ arg: parsed.arg, location, context, env, hint, session }))
+    const result = await parsed.command.run({
+      arg: parsed.arg,
+      location,
+      context,
+      env,
+      hint,
+      session,
+    })
+
+    /*
+     * Words that did not send go back in the prompt *as a line that runs*.
+     *
+     * Handlers return the argument, because that is all they have — and the
+     * argument alone is not a command. `say four pounds of tomatoes` failing
+     * put `four pounds of tomatoes` in the prompt, and pressing Enter, which is
+     * the only thing anybody does next, answered `i don't know "four"` and took
+     * the sentence with it. §3.9's proudest mechanic, defeated by the keystroke
+     * it was built for.
+     *
+     * Here rather than in each handler because here is where the verb was
+     * removed. `parsed.head` is what they typed, so an alias comes back as the
+     * alias.
+     */
+    if (result.retry === undefined) return answer(result)
+    return answer({ ...result, retry: `${parsed.head} ${result.retry}` })
   }
 }
 

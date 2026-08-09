@@ -400,3 +400,52 @@ test('a five-digit address still fits on a 380px screen', async ({ page }) => {
   )
   expect(overflow).toBeLessThanOrEqual(0)
 })
+
+test('tapping an address never takes the words you had already typed', async ({ page }) => {
+  /*
+   * The order this actually happens in: you read a post, start typing your
+   * answer, and *then* tap the thing you are answering. `setInput(text)` is
+   * right for an empty prompt and destroys a sentence otherwise — §3.9's
+   * "nothing typed is ever lost", broken by the feature that exists to save you
+   * typing, at the one moment it is most likely to be used.
+   *
+   * Putting the aim in front is both the safe answer and the one that reads
+   * correctly: a whole line, ready to send.
+   */
+  await page.goto('/music')
+  await expect(page.getByTestId('tap').first()).toBeVisible()
+
+  await prompt(page).fill('the warped ones still play, they just wobble')
+  const address = await page.getByTestId('tap').first().textContent()
+  await page.getByTestId('tap').first().tap()
+
+  await expect(prompt(page)).toHaveValue(
+    `reply ${address} the warped ones still play, they just wobble`,
+  )
+  // And the cursor is at the end, where you carry on typing.
+  const at = await prompt(page).evaluate((el: HTMLInputElement) => el.selectionStart)
+  expect(at).toBe(await prompt(page).inputValue().then((v) => v.length))
+})
+
+test('and does nothing at all while a longer post is being written', async ({ page }) => {
+  /*
+   * In compose mode every line typed is prose, so an insert is not a command —
+   * it is a line of somebody's post. Tapping an address put the literal words
+   * "reply 8431" into the middle of a paragraph, silently, and the only sign
+   * was the line count going up by one.
+   */
+  await page.goto('/music')
+  await expect(page.getByTestId('tap').first()).toBeVisible()
+
+  await type(page, 'write')
+  await type(page, 'the first paragraph')
+  await expect(page.getByTestId('composing')).toContainText('1 line')
+
+  await page.getByTestId('tap').first().tap()
+  await expect(prompt(page)).toHaveValue('')
+
+  // Nothing was added to the draft by the tap, and Enter is still a paragraph
+  // break rather than a swallowed command.
+  await prompt(page).press('Enter')
+  await expect(page.getByTestId('composing')).toContainText('2 lines')
+})

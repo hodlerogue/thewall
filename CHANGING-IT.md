@@ -439,9 +439,28 @@ a row policy is how anyone could set their own `verified_at` from the browser
 console with the anon key that ships in the bundle. Every new column that means
 something needs its own negative assertion, aimed at the user's **own** row.
 
-**Nothing typed is ever lost** (§3.9). If a write can fail, the handler returns
-`retry` with the sentence in it. Clearing the input before the await is how a
-network blip used to eat somebody's paragraph.
+**Nothing typed is ever lost** (§3.9), and "put the words back" is not the same
+as honouring it. If a write can fail, the handler returns `retry` — and what
+goes back in the prompt has to be **a line that runs**, because the prompt runs
+what is in it and pressing Enter is the only thing anybody does next. Handlers
+return their argument, so `run.ts` puts the verb back on the front; the held
+sentence builds its own line in `retryLine`, aim included, since a reply aimed
+at `music/12` from another room would otherwise come back as words that land
+somewhere else entirely.
+
+For a year this looked correct and was not: `say four pounds of tomatoes`
+failing put `four pounds of tomatoes` in the box, and Enter answered
+`i don't know "four"`. There is a test file for exactly one property — take
+whatever comes back, type it, and check the thing sends.
+
+A **draft never comes back through the prompt at all**. The prompt is a
+single-line `<input>` and assigning a value with newlines strips them, so a
+failed `write` would return with every paragraph break gone — the one thing that
+mode exists to make possible. It stays a draft instead, and a second dot tries
+again.
+
+Clearing the input before the await is how a network blip used to eat somebody's
+paragraph.
 
 **Ask for an account only when the account would help.** `say` on somebody
 else's wall is refused *before* the signup ask, because a page only exists for
@@ -625,6 +644,17 @@ Three things it must not become:
   vertical padding is on an inline box, which does not affect the line at all.
   There is an e2e assertion measuring the drift of the text against its own
   line, because nothing else in the suite looks at pixels.
+- **It must not overwrite what is in the prompt.** You read a post, start typing
+  your answer, and *then* tap the thing you are answering — that order is the
+  common one, and `setInput(text)` destroys the sentence. The aim goes in front
+  of whatever is there instead, which is both safe and what you meant. This is
+  why the scrollback has its own `aim` rather than sharing the palette's
+  `insert`; the chips still replace, which is a live question rather than a
+  settled one.
+- **It must do nothing while a longer post is being written.** In that mode
+  every line typed is prose, so an insert is not a command — it is a line of
+  somebody's post, and tapping put the literal words "reply 8431" into the
+  middle of a paragraph with only the line count to show for it.
 - **It must not become a tab stop.** The scrollback is one focusable region on
   purpose (WCAG 2.1.1); sixty buttons in a room listing would put sixty stops
   between it and the prompt. `tabIndex={-1}` is defensible *only* because

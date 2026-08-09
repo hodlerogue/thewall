@@ -734,10 +734,22 @@ export const COMMANDS: readonly Command[] = [
     contexts: ALL,
     // No dash inside a gloss: help renders `verb — gloss`, and a second one
     // turns the line into a puzzle.
+    /*
+     * The gloss teaches the form that works from where you are standing, which
+     * is the whole job of this line — `help` is a list of what you can type
+     * *here*. "answer a post" was true everywhere and useful nowhere: in the
+     * lobby and in commons the bare form always fails and the address form
+     * always works, and saying so is the difference between a line somebody
+     * reads and a line somebody can follow.
+     */
     gloss: (c) =>
-      c === 'post' ? 'answer this' : c === 'room' ? 'answer a post by its number' : 'answer a post',
+      c === 'post'
+        ? 'answer this'
+        : c === 'room' || c === 'person'
+          ? 'answer a post by its number'
+          : 'answer a post by its address',
     detail: () =>
-      'answers somebody. inside a post, reply <something> answers the post and reply 2 <something> answers reply 2, saying so on the line. from outside, name the post: in a room reply 5 <something> answers post 5 without opening it, and reply music/12 <something> works from anywhere — the same address find and mail print. commons is the one place nothing can be answered, because nothing there is kept.',
+      'answers somebody. inside a post, reply <something> answers the post and reply 2 <something> answers reply 2, saying so on the line. from outside, name the post: in a room reply 5 <something> answers post 5 without opening it, and reply music/12 <something> works from anywhere — the same address find and mail print. tapping any of those numbers on the screen types it for you rather than sending anything. commons is the one place nothing can be answered, because nothing there is kept.',
     insert: (c) => (c === 'post' || c === 'room' ? 'reply ' : 'go '),
     // Never used: `contexts` is ALL, so nothing is ever the wrong place. Kept
     // because the interface requires it and an empty string is the honest
@@ -772,7 +784,31 @@ export const COMMANDS: readonly Command[] = [
        * takes an address, because it is the one with something to point at.
        */
       const inThread = context === 'post' && NUMBER.test(aim)
-      if (inThread && body !== '') return sendReply(args, location, body, Number(aim))
+      if (inThread && body !== '') {
+        /*
+         * The reply has to be there, for the same reason a post does.
+         *
+         * `reply 0 x` and `reply 99 x` in a two-reply thread both used to send:
+         * the database drops a pointer that names nothing rather than refusing,
+         * so the answer landed correctly — and the confirmation printed `→ 99`
+         * over it, claiming a link that was never stored. A receipt for
+         * something that did not happen is worse than an error.
+         */
+        const toReply = Number(aim)
+        // Undefined means the read failed, not that the thread is empty — and
+        // refusing somebody's answer because the network hiccupped would be a
+        // far worse trade than a pointer nobody checked.
+        const post = await env.getPost(location.room!, location.postId!).catch(() => undefined)
+        if (post && !post.replies.some((reply) => reply.id === toReply)) {
+          const last = post.replies[post.replies.length - 1]?.id
+          return error(
+            last === undefined
+              ? `nothing to answer here yet — reply ${body} answers the post itself.`
+              : `there’s no reply ${toReply} here. they run 1 to ${last}.`,
+          )
+        }
+        return sendReply(args, location, body, toReply)
+      }
 
       /*
        * A number, or a whole address, naming a post you are not standing in.
@@ -835,6 +871,19 @@ export const COMMANDS: readonly Command[] = [
        * it is one edit rather than retyping.
        */
       const words = args.arg.trim() === '' ? '<something>' : args.arg.trim()
+
+      /*
+       * The feed holds nothing of its own — it is a view of walls — so asking
+       * it for a post to name back answers "there's nothing in feed to answer
+       * yet", which is the empty-room lie this codebase has now fixed on five
+       * surfaces. What is true is that its numbers need the wall in front.
+       */
+      if (location.room === FEED) {
+        const feed = await env.readFeed().catch(() => [])
+        const example = feed[0] ? `${feed[0].room}/${feed[0].id}` : '~marisol/2'
+        return error(`these live on people’s walls, so the number needs the name — try: reply ${example} ${words}`)
+      }
+
       if (context === 'room' || context === 'person') {
         const room = context === 'person' ? `~${location.person}` : location.room!
         const example = (await env.getRoom(room).catch(() => undefined))?.posts[0]?.id

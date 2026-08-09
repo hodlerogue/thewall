@@ -36,8 +36,24 @@ function post(replies: Post['replies']): Post {
 
 function harness(name: string | null = 'ryan') {
   const written: { body: string; toReply?: number }[] = []
+  /*
+   * A thread with replies in it, because aiming at one that is not there is now
+   * refused — and a fixture whose post has no replies would be asserting that
+   * `reply 2` works in a thread where reply 2 cannot exist.
+   */
   const rooms: Room[] = [
-    { slug: 'music', gloss: 'what you are listening to', ephemeral: false, posts: [post([])] },
+    {
+      slug: 'music',
+      gloss: 'what you are listening to',
+      ephemeral: false,
+      posts: [
+        post([
+          { id: 1, author: 'marisol', body: 'warped ones still play', createdAt: new Date() },
+          { id: 2, author: 'tuck', body: 'what was in there', createdAt: new Date() },
+          { id: 3, author: 'ren', body: 'worth it anyway', createdAt: new Date() },
+        ]),
+      ],
+    },
   ]
   const env: Env = fixtureEnv(rooms)
 
