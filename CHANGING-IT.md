@@ -63,6 +63,7 @@ Terminal.tsx ──typed text──> run.ts ──parse──> registry.ts ─�
 | `lib/shell/env.ts` | the `Env` interface, and the in-memory implementation |
 | `lib/shell/fixtures.ts` | the §5 seed content, in memory |
 | `lib/shell/session.ts` | §3.9 — the held sentence, the signup questions, your name |
+| `lib/shell/boot.ts` | the first screen's reads, started together rather than in a row |
 | `lib/shell/errors.ts` | anything thrown → something a person can act on |
 | `lib/shell/themes.ts` | §4.5 — the four palettes and their tokens |
 | `lib/pwa/install.ts` | adding it to a home screen, and the two platforms that differ |
@@ -551,6 +552,24 @@ for *what* it printed and none for the order.
 **Mobile is the kill condition** (§8). Every e2e test runs at 380×740 and there
 is no desktop project. Measure what a thumb can reach — `.tap()` scrolls an
 element into view first, which is how an off-screen chip passed a green suite.
+
+**Boot's requests overlap, and only one test can tell.** The reads on arrival
+ran nose to tail — session, profile, room list, room, mail count — because that
+is the order the lines were written in, not because they depended on each other.
+Only one of those is a real dependency: the profile lookup needs the id the
+session returns. Putting an `await` back would break no test, change no output
+and print no warning; the screen would only be slower, and on a free-tier
+project a continent away "only slower" is a prompt in three seconds instead of
+half of one. `lib/shell/boot.test.ts` asserts how many requests are in flight at
+once, which is the only shape of test that can see it. `startArrivalReads`
+returns *promises*, not values, and that is the mechanism — a promise runs when
+it is made, so the caller can go and check the session while these are in the
+air.
+
+It is called once, outside the fixtures/Supabase branch, for the same reason
+everything else here is: a timing property that held on the real site and not in
+the demo would be the fixture-is-a-different-shape trap again, and quieter than
+the last one.
 
 **A source-reading test must strip comments first.** Several guards here check
 the shape of code rather than its behaviour, because the failure they catch is

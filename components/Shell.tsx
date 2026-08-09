@@ -7,6 +7,7 @@ import { createLive, type Live } from '@/lib/data/live'
 import { supabaseEnv } from '@/lib/data/supabaseEnv'
 import { httpSignupApi, supabaseWriter } from '@/lib/data/writer'
 import { fixtureEnv, type Env, type FixturePerson } from '@/lib/shell/env'
+import { startArrivalReads, type ArrivalReads } from '@/lib/shell/boot'
 import { PEOPLE } from '@/lib/shell/fixtures'
 import { describeError } from '@/lib/shell/errors'
 import { shouldSuggest, suggestion, watchForInstall } from '@/lib/pwa/install'
@@ -81,10 +82,6 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
 
   useEffect(() => {
     const target = pathToLocation(targetPath)
-    // Fetched once. Two identical listRooms() calls could also disagree if a
-    // room's ephemeral flag changed between them.
-    let rooms: Awaited<ReturnType<Env['listRooms']>> | undefined
-
     let cancelled = false
 
     async function load() {
@@ -110,6 +107,7 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
       let signup: SignupApi
       let existingName: string | null = null
       let live: Live | undefined
+      let client: ReturnType<typeof createClient> | undefined
       // Filled once the rooms are known; createLive reads it at event time.
       const ephemeralNames: string[] = []
 
@@ -123,7 +121,7 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
         writer = fixtureWriter()
         signup = fixtureSignup(demoPeople)
       } else {
-        const client = createClient()
+        client = createClient()
         // The Env needs the channel to answer `who`, and the channel is opened
         // by the Terminal as you move — so this is handed over before either
         // exists, and reads through it at call time.
@@ -132,8 +130,28 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
         env = supabaseEnv(client, opened)
         writer = supabaseWriter(client)
         signup = httpSignupApi()
+      }
 
-        // Someone returning through a magic link is already signed in.
+      /*
+       * Started the moment there is an Env, and deliberately before the session
+       * lookup rather than after it.
+       *
+       * That ordering is the whole point. `getUser` and the profile read are
+       * the one genuine dependency in boot — the second needs the id from the
+       * first — and the rooms have nothing to do with either. Started here they
+       * run *while* the session is being checked instead of behind it.
+       *
+       * One call for both modes, not one inside each branch. The demo taking a
+       * shorter path than the site is how a listing that paged in production
+       * and not in fixtures hid a truncation bug for weeks; a *timing* property
+       * that only holds on one of them would be the same mistake, and quieter.
+       *
+       * See lib/shell/boot.ts for why this is a function with a test.
+       */
+      const reads = startArrivalReads(env, target)
+
+      // Someone returning through a magic link is already signed in.
+      if (client) {
         const { data: userData, error: userError } = await client.auth.getUser()
         // A missing session is the normal state here, not a failure — but a
         // failed profile read is, and silently demoting a returning user to
@@ -147,27 +165,38 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
           if (error) throw error
           existingName = data?.name ?? null
         }
-
-        rooms = await env.listRooms()
-        ephemeralNames.push(
-          ...rooms.filter((room) => room.ephemeral).map((room) => room.slug),
-        )
       }
 
       const session = new Session(signup, writer, existingName)
 
-      rooms ??= await env.listRooms()
+      // Awaited once, from the single promise `startArrivalReads` made. Two
+      // separate listRooms() calls could also disagree with each other if a
+      // room's ephemeral flag changed between them.
+      const rooms = await reads.rooms
       const ephemeral = rooms.filter((room) => room.ephemeral).map((room) => room.slug)
+      // `createLive` was handed this array before the rooms were known and
+      // reads it at event time, so filling it here is what makes commons
+      // recognisable as ephemeral to a message that arrives later.
+      ephemeralNames.push(...ephemeral)
 
-      // §3.4 — the URL is a location, so arriving at /music/12 puts you
-      // inside post 12 exactly as `go 12` would have.
-      const { lines, location } = await arriveAt(env, target, rooms)
-
-      // §4.1 — read once here as well as polled, so somebody arriving to three
-      // replies sees that on the first paint rather than up to a minute later.
-      // Only for someone with a name: a guest has no mail by definition, and
-      // asking would be a round trip to learn zero.
-      const initialMail = existingName === null ? 0 : await env.mailCount().catch(() => 0)
+      /*
+       * §3.4 — the URL is a location, so arriving at /music/12 puts you inside
+       * post 12 exactly as `go 12` would have.
+       *
+       * §4.1 — the mail count is read here as well as polled, so somebody
+       * arriving to three replies sees that on the first paint rather than up
+       * to a minute later. Only for someone with a name: a guest has no mail by
+       * definition, and asking would be a round trip to learn zero.
+       *
+       * Together, because they are unrelated. The count used to wait for the
+       * room to finish rendering, which bought nothing and cost a whole round
+       * trip on the one screen nobody is looking at yet.
+       */
+      const [arrival, initialMail] = await Promise.all([
+        arriveAt(env, target, rooms, reads.room),
+        existingName === null ? Promise.resolve(0) : env.mailCount().catch(() => 0),
+      ])
+      const { lines, location } = arrival
 
       if (cancelled) return
       setBoot({
@@ -345,6 +374,14 @@ async function arriveAt(
   env: Env,
   target: Location,
   rooms: Awaited<ReturnType<Env['listRooms']>>,
+  /**
+   * The room, if boot already started fetching it.
+   *
+   * Passed rather than looked up so the fetch can overlap the room list. Absent
+   * is not an error — fixtures mode does not prefetch, and neither do the
+   * branches below that never reach `getRoom`.
+   */
+  prefetched?: ArrivalReads['room'],
 ): Promise<{ lines: Line[]; location: Location }> {
   // A project with no rooms at all is not a wrong turn, it is an unfinished
   // setup — and saying "there's no room called commons" makes it sound like a
@@ -393,7 +430,7 @@ async function arriveAt(
     return { lines: renderFeed(await env.readFeed()), location: { room: 'feed' } }
   }
 
-  const room = await env.getRoom(target.room)
+  const room = await (prefetched ?? env.getRoom(target.room))
   if (!room) {
     return {
       lines: [
