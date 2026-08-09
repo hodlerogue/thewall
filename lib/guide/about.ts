@@ -61,6 +61,7 @@ export const ABOUT: readonly GuideSection[] = [
     heading: 'Saying something',
     body: [
       'say, and then what you want to say — a new post in a room, a reply inside a post. Replies are numbered too: reply 2 answers reply 2, where it was written.',
+      'You can answer without opening anything: in a room, reply 5 something goes to post 5, and reply music/12 something works from anywhere.',
       'write takes more than one line: type it, then the post, and a line with just a dot ends it. Blank lines are paragraph breaks, up to 4,000 characters.',
       'You do not need an account to read. The first time you try to say something, you are asked what to call you and where to send a sign-in link — and the sentence you already typed is posted for you. You never type it twice.',
       'There are no passwords, and your address is never shown to anybody or sold. You can say one thing before you check that email — after that it asks, because an address nobody has proved they can read is no way back in.',
@@ -80,7 +81,7 @@ export const ABOUT: readonly GuideSection[] = [
     body: [
       'go ~yourname — with the tilde — shows somebody: when they arrived, and what they have said lately, each with the address it lives at.',
       'Your own page is also your wall. Say something there and it goes on the wall rather than into a room. Only you can start something there; anybody can answer it.',
-      'Walls never appear in the lobby — a room for every person would turn a building into a directory. go feed is where they all are instead: everything anybody has put on their own wall, each with its address. Say something there and it goes on your wall.',
+      'Walls never appear in the lobby — a room for every person would turn a building into a directory. go feed is where they all are instead: everything anybody has put on their own wall. Say something there and it goes on your wall.',
     ],
   },
   {
@@ -88,7 +89,7 @@ export const ABOUT: readonly GuideSection[] = [
     body: [
       'make garden asks what the room is for, then walks you into it. You need to have followed your sign-in link, and you can make three in any seven days.',
       'A room you make is not yours. No owner and no moderator — inside it you are another person in a room, like anywhere else.',
-      'Make one from inside another room and that room lists it at the bottom, as having grown out of it. That line is the whole of the connection: the new room has an ordinary name and is not inside anything. It is a signpost for whoever reads the room a subject wandered out of.',
+      'Make one from inside another room and that room lists it at the bottom, as having grown out of it. That line is the whole of the connection: the new room has an ordinary name and is not inside anything.',
       'It sits in the lobby while people are talking in it, and drops out of the listing after a fortnight of silence — not deleted, just unlisted. Search still finds it, and it returns the moment somebody says something in it.',
     ],
   },

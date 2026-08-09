@@ -453,11 +453,14 @@ and the first name's history stayed on the name they had abandoned. Nothing was
 wrong at any single step; the advice was wrong as a path. When you write an
 error that says "try X", type X into the thing and see what it answers.
 
-**Every contribution answers with exactly one line, in `accent`.** A room post
-gives its new address, a wall post gives `~name/7`, a reply gives the address of
-the post it is under (§4.3 — it has none of its own, and the post's is what you
-would type to come back), and commons gives the one surviving word, `said.`,
-because it is the only place with no address to give.
+**Every contribution answers with exactly one line, and that line is the thing's
+own header.** A room post gives `music/5  ryan, just now`, a wall post gives
+`~name/7`, a reply gives its number within the post — plus the post's address in
+front when it was aimed from somewhere else — and commons gives the one
+surviving word, `said.`, in `accent`, because it is the only place with no
+address to give. The headers are `dim`, which is what the room prints headers
+in: the point is that what you just wrote looks the same the moment you write it
+as it will when you read it back.
 
 Two things this went through, both worth not repeating. It printed `said.`
 everywhere, which is a delivery receipt under every sentence. Then it printed
@@ -552,6 +555,37 @@ Only `reply` reads a leading number. `say 2 hello` posts the words "2 hello",
 and it has to: a verb that sometimes swallows its first word is one nobody can
 predict. The number also travels in `Held`, or answering somebody would quietly
 become answering the post the moment a new person finished signing up.
+
+**`reply` takes an aim, and it is `go`'s grammar, not a new one.** A bare number
+is the numbered thing where you are standing — inside a post that is a reply,
+in a room it is a post, on somebody's page it is a post on their wall — and
+`room/12` is a whole address that works from anywhere, which is the form `find`,
+`mail` and a profile already print. Asked for as `reply/5`, which is the one
+spelling it cannot have: `music/12` already means "post 12 in music", so a slash
+there would make the site's single address separator mean two different things
+depending on the word in front of it. Typed anyway, it is answered with the same
+line and a space in it, because the verb and the number were both right.
+
+Two things hold this up, and both are load-bearing:
+
+- **Nothing is written until the post named is known to exist.** `nothingAt()`
+  runs before any write and before any signup ask. Skip it and a mistyped number
+  either dies at the database with the sentence gone, or — worse — collects a
+  name and an email address first and *then* dies, which is §3.9's promise
+  turned into a trap.
+- **The confirmation names the address when, and only when, you were not
+  standing there.** `Session.write`'s `elsewhere` decides it, and `Held` carries
+  it across signup. Inside the post the address is in the prompt one line below,
+  so repeating it is the receipt line this codebase keeps deleting; from
+  outside, it is the only place the address is ever said.
+
+`reply` is listed in commons now, which reverses an entry that used to be here.
+The old reasoning — a verb that can never work where it is listed is the same
+defect as a chip that always fails — was right about the verb it described.
+Naming a post changed the verb: the reply is not going *in* commons, it is going
+to music. What would have been wrong is keeping it off the list and answering
+`reply music/12 thanks` with "commons doesn't keep replies", which is a true
+sentence about a different question.
 
 **The feed does not page, and now says so.** `wall_feed` takes the newest 40 and
 `renderFeed` said nothing, so a busy feed ended on a blank line — the same

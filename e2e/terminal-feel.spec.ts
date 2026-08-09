@@ -164,14 +164,53 @@ test('reply is in help, and says what it needs', async ({ page }) => {
   await expect(scrollback(page)).toContainText('reply')
 
   await type(page, 'reply nice one')
-  await expect(scrollback(page)).toContainText('replies live inside a post')
-  // Named with a post that is actually there, not an invented number.
-  await expect(scrollback(page)).toContainText('go 12')
+  // Named with a post that is actually there, not an invented number — and
+  // carrying the sentence, so following the instruction is one edit.
+  await expect(scrollback(page)).toContainText('reply 12 nice one')
 
   // And inside one, it is simply say.
   await type(page, 'go 12')
   await type(page, 'help')
   await expect(scrollback(page)).toContainText('answer this')
+})
+
+test('a post can be answered without opening it', async ({ page }) => {
+  /*
+   * "I want a command where you can reply to a post without opening it."
+   *
+   * Two things have to be true on the screen, and only a real browser can say
+   * so: the reply says which post it landed on — the prompt cannot, because you
+   * never went there — and the prompt is unchanged, because not moving is the
+   * entire feature.
+   */
+  await page.goto('/music')
+  await type(page, 'reply 12 the warped ones still play')
+  await type(page, 'ryan')
+  await type(page, 'ryan@example.com')
+
+  await expect(scrollback(page)).toContainText('music/12')
+  await expect(page.getByTestId('prompt-label')).toHaveText('ryan:music$')
+})
+
+test('and from another room entirely, by its whole address', async ({ page }) => {
+  // The form `find` and `mail` print back at you, which is most of the reason
+  // it is worth having: the thing to type is already on the screen.
+  await page.goto('/poker')
+  await type(page, 'reply music/12 i had that record too')
+  await type(page, 'ryan')
+  await type(page, 'ryan@example.com')
+
+  await expect(scrollback(page)).toContainText('music/12')
+  await expect(page.getByTestId('prompt-label')).toHaveText('ryan:poker$')
+})
+
+test('the slash spelling hands back the line with the space in it', async ({ page }) => {
+  // Asked for as `reply/5`, which is the one spelling it cannot have —
+  // `music/12` already means post 12 in music. So the answer is their own line,
+  // corrected, ready to run.
+  await page.goto('/music')
+  await type(page, 'reply/12 that is the one')
+  await expect(scrollback(page)).toContainText('reply 12 that is the one')
 })
 
 test('reply in a room no longer posts a brand new post', async ({ page }) => {
@@ -230,13 +269,20 @@ test('help in commons offers nothing commons cannot do', async ({ page }) => {
   await page.goto('/commons')
   await type(page, 'help')
 
-  // `reply` can never work here — §3.10 gives commons no threads and the schema
-  // refuses them — so listing it would be advertising a dead end.
-  await expect(scrollback(page)).not.toContainText('reply — answer')
-  // And `go` here means another room, not a post there are none of.
+  // `go` here means another room, not a post there are none of.
   await expect(scrollback(page)).toContainText('go — go to another room')
 
-  // Typed anyway, it still explains itself.
+  /*
+   * `reply` was left off this list, on the reasoning that it could never work
+   * here: §3.10 gives commons no threads and the schema refuses them, so
+   * listing it would be advertising a dead end. Naming a post changed that —
+   * the reply is not going *in* commons, it is going to music — and a verb
+   * that works from here belongs on the list of what you can type from here.
+   */
+  await expect(scrollback(page)).toContainText('reply — answer a post')
+
+  // Answering nothing in particular still says what commons cannot do, and
+  // then names the thing that does work from here (§3.7).
   await type(page, 'reply nice one')
-  await expect(scrollback(page)).toContainText('commons doesn’t keep replies')
+  await expect(scrollback(page)).toContainText('commons keeps nothing')
 })

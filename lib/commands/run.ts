@@ -48,10 +48,17 @@ export function echoOf(input: string, label: string): Line {
    * reads as the first word of the reply, which is exactly what somebody
    * scanning the thread later would have to un-read.
    *
-   * Only for `reply`, and only when there are words after the number, which is
-   * the same test the handler applies before treating it as an aim at all.
+   * `music/12` is the same thing one step further out — the form that answers a
+   * post from anywhere without opening it — and it is if anything more
+   * important to lift out, because an address left in the bright half reads as
+   * a link somebody typed on purpose.
+   *
+   * Only for `reply`, and only when there are words after the aim, which is the
+   * same test the handler applies before treating it as an aim at all.
    */
-  const aimed = parsed.command.verb === 'reply' && /^(\d{1,6})\s+(.+)$/s.exec(parsed.arg)
+  const aimed =
+    parsed.command.verb === 'reply' &&
+    /^(\d{1,6}|[^/\s]+\/\d{1,6})\s+([\s\S]+)$/.exec(parsed.arg)
   if (aimed) {
     return { prefix: `${label} ${parsed.head} ${aimed[1]} `, text: aimed[2], tone: 'echo' }
   }
@@ -117,6 +124,31 @@ export function createRunner(
     const hint = () => (hinted ??= roomHint(env))
 
     if (!parsed.command) {
+      /*
+       * `reply/5 that is the bit i meant` — a slash where a space belongs.
+       *
+       * This is exactly how the feature was asked for, and it is the one
+       * spelling it cannot have: `music/12` already means "post 12 in music",
+       * so `reply/5` reads as post 5 in a room called reply. A "did you mean
+       * repay?" is useless here — the person has the right verb and the right
+       * number and one wrong character, so the answer is their own line back
+       * with the character fixed, ready to run.
+       */
+      const slashed = /^([a-z]+)\/(\d{1,6})$/i.exec(parsed.head)
+      const meant = slashed && findCommand(slashed[1])
+      if (slashed && meant) {
+        return answer({
+          lines: [
+            {
+              text: `the number goes after a space — try: ${slashed[1]} ${slashed[2]}${
+                parsed.arg === '' ? '' : ` ${parsed.arg}`
+              }`,
+              tone: 'error',
+            },
+          ],
+        })
+      }
+
       const near = nearestCommand(parsed.head)
       return answer({
         lines: [

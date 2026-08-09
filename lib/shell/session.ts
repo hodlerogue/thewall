@@ -41,6 +41,15 @@ export interface Held {
    */
   toReply?: number
   /**
+   * Whether it is going somewhere the person is not standing.
+   *
+   * `reply music/12 <something>` can be typed from anywhere, so the address is
+   * not in the prompt and the confirmation is the only place it appears. Held
+   * with the sentence for the same reason `toReply` is: two questions happen in
+   * between, and by the time it lands the location that started it is gone.
+   */
+  elsewhere?: boolean
+  /**
    * Send it to the wall of whoever this turns out to be.
    *
    * `location` cannot say that yet. Somebody typing on the feed with no account
@@ -683,6 +692,7 @@ export class Session {
       // Carried across the two questions, or `reply 2 <something>` typed by
       // somebody without an account would quietly become an answer to the post.
       toReply: held.toReply,
+      elsewhere: held.elsewhere,
     })
     lines.push(...written.lines)
 
@@ -898,7 +908,7 @@ export class Session {
      * already knows — `commons` is its own context precisely because §3.10
      * makes it a different kind of place.
      */
-    options: { addressed?: boolean; toReply?: number } = {},
+    options: { addressed?: boolean; toReply?: number; elsewhere?: boolean } = {},
   ): Promise<WriteResult> {
     if (!location.room) {
       return {
@@ -952,11 +962,20 @@ export class Session {
          * Same shape as a new post's confirmation, and the same shape the
          * thread will show it in when it is read back — so what you see when
          * you write it is what it looks like.
+         *
+         * The post's address comes back in front of it when the reply went
+         * somewhere you are not standing. `reply music/12 <something>` can be
+         * typed from another room entirely, and then the prompt does not say
+         * where it went — so this line is the only place it is ever said, and a
+         * bare reply number would be a receipt for a conversation you cannot
+         * see. The rule is the same one the rest of this function follows: print
+         * what is not otherwise on the screen.
          */
+        const at = options.elsewhere ? `${location.room}/${location.postId}  ` : ''
         return {
           lines: [
             {
-              text: `${replyNo}  ${this.who ?? 'you'}, ${formatAgo(new Date())}${
+              text: `${at}${replyNo}  ${this.who ?? 'you'}, ${formatAgo(new Date())}${
                 options.toReply === undefined ? '' : `  → ${options.toReply}`
               }`,
               tone: 'dim',

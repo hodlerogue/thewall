@@ -714,20 +714,39 @@ describe('what a post number is for, and where there isn’t one', () => {
 })
 
 describe('help does not offer what commons cannot do', () => {
-  it('leaves reply out of commons, where it can never work', async () => {
+  it('lists reply in commons now that naming a post makes it work there', async () => {
+    /*
+     * This asserted the opposite, and the reasoning was right at the time:
+     * `reply` could never work in commons — §3.10 gives it no threads and a
+     * trigger in the schema refuses replies there — and a verb listed where it
+     * always fails is the same defect as a palette chip that always fails.
+     *
+     * What changed is the verb. `reply music/12 <something>` names where it is
+     * going, so it works from wherever you are standing, commons included.
+     * Keeping it off the list would have meant the site answering that line
+     * with "commons doesn't keep replies" — a true sentence about a different
+     * question, which is the §3.7 failure this pair of tests exists to catch.
+     */
     const { run } = harness()
-    const out = text((await run('help', { room: 'commons' })).lines)
-
-    expect(out).not.toMatch(/^reply — /m)
-    // Still listed where it is one step from working.
+    expect(text((await run('help', { room: 'commons' })).lines)).toMatch(/^reply — /m)
     expect(text((await run('help', { room: 'music' })).lines)).toMatch(/^reply — /m)
   })
 
-  it('still explains itself when somebody types it there anyway', async () => {
+  it('says what commons cannot do when somebody replies to nothing there', async () => {
     const { run } = harness()
     const out = text((await run('reply nice one', { room: 'commons' })).lines)
-    expect(out).toContain('commons doesn’t keep replies')
-    expect(out).toContain('say it as its own thing')
+    expect(out).toContain('commons keeps nothing')
+    // And names the thing that does work from here, rather than stopping at
+    // the refusal (§3.7).
+    expect(out).toMatch(/reply \S+\/\d+/)
+  })
+
+  it('answers a post in a room from commons, which is why it is listed', async () => {
+    const { run, replied } = harness({ me: 'ryan' })
+    await run('reply music/12 that was the good one', { room: 'commons' })
+    expect(replied).toContainEqual(
+      expect.objectContaining({ room: 'music', postNo: 12, body: 'that was the good one' }),
+    )
   })
 
   it('does not offer to open a post in a room that has none', async () => {
