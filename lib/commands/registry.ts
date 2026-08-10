@@ -29,6 +29,7 @@ import type { Session } from '@/lib/shell/session'
 import { ABOUT_SUMMARY } from '@/lib/guide/about'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
 import { offerInstall } from '@/lib/pwa/install'
+import { hintsOn, setHints } from '@/lib/shell/hints'
 import { DEFAULT_THEME, THEMES, findTheme } from '@/lib/shell/themes'
 import { pathToLocation } from '@/lib/shell/types'
 import type { Context, Line, Location, RunResult } from '@/lib/shell/types'
@@ -939,6 +940,7 @@ export const COMMANDS: readonly Command[] = [
       if (session.name() === null) {
         lines.push({
           text: 'you’re one of them — say something and you’ll be on the list.',
+          hint: true,
           tone: 'faint',
         })
       }
@@ -1175,6 +1177,7 @@ export const COMMANDS: readonly Command[] = [
         'notify',
         'rename',
         'theme',
+        'hints',
         'install',
         'terms',
         'privacy',
@@ -1291,6 +1294,70 @@ export const COMMANDS: readonly Command[] = [
   },
 
   {
+    /*
+     * The little instructions, and a way to stop being given them.
+     *
+     * "Not sure people want to be constantly given instructions. There should
+     * be a setting that allows you to turn that off for sure."
+     *
+     * §3.6 asks the interface to teach itself, and that argument is about the
+     * first ten minutes — the same line on the four hundredth `look` is the
+     * site talking over the conversation, in a room whose whole point is the
+     * conversation. So the lines stay, on by default, and four characters ends
+     * them: somebody who has not learned the site cannot know to ask for help,
+     * and somebody who has can type.
+     *
+     * Per browser, like `theme`, and for the same reason — it is a preference
+     * about this screen rather than a fact about you, so it needs no account,
+     * no column and no round trip.
+     */
+    verb: 'hints',
+    aliases: ['tips', 'quiet'],
+    contexts: ALL,
+    gloss: () => 'the little instructions, on or off',
+    detail: () =>
+      'the site prints a line here and there telling you what you could type next — how to answer a post, how to walk back through a room. hints off stops them and remembers it on this device; hints on brings them back; hints on its own says which you have. errors always speak, and so does anything telling you there is more than you can see.',
+    insert: () => 'hints ',
+    wrongContext: () => '',
+    async run({ arg }) {
+      const want = arg.trim().toLowerCase()
+
+      if (want === '') {
+        return {
+          lines: hintsOn()
+            ? [
+                { text: 'hints are on.', tone: 'faint' },
+                { text: 'hints off stops the little instructions.', tone: 'faint' },
+              ]
+            : [
+                { text: 'hints are off.', tone: 'faint' },
+                { text: 'hints on brings them back.', tone: 'faint' },
+              ],
+        }
+      }
+
+      if (/^(off|no|stop|none|hide)$/.test(want)) {
+        setHints(false)
+        return {
+          // Not a hint itself, or turning them off would answer with silence
+          // and leave somebody wondering whether the command exists.
+          lines: [
+            { text: 'hints off. errors still speak, and so does anything you cannot see.', tone: 'faint' },
+          ],
+        }
+      }
+
+      if (/^(on|yes|show|back)$/.test(want)) {
+        setHints(true)
+        return { lines: [{ text: 'hints on.', tone: 'faint' }] }
+      }
+
+      // §3.7 — name the fix, and both of them, because there are only two.
+      return error(`hints on or hints off — i don’t know "${arg}".`)
+    },
+  },
+
+  {
     // §4.1 — the reason anyone comes back. Its lean: "status bar shows the
     // count persistently; `mail` lists them with `go <id>` to jump. Pull-only,
     // no push, no email."
@@ -1302,7 +1369,7 @@ export const COMMANDS: readonly Command[] = [
       'shows replies to things you said, each with the address to walk to — oldest at the top, so the newest is the one nearest the prompt. reading them clears the count. nothing is pushed and nothing chases you; notify on adds one email a day if you want one.',
     insert: () => 'mail',
     wrongContext: () => '',
-    async run({ env, session }) {
+    async run({ env, session, location }) {
       if (session.name() === null) {
         return {
           lines: [
@@ -1374,10 +1441,25 @@ export const COMMANDS: readonly Command[] = [
        * you can answer *with* rather than only walk to. Reading it is still
        * offered second, because sometimes you want the thread first.
        */
-      const newest = `${items[0].room}/${items[0].postId}`
+      /*
+       * The shortest form that works from where you are standing.
+       *
+       * `mail` runs from anywhere, so it printed the whole address every time —
+       * and standing in kitchen, being told to type `reply kitchen/6` is being
+       * taught the long way round to a door you are already at. Reported that
+       * way: "inside of kitchen all i have to do is go 6, so that seems
+       * misleading. I know it still works, but not the fastest way."
+       *
+       * The room is compared rather than the context, because a wall is a room
+       * and `~marisol/2` shortens to `2` while standing on it for exactly the
+       * same reason.
+       */
+      const here = items[0].room === location.room
+      const newest = here ? `${items[0].postId}` : `${items[0].room}/${items[0].postId}`
       lines.push({
         text: `reply ${newest} <something> answers the newest — go ${newest} reads it first.`,
         tone: 'faint',
+        hint: true,
       })
 
       return { lines, mail: 0 }
@@ -1926,7 +2008,7 @@ function renderRoomHits(hits: readonly RoomHit[], term: string): Line[] {
     })
   }
   lines.push({ text: '' })
-  lines.push({ text: `go ${hits[0].slug} to walk in.`, tone: 'faint' })
+  lines.push({ text: `go ${hits[0].slug} to walk in.`, tone: 'faint', hint: true })
   return lines
 }
 

@@ -235,7 +235,11 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
           ...(useFixtures
             ? [{ text: 'demo — nothing you type here is saved.', tone: 'faint' as const }]
             : []),
-          { text: 'type look to see what’s around you, or tap a command below.', tone: 'faint' },
+          {
+            text: 'type look to see what’s around you, or tap a command below.',
+            tone: 'faint',
+            hint: true,
+          },
           /*
            * One more line, and only for somebody who has not been here before.
            *
@@ -245,7 +249,7 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
            * does not need telling every load.
            */
           ...(existingName === null
-            ? [{ text: 'new here? type about.', tone: 'faint' as const }]
+            ? [{ text: 'new here? type about.', tone: 'faint' as const, hint: true as const }]
             : []),
           { text: '' },
           ...keyLines,

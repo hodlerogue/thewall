@@ -68,6 +68,17 @@ export interface Line {
    * the whole interface on a phone.
    */
   counts?: { room: string; postId: number; replies: number; goTo: string }
+  /**
+   * A line that teaches a command you could type next, and nothing else.
+   *
+   * `hints off` drops these. §3.6 asks the interface to teach itself, which is
+   * an argument about the first ten minutes — the same line on the four
+   * hundredth `look` is the site talking over the conversation. See
+   * `lib/shell/hints.ts` for the rule about what may carry this, and in
+   * particular for the two kinds of line that may not: anything reporting
+   * content you cannot see, and any error.
+   */
+  hint?: true
 }
 
 /**

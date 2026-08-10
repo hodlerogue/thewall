@@ -1117,6 +1117,7 @@ export class Session {
         lines.push({
           text: `that’s where it lives — go ${address} opens it, and replies land there.`,
           tone: 'faint',
+          hint: true,
         })
       }
 

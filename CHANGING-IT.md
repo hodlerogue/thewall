@@ -86,6 +86,14 @@ Terminal.tsx ──typed text──> run.ts ──parse──> registry.ts ─�
 | `lib/data/live.ts` | realtime: presence, and posts arriving while you stand there |
 | `lib/supabase/{client,server,reader}.ts` | the three clients: browser, route handler, and unauthenticated read |
 
+**An instruction has to name the shortest form that works from where somebody
+is standing.** `mail` printed `reply kitchen/6 <something>` whether or not you
+were in kitchen, where `reply 6` is the whole of it — reported as "I know it
+still works, but not the fastest way to do it while inside of a room." Any line
+that suggests an address needs to know where it is being read: compare
+`location.room`, not the context, because a wall is a room and `~marisol/2`
+shortens to `2` on it for exactly the same reason.
+
 **An instruction printed under a list has to be true of the whole list.** A
 profile closed with "these live in rooms — go poker, then go 4", built from
 whichever post was newest and printed under posts spanning several rooms. It was
@@ -380,6 +388,30 @@ the e2e suite runs entirely against it, so a fixture that lies produces a green
 suite over a broken site.
 
 Identity does not go here. `Session` owns it.
+
+## Add a hint, or stop one being one
+
+`Line.hint` marks a line, `hints off` drops it, and `lib/shell/hints.ts` holds
+the rule — which is the only part that needs thinking about:
+
+> **A hint teaches a command you could type next, and nothing else.**
+
+Two kinds of line may never carry it. Anything **reporting content you cannot
+see** — `older — the page before this one`, `4 more rooms`, `these are the
+newest 100` — reads like an instruction and is not one: it is the site
+admitting it is showing a slice, and silencing those brings back the silent
+truncation each was written to end. And **an error is never a hint**: it is the
+answer to something somebody just did, and §3.7 spends its whole budget making
+errors teach.
+
+The filter runs in `Terminal`'s `append`, where lines enter the scrollback, so
+it catches the boot lines and live arrivals too and no renderer learns the
+setting exists. Confirmations of `hints off` must not be hints themselves, or
+the command answers with silence and reads as a typo.
+
+Stored per browser in `localStorage`, like the theme, for the same reason: a
+preference about this screen rather than a fact about the person, so it needs
+no account, no column and no round trip — and a guest can have one.
 
 ## Add a theme
 

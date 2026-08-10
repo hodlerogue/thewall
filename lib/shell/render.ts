@@ -230,7 +230,7 @@ export function renderFeed(
   if (posts.length === 0) {
     return [
       { text: 'nothing on anybody’s wall yet.', tone: 'faint' },
-      { text: 'go ~yourname and say something, and it shows up here.', tone: 'faint' },
+      { text: 'go ~yourname and say something, and it shows up here.', tone: 'faint', hint: true },
     ]
   }
 
@@ -278,7 +278,11 @@ export function renderRoom(room: Room, now = new Date()): Line[] {
   const lines: Line[] = []
 
   if (room.ephemeral) {
-    lines.push({ text: 'commons keeps nothing. everything here is gone in 24 hours.', tone: 'faint' })
+    lines.push({
+      text: 'commons keeps nothing. everything here is gone in 24 hours.',
+      tone: 'faint',
+      hint: true,
+    })
     lines.push({ text: '' })
   }
 
@@ -454,6 +458,7 @@ export function renderPost(post: Post, now = new Date()): Line[] {
   lines.push({
     text: 'reply <something> answers the post — reply 2 <something> answers 2.',
     tone: 'faint',
+    hint: true,
   })
   return lines
 }
@@ -534,6 +539,7 @@ export function renderProfile(profile: Profile, now = new Date()): Line[] {
   lines.push({ text: '' })
   lines.push({
     text: `each of those is an address — go ${newest.room}/${newest.id} opens that one.`,
+    hint: true,
     tone: 'faint',
   })
   return lines

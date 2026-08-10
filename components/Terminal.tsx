@@ -5,6 +5,7 @@ import { Palette } from '@/components/Palette'
 import { echoOf } from '@/lib/commands/run'
 import { withOneMoreReply } from '@/lib/shell/render'
 import { describeError } from '@/lib/shell/errors'
+import { withoutHints } from '@/lib/shell/hints'
 import type { Chip, Line, Location, Runner } from '@/lib/shell/types'
 import { locationToPath, pathToLocation, promptLabel } from '@/lib/shell/types'
 import { Session } from '@/lib/shell/session'
@@ -116,7 +117,13 @@ const Scrollback = memo(function Scrollback({
 const MAX_LINES = 1500
 
 function append(previous: Keyed[], incoming: readonly Line[]): Keyed[] {
-  const next = [...previous, ...incoming.map(withKey)]
+  /*
+   * `hints off` is applied here rather than in the renderers, which is the
+   * whole reason it is one line of code: everything printed passes through
+   * this — command output, the boot lines, anything arriving live — and no
+   * renderer has to learn that a setting exists.
+   */
+  const next = [...previous, ...withoutHints(incoming).map(withKey)]
   return next.length > MAX_LINES ? next.slice(-MAX_LINES) : next
 }
 
@@ -183,7 +190,7 @@ export function Terminal({
   mailCount?: () => Promise<number>
   initialMail?: number
 }) {
-  const [lines, setLines] = useState<Keyed[]>(() => [...initialLines].map(withKey))
+  const [lines, setLines] = useState<Keyed[]>(() => withoutHints(initialLines).map(withKey))
   const [location, setLocation] = useState<Location>(initialLocation)
   const [name, setName] = useState<string | null>(initialName)
   const [input, setInput] = useState('')
