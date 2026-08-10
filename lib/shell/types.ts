@@ -51,6 +51,23 @@ export interface Line {
    * assertions about header shapes elsewhere still read `text` whole.
    */
   tap?: { token: string; insert: string }
+  /**
+   * What this line is a count of, so it can stop being wrong.
+   *
+   * `3 replies — go 7` is the one thing a listing prints that goes stale while
+   * you are looking at it: `reply 7 <something>` exists so you never have to
+   * leave the listing, and then the listing says the post still has three.
+   * Reported exactly that way — "it works but it doesn't auto update the
+   * original post".
+   *
+   * This is deliberately narrow. It marks a line the *site* derived, not
+   * anything a person said, and the only thing that ever changes it is a reply
+   * landing on that address. A post's body is never rewritten in the
+   * scrollback and neither is anybody's sentence; a stale number the site
+   * printed about itself is a different kind of thing, and the scrollback is
+   * the whole interface on a phone.
+   */
+  counts?: { room: string; postId: number; replies: number; goTo: string }
 }
 
 /**
@@ -130,6 +147,15 @@ export interface RunResult {
    * a stale count, which is worse than none.
    */
   composing?: { lines: number; chars: number } | null
+  /**
+   * The post an answer just landed on, so the listing above can stop lying.
+   *
+   * See `Line.counts`. Set whenever a reply is written and by every path that
+   * can write one — including the held sentence, which lands two questions
+   * after it was typed — because a field only some of them set is a line that
+   * updates sometimes, which is worse than one that never does.
+   */
+  answered?: { room: string; postId: number }
 }
 
 export interface RunOptions {

@@ -8,8 +8,9 @@ import { supabaseEnv } from '@/lib/data/supabaseEnv'
 import { httpSignupApi, supabaseWriter } from '@/lib/data/writer'
 import { fixtureEnv, type Env, type FixturePerson } from '@/lib/shell/env'
 import { startArrivalReads, type ArrivalReads } from '@/lib/shell/boot'
-import { PEOPLE } from '@/lib/shell/fixtures'
+import { PEOPLE, ROOMS } from '@/lib/shell/fixtures'
 import { describeError } from '@/lib/shell/errors'
+import type { Room } from '@/lib/shell/model'
 import { shouldSuggest, suggestion, watchForInstall } from '@/lib/pwa/install'
 import { renderFeed, renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
@@ -117,8 +118,24 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
         // profiles table; here it is an array the fake signup pushes to and
         // fixtureEnv reads at call time.
         const demoPeople: FixturePerson[] = [...PEOPLE]
-        env = fixtureEnv(undefined, demoPeople)
-        writer = fixtureWriter()
+        /*
+         * The demo's own copy of the rooms, which it is allowed to write to.
+         *
+         * `fixtureWriter` used to return an address and keep nothing, so
+         * everything typed in the demo vanished the moment you looked again —
+         * the count under a post you had just answered went back down, which is
+         * the fixture telling a visitor the site does not work. A copy rather
+         * than the module's array, so the seed stays what every test imports.
+         */
+        const demoRooms: Room[] = ROOMS.map((room) => ({
+          ...room,
+          posts: room.posts.map((post) => ({ ...post, replies: [...post.replies] })),
+        }))
+        env = fixtureEnv(demoRooms, demoPeople)
+        // `session` is declared below and only ever read at write time, which
+        // is long after. Keep it that way: calling this during boot would be a
+        // temporal dead zone rather than a null name.
+        writer = fixtureWriter(demoRooms, () => session.name())
         signup = fixtureSignup(demoPeople)
       } else {
         client = createClient()
@@ -466,22 +483,44 @@ async function arriveAt(
  * Fixture-mode stand-ins, so the mobile gate can walk the whole signup flow
  * without a database. Nothing here runs when Supabase is configured.
  */
-function fixtureWriter(): Writer {
-  let next = 100
-  // Per post, because that is what a reply number is. A single counter would
-  // hand out 1, 2, 3 across different posts and teach the demo's visitor a
-  // rule the site does not have.
-  const replies = new Map<string, number>()
+function fixtureWriter(rooms: Room[], whoami: () => string | null): Writer {
   const taken = new Set(['jameson', 'marisol', 'tuck', 'ren', 'dev'])
+  const find = (slug: string) => rooms.find((room) => room.slug === slug)
+
+  /*
+   * It writes, and that is the whole change.
+   *
+   * This used to hand back an address and keep nothing, so the demo answered a
+   * post and then showed the same reply count a moment later — a visitor's
+   * first impression being the site forgetting what they had just done. The
+   * numbers were invented too: a counter starting at zero per post returned
+   * "reply 1" under a thread that already had two.
+   *
+   * Both are the same rule, and it is the one CHANGING-IT keeps having to
+   * restate — **the fixture must not be a different shape from the thing it
+   * stands in for.** Small is fine; different is not.
+   */
   return {
-    async post() {
-      return next++
+    async post(room: string, body: string) {
+      const found = find(room)
+      // Every address in a room, ever, so numbers are never reused (§3.4).
+      const id = found ? found.posts.reduce((high, post) => Math.max(high, post.id), 0) + 1 : 1
+      found?.posts.unshift({
+        id,
+        author: whoami() ?? 'you',
+        body,
+        createdAt: new Date(),
+        replies: [],
+      })
+      return id
     },
-    async reply(room: string, postNo: number) {
-      const at = `${room}/${postNo}`
-      const no = (replies.get(at) ?? 0) + 1
-      replies.set(at, no)
-      return no
+    async reply(room: string, postNo: number, body: string, toReply?: number) {
+      const post = find(room)?.posts.find((p) => p.id === postNo)
+      // Per post, because that is what a reply number is — and counted from
+      // what is already there rather than from zero.
+      const id = post ? post.replies.reduce((high, reply) => Math.max(high, reply.id), 0) + 1 : 1
+      post?.replies.push({ id, author: whoami() ?? 'you', body, createdAt: new Date(), toReply })
+      return id
     },
     async rename(name: string) {
       if (taken.has(name)) return { ok: false as const, reason: `${name} is taken` }

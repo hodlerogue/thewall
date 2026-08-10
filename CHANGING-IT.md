@@ -901,6 +901,24 @@ URL (`arriveAt`), the lobby line (`room_overview` and `fixtureEnv.listRooms`),
 the share card, and the count in `find --rooms`. When something is a view rather
 than a container, walk all five.
 
+**A count the site printed about itself may be rewritten. Nothing anybody said
+ever is.** The scrollback is a transcript, with one exception: `3 replies — go 7`
+is a number the site derived, and `reply 7 <something>` exists precisely so you
+never leave the listing that line is in — so the listing going stale about the
+thing you just did takes back most of what the feature bought. Reported that
+way: "it works but it doesn't auto update the original post."
+
+`Line.counts` marks the line and carries what it counts; a write that lands
+returns `answered` and `Terminal` rewrites **every** printed copy, because a
+room looked at twice has two and fixing one reads as a number that changes with
+the scroll position. Every path that can write a reply sets `answered`,
+including the held sentence, which lands two questions after it was typed —
+a field only some of them set is a line that updates sometimes.
+
+The boundary is the whole of it. Extend this to a post's body, or an author, or
+anything a person typed, and the scrollback stops being a record of what
+happened.
+
 **The fixture Env must not lie.** The e2e suite runs entirely against
 `fixtureEnv`, so a fixture that disagrees with the database is a green suite
 over a broken site — not a smaller problem than a bug, a bigger one, because it
@@ -909,6 +927,16 @@ also removes the thing that would have told you. This has bitten once already:
 reaches replies" a claim proved only in `test:db` and false in the app anybody
 clicked. `lib/commands/rooms.test.ts` has a block that exists purely to pin the
 two together; add to it when you add behaviour to one side.
+
+The demo's *writer* was the same defect wearing different clothes, and it
+survived years because a comment described it instead of a test closing it:
+`fixtureWriter` returned an address and kept nothing, so everything typed into
+the demo vanished the moment you looked again, and it counted replies from zero
+per post — so answering a thread with two in it announced "reply 1". It writes
+into its own copy of the seed now, and `e2e/rooms.spec.ts` walks say → look and
+reply → go and checks both. Anchor those assertions: `toContainText` matches the
+*echo* of what was typed, so the first version of that test passed with the
+write removed.
 
 **A derived flag is not the same as the fact it approximates.** `rooms.curated`
 started as `created_by is null`, which is identical until `created_by` is

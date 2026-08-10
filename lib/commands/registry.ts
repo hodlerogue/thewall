@@ -242,7 +242,11 @@ async function sendReply(
   }
 
   const written = await session.write(target, body, { toReply, elsewhere })
-  return { lines: written.lines, retry: written.failed ? args.arg : undefined }
+  return {
+    lines: written.lines,
+    retry: written.failed ? args.arg : undefined,
+    answered: written.answered,
+  }
 }
 
 /** One line of `doctor`, aligned so a column of them can be read down. */
@@ -657,7 +661,11 @@ export const COMMANDS: readonly Command[] = [
 
       const written = await session.write(location, arg, { addressed: context !== 'commons' })
       // §3.9 — nothing typed is ever lost, including to a network blip.
-      return { lines: written.lines, retry: written.failed ? arg : undefined }
+      return {
+        lines: written.lines,
+        retry: written.failed ? arg : undefined,
+        answered: written.answered,
+      }
     },
   },
 
@@ -1073,7 +1081,7 @@ export const COMMANDS: readonly Command[] = [
 
       // The context is the authority on whether this room keeps anything —
       // it is what §3.10 splits commons out by, and it is already resolved.
-      const lines = renderPosts(posts, context === 'commons')
+      const lines = renderPosts(posts, context === 'commons', undefined, slug)
       lines.push({
         text:
           posts.length < ROOM_PAGE

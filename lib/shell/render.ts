@@ -42,6 +42,36 @@ function oldestFirst<T>(items: readonly T[]): T[] {
 }
 
 /**
+ * How many answers a post has, and how to go and read them.
+ *
+ * One helper for the two listings that print it — a room and the feed — because
+ * this is the line that gets rewritten when a reply lands, and a second copy of
+ * the grammar would be a second copy that does not get rewritten.
+ */
+function repliesLine(replies: number, room: string, postId: number, goTo: string): Line {
+  return {
+    text: `${replies} ${replies === 1 ? 'reply' : 'replies'} — go ${goTo}`,
+    tone: 'faint',
+    depth: 1,
+    counts: { room, postId, replies, goTo },
+  }
+}
+
+/**
+ * The same line, one higher, for a reply that has just landed on it.
+ *
+ * An increment rather than a re-read: the number came from the page you are
+ * looking at, and one more than that is exactly what you now know. Asking the
+ * database instead would be a round trip to correct a line nobody is reading
+ * for its precision, and would still be a snapshot a second later.
+ */
+export function withOneMoreReply(line: Line): Line {
+  if (!line.counts) return line
+  const { room, postId, replies, goTo } = line.counts
+  return repliesLine(replies + 1, room, postId, goTo)
+}
+
+/**
  * The header over something somebody said: its address, then who and when.
  *
  * One helper because every listing on the site prints this same shape, and
@@ -209,11 +239,7 @@ export function renderFeed(
     lines.push(saidBy(`${post.room}/${post.id}`, `${post.author}, ${formatAgo(post.createdAt, now)}`))
     lines.push({ text: post.body, depth: 1 })
     if (post.replies) {
-      lines.push({
-        text: `${post.replies} ${post.replies === 1 ? 'reply' : 'replies'} — go ${post.room}/${post.id}`,
-        tone: 'faint',
-        depth: 1,
-      })
+      lines.push(repliesLine(post.replies, post.room, post.id, `${post.room}/${post.id}`))
     }
     lines.push({ text: '' })
   }
@@ -285,7 +311,7 @@ export function renderRoom(room: Room, now = new Date()): Line[] {
     lines.push({ text: '' })
   }
 
-  lines.push(...renderPosts(room.posts, room.ephemeral, now))
+  lines.push(...renderPosts(room.posts, room.ephemeral, now, room.slug))
   lines.push(...renderGrewOut(room))
   return lines
 }
@@ -354,6 +380,15 @@ export function renderPosts(
   posts: readonly Post[],
   ephemeral: boolean,
   now = new Date(),
+  /**
+   * Which room these are in, so the reply count knows what it is counting.
+   *
+   * Defaulted rather than required because it is only used to keep that one
+   * line true when an answer lands, and every caller that has a slug passes it
+   * — a fixture that does not simply gets a line that never updates, which is
+   * where this started.
+   */
+  room = '',
 ): Line[] {
   const lines: Line[] = []
   for (const post of oldestFirst(posts)) {
@@ -367,11 +402,7 @@ export function renderPosts(
     )
     lines.push({ text: post.body, depth: 1 })
     if (!ephemeral && post.replies.length > 0) {
-      lines.push({
-        text: `${post.replies.length} ${post.replies.length === 1 ? 'reply' : 'replies'} — go ${post.id}`,
-        tone: 'faint',
-        depth: 1,
-      })
+      lines.push(repliesLine(post.replies.length, room, post.id, `${post.id}`))
     }
     lines.push({ text: '' })
   }

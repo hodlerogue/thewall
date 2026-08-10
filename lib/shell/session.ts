@@ -172,12 +172,16 @@ export interface AnswerResult {
    * answer caused one.
    */
   location?: Location
+  /** Set when the sentence held across signup turned out to be a reply. */
+  answered?: { room: string; postId: number }
 }
 
 export interface WriteResult {
   lines: Line[]
   /** True when nothing was written, so the caller can hand the words back. */
   failed: boolean
+  /** The post an answer landed on, when it was one. See `Line.counts`. */
+  answered?: { room: string; postId: number }
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -433,7 +437,7 @@ export class Session {
             lines: [...written.lines, { text: 'still here — type a dot to try again.', tone: 'faint' }],
           }
         }
-        return { lines: written.lines }
+        return { lines: written.lines, answered: written.answered }
       }
 
       /*
@@ -745,6 +749,7 @@ export class Session {
       lines,
       identity: this.who,
       retry: written.failed ? retryLine(target, held) : undefined,
+      answered: written.answered,
     }
   }
 
@@ -1021,6 +1026,7 @@ export class Session {
          */
         const at = options.elsewhere ? `${location.room}/${location.postId}  ` : ''
         return {
+          answered: { room: location.room, postId: location.postId },
           lines: [
             {
               text: `${at}${replyNo}  ${this.who ?? 'you'}, ${formatAgo(new Date())}${

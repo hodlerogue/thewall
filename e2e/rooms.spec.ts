@@ -327,15 +327,44 @@ test('write takes more than one line, and the blank ones are paragraphs', async 
   await expect(scrollback(page)).toContainText('roommaker, just now')
 })
 
+test('what you write in the demo is there when you look again', async ({ page }) => {
+  /*
+   * `fixtureWriter` used to return an address and keep nothing, so everything
+   * typed in the demo vanished the moment you looked again — and it invented
+   * reply numbers from zero, so answering a thread with two replies in it
+   * announced "reply 1". A visitor's first impression was the site forgetting
+   * what they had just done and miscounting it on the way.
+   *
+   * CHANGING-IT's rule, for the fifth time: the fixture may be small, it may
+   * not be a different shape. Nothing asserted it, which is why it stayed
+   * broken through a comment that described the gap rather than closing it.
+   */
+  await page.goto('/music')
+  await withName(page)
+
+  await type(page, 'say a post nobody seeded')
+  await type(page, 'look')
+  // Anchored, because the echo of what was typed is in the scrollback too —
+  // `toContainText` matched `ryan:music$ say a post nobody seeded` and passed
+  // with the write removed, which is a test that proves the typing works.
+  await expect(
+    scrollback(page).locator('.line', { hasText: /^a post nobody seeded$/ }),
+  ).toHaveCount(1)
+
+  // And a reply is numbered from what the thread already has, not from one.
+  await type(page, 'reply 12 the warped ones still play')
+  await type(page, 'go 12')
+  const thread = scrollback(page).locator('.line', { hasText: 'the warped ones still play' }).last()
+  await expect(thread).toBeVisible()
+  await expect(
+    scrollback(page).locator('.line', { hasText: /^3 {2}\w+, just now$/ }),
+  ).toHaveCount(1)
+})
+
 /*
  * The lobby preview of a multi-line post is asserted in lib/commands/write.test.ts
- * against `renderRoomList` directly, not here.
- *
- * It cannot be walked in the demo: `fixtureWriter.post` returns an address and
- * does not add the post to the room, so the lobby keeps showing the seeded
- * line. That is a real gap between the demo and the site — worth knowing about,
- * and not worth papering over with a test that would pass by looking at
- * somebody else's post.
+ * against `renderRoomList` directly rather than here, because the preview is a
+ * function of one body and the walk would only re-prove the write.
  */
 test('cancel throws a draft away and says so', async ({ page }) => {
   await withName(page)
