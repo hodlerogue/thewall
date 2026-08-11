@@ -43,6 +43,11 @@ const SOURCES = [
   'components/Palette.tsx',
   'components/Readable.tsx',
   'app/about/page.tsx',
+  'app/legal/Document.tsx',
+  'app/layout.tsx',
+  'app/manifest.ts',
+  'lib/brand/og.tsx',
+  'lib/seo/pages.ts',
   'app/opengraph-image.alt.txt',
 ]
 
@@ -99,12 +104,27 @@ function stripComments(source: string): string {
  * A `.txt` is all prose. Everything else is scanned for string literals, and
  * only the ones containing a space — a sentence is prose, a bare word is an
  * identifier or an alias.
+ *
+ * A `.tsx` gets one more pass. Half the prose on `/about` and all of the terms
+ * page's unfinished-law warning are written as JSX text, between the tags
+ * rather than inside quotes — a literals-only scan reads those files and finds
+ * nothing to check, which is the same false pass as a typo'd path.
+ *
+ * The lookbehind is what keeps that pass honest. Without it, the `>` of an
+ * arrow function opens a "tag" that runs until the next generic's `<`, and the
+ * identifier in between gets read as a sentence. A real tag never ends with an
+ * operator or a space in front of its `>`.
  */
+const JSX_TEXT = /(?<=[^\s=<>&|+\-*])>([^<>{}]+)</g
+
 function printedProse(path: string, source: string): string[] {
   if (path.endsWith('.txt')) return [source]
 
-  const literals = stripComments(source).match(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`/g)
-  return (literals ?? []).filter((text) => text.includes(' '))
+  const code = stripComments(source)
+  const literals = code.match(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`/g) ?? []
+  const between = path.endsWith('.tsx') ? [...code.matchAll(JSX_TEXT)].map((hit) => hit[1]) : []
+
+  return [...literals, ...between].filter((text) => text.includes(' ') && /[a-z]{2}/i.test(text))
 }
 
 describe('the site speaks American', () => {
