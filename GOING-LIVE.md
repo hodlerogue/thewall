@@ -382,6 +382,24 @@ For the database side, `./scripts/db-check.sh` is the authoritative list.
 
 ---
 
+### Dependencies, and the one that is pinned
+
+`npm audit --omit=dev` is the check that matters — dev-only advisories are about
+a build machine, not about anybody using the site. It should say zero.
+
+Two are held there by `overrides` in `package.json` rather than by upgrading the
+thing that pulls them in: **postcss** and **sharp** both arrive under `next`,
+and both had high-severity advisories — sharp's are four libvips CVEs, and sharp
+is what renders the share cards. The override takes the patched version without
+moving the framework.
+
+**`next` is pinned exactly, and that is deliberate.** Letting `npm install`
+resolve `^16.2.12` picked up 16.3.0, which broke three signup assertions: a
+magic link arriving at `/?key=ok` no longer reported anything, because the
+outcome is read from the query after a redirect and 16.3 changed something about
+that path. Nothing in this repo had changed. Upgrade it on purpose, with the
+suites in front of you, not as a side effect of installing something else.
+
 ## 8. Know how to turn it off
 
 Before anyone else is on it, run these once so they are not new to you at 2am:
