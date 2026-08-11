@@ -477,7 +477,7 @@ describe('§3.9 — one step back, when the name was wrong', () => {
     expect(session.name()).toBe('rightname')
   })
 
-  it('accepts the words somebody actually types when they realise', async () => {
+  it('accepts the words somebody actually types when they realize', async () => {
     for (const word of ['back', 'oops', 'wait', 'rename', 'no']) {
       const { run, session } = harness()
       await run('say hello', at)

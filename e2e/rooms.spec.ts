@@ -154,7 +154,7 @@ test('the feed shows walls, with the whole address on every line', async ({ page
 
   await expect(label(page)).toHaveText('guest:feed$')
   await expect(scrollback(page)).toContainText('~marisol/2')
-  await expect(scrollback(page)).toContainText('neighbours own fans')
+  await expect(scrollback(page)).toContainText('neighbors own fans')
 
   // And the address it printed is the address `go` takes.
   await type(page, 'go ~marisol/2')

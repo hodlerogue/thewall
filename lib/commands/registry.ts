@@ -1257,9 +1257,9 @@ export const COMMANDS: readonly Command[] = [
     // green-on-black as the obvious choice worth departing from; this departs
     // from it by default and keeps it one word away.
     verb: 'theme',
-    aliases: ['themes', 'colour', 'colours', 'color', 'colors'],
+    aliases: ['themes', 'color', 'colors', 'colour', 'colours'],
     contexts: ALL,
-    gloss: () => 'change the colours',
+    gloss: () => 'change the colors',
     detail: () =>
       `changes how this looks, and remembers it on this device. ${THEMES.map((t) => t.name).join(', ')}. type theme on its own to see them.`,
     insert: () => 'theme ',

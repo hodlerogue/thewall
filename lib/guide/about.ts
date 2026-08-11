@@ -90,7 +90,7 @@ export const ABOUT: readonly GuideSection[] = [
       'make garden asks what the room is for, then walks you into it. You need to have followed your sign-in link, and can make three in any seven days.',
       'A room you make is not yours. No owner and no moderator — inside it you are another person in a room, like anywhere else.',
       'Make one from inside another room and that room lists it at the bottom, as having grown out of it. Nothing is inside anything: the new room has an ordinary name of its own.',
-      'It sits in the lobby while people talk in it and drops out after a fortnight of silence — not deleted, just unlisted. Search still finds it, and it returns the moment somebody posts.',
+      'It sits in the lobby while people talk in it and drops out after two weeks of silence — not deleted, just unlisted. Search still finds it, and it returns the moment somebody posts.',
     ],
   },
   {

@@ -231,7 +231,7 @@ export const TERMS: Document = {
       heading: 'Your account',
       body: [
         'You need to be 16 or older.',
-        'One person, one account, unless you are asked otherwise. Making accounts in bulk is the one thing here with an automated defence, and it will simply stop working.',
+        'One person, one account, unless you are asked otherwise. Making accounts in bulk is the one thing here with an automated defense, and it will simply stop working.',
         'Your name is yours while you hold it. You can change it as often as you like by typing rename — and the name you leave is immediately available to anyone else. If that matters to you, do not release a name you want to keep.',
         'A name that has recently changed hands is marked as such on the profile of whoever holds it now, so nobody can quietly inherit your conversations.',
       ],
@@ -251,7 +251,7 @@ export const TERMS: Document = {
         'Anyone with a verified account can make a room, three in any seven days. It needs a name and a line saying what it is for, and both are public.',
         'Making a room does not make it yours. There is no owner, no moderator and no special powers — inside it you are exactly another person in a room, and everything below about what not to post applies to you there like anybody else.',
         'You cannot take a name somebody is using, or one the site needs for its own pages. Nothing stops you naming a room after a subject, a joke or a mood.',
-        'A room drops out of the lobby when nothing has been said in it for a fortnight. It is not deleted — it keeps its name, its posts and its address, it can still be found by searching, and it comes back the moment somebody speaks in it.',
+        'A room drops out of the lobby when nothing has been said in it for two weeks. It is not deleted — it keeps its name, its posts and its address, it can still be found by searching, and it comes back the moment somebody speaks in it.',
         'A room can be closed, the same way a post can be hidden, if what is happening in it breaks the rules below. That is reversible and nothing in it is destroyed.',
         'If you close your account, rooms you made stay. The record that you made them goes with your account; the rooms belong to the conversations in them by then.',
       ],

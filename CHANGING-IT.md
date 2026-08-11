@@ -951,6 +951,25 @@ The boundary is the whole of it. Extend this to a post's body, or an author, or
 anything a person typed, and the scrollback stops being a record of what
 happened.
 
+**The site speaks American, and the person writing it does not.** Reported as
+"theme says 'change the colours', I'm in US not UK" — and it was seven strings,
+not one: the theme gloss, "a fortnight of silence" in the rundown, "automated
+defence" and a second fortnight in the terms, and three seeded posts carrying
+"realised", "neighbours" and "rumour". Whoever writes the next line will write
+it the same way, so `lib/guide/spelling.test.ts` reads what the site would
+print and refuses the list.
+
+Two exclusions, both deliberate. Comments are stripped first — the reasoning
+around a line is not the line. And a string with no space in it is not a
+sentence, which is what keeps `colour` alive as an **alias**: somebody who types
+the British spelling should still be understood, they just should not be
+answered in it.
+
+Seed content counts. `supabase/seed.sql` and `lib/shell/fixtures.ts` carry the
+same posts and both are scanned, and changing either means regenerating the
+bundle — `./scripts/db-bundle.sh > supabase/setup.sql`, which writes to stdout,
+so redirecting it is the whole of the command.
+
 **The fixture Env must not lie.** The e2e suite runs entirely against
 `fixtureEnv`, so a fixture that disagrees with the database is a green suite
 over a broken site — not a smaller problem than a bug, a bigger one, because it

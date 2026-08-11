@@ -577,7 +577,7 @@ select tests.raises(
 select public.hide_post('poker', 900, false);
 
 \echo ''
-\echo '§6 — banning somebody keeps their name and their neighbours'
+\echo '§6 — banning somebody keeps their name and their neighbors'
 
 select tests.ok(
   public.ban('nuisance', 'flooding poker') = 1,

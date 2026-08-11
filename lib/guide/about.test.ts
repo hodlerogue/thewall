@@ -76,7 +76,7 @@ describe('every number in the prose comes from somewhere', () => {
       schema,
     )?.[1]
     expect(fade, 'the lobby no longer fades quiet rooms').toBe('14')
-    expect(prose).toContain('a fortnight of silence')
+    expect(prose).toContain('two weeks of silence')
   })
 
   it('commons keeps things for exactly as long as it says', () => {
