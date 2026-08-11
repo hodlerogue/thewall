@@ -50,7 +50,25 @@ interface Boot {
  * depending on a database — there is deliberately no silent fallback, so a
  * missing project is reported rather than papered over.
  */
-export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLocation?: Location }) {
+export function Shell({
+  initialLocation = { room: DEFAULT_ROOM },
+  children,
+}: {
+  initialLocation?: Location
+  /**
+   * The page, rendered on the server, shown until the shell has booted.
+   *
+   * Everything here is fetched in the browser, so the HTML a crawler was handed
+   * used to be the loading line and nothing else — two words, and no link to
+   * follow. This is the same content as real markup: a room is a list of what
+   * people said, a post is a conversation, and both are made of links.
+   *
+   * Not hidden and not a duplicate. It is what the site is before its
+   * JavaScript arrives, which is also why the first paint is no longer a
+   * spinner — the crawler fix and the speed fix turned out to be one change.
+   */
+  children?: React.ReactNode
+}) {
   const [boot, setBoot] = useState<Boot | null>(null)
   const [failure, setFailure] = useState<Line[] | null>(null)
 
@@ -301,7 +319,7 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
     return (
       <div className="app">
         <div className="scrollback">
-          <p className="line line-faint">…</p>
+          {children ?? <p className="line line-faint">…</p>}
         </div>
       </div>
     )

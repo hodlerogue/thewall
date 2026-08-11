@@ -657,6 +657,38 @@ outage. `metadataBase` is not optional — Next emits a relative `og:image`
 without it and every crawler rejects those, so the card would build, deploy and
 never once be shown.
 
+## Being found
+
+Measured against the built site rather than assumed, which is the only way this
+was ever going to be honest: `/music` and `/music/12` returned **two words** of
+HTML — the loading line — with the same title and description as every other
+URL, and `/` and `/lobby` contained **zero** `<a href>` between them. Everything
+is fetched in the browser, so a search engine was handed an empty prompt and no
+second page to visit.
+
+Three things, and the third is the one that was not obvious.
+
+**The content is in the HTML.** `components/Readable.tsx` renders the same room,
+post, wall or lobby on the server, and the shell replaces it the moment it
+boots. Not a hidden block and not a duplicate: it is what the site is before its
+JavaScript arrives, styled like the site, and anybody can see it by switching
+scripting off. That it also ends the spinner on first paint is not a
+coincidence — the crawler fix and the speed fix were the same change.
+
+**Every page says what it is.** `lib/seo/pages.ts` builds a title, a description
+and a canonical from the same server-side reader the share cards use. A room is
+its name and gloss and the newest thing said in it; a post is its first line,
+which is the closest thing a post has to a subject.
+
+**And there is something to follow.** This is the half that server rendering
+does not fix by itself: navigation is a command prompt, so `go music` leaves no
+trace a robot can walk. The lobby names every listable room as a link, a room
+links to its posts, a post links back — and `app/sitemap.ts` exists because a
+sitemap is the only discovery mechanism a site with no link graph has. commons
+is deliberately absent from it: everything said there is gone in 24 hours and a
+crawl returns in days, so every visit would find a different room and none of it
+the room that was indexed.
+
 ## Not built, on purpose
 
 Private messages, and reply-to-reply (§4.3 makes flatness a stated constraint,

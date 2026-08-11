@@ -131,6 +131,62 @@ body {
   color: var(--accent);
 }
 
+/*
+ * The page before the JavaScript arrives.
+ *
+ * Shown for the few hundred milliseconds before the shell boots, and to
+ * anything that never boots it — a crawler, a reader with scripting off. It is
+ * the same content the terminal shows, so it is styled like the terminal rather
+ * than left as a default HTML document: unstyled, it flashed white serif type
+ * on every single load, which is a worse first impression than the spinner it
+ * replaced.
+ *
+ * Deliberately not `display: none` and not clipped off-screen. Hidden text that
+ * only robots read is cloaking; this is what the site is without its script,
+ * and anybody can see it by turning one off.
+ */
+.readable {
+  color: var(--fg-dim);
+  max-width: 100%;
+}
+
+.readable h1 {
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 400;
+  margin: 0 0 8px;
+}
+
+.readable h2 {
+  font-size: 15px;
+  font-weight: 400;
+  margin: 0;
+}
+
+.readable p {
+  margin: 0 0 8px;
+  word-break: break-word;
+}
+
+.readable ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.readable li,
+.readable section {
+  margin: 0 0 16px;
+}
+
+.readable a {
+  color: var(--accent);
+}
+
+.readable time {
+  color: var(--fg-faint);
+}
+
 .line-prefix {
   color: var(--fg-dim);
 }

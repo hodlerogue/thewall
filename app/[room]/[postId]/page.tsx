@@ -1,6 +1,23 @@
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { Readable } from '@/components/Readable'
 import { Shell } from '@/components/Shell'
+import { postMetadata } from '@/lib/seo/pages'
 import { pathToLocation } from '@/lib/shell/types'
+
+/**
+ * The post's own first line, as the title — the same slice a room listing
+ * shows, and the closest thing a post has to a subject (see `write`).
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ room: string; postId: string }>
+}): Promise<Metadata> {
+  const { room, postId } = await params
+  const location = pathToLocation(`/${room}/${postId}`)
+  return location.postId === undefined ? {} : postMetadata(location)
+}
 
 /**
  * `thewall.social/music/12` — the same address as the prompt path, which is why
@@ -23,5 +40,9 @@ export default async function Page({
   const location = pathToLocation(`/${room}/${postId}`)
   if (location.postId === undefined) notFound()
 
-  return <Shell initialLocation={location} />
+  return (
+    <Shell initialLocation={location}>
+      <Readable at={location} />
+    </Shell>
+  )
 }
