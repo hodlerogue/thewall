@@ -19,11 +19,41 @@ import type { Line } from '@/lib/shell/types'
 
 export const WORDMARK = 'thewall.social'
 
-/** What it is, in the words somebody would use to describe it to a friend. */
-export const HEADLINE = 'A social network that is a command prompt.'
+/**
+ * What it is, in the words somebody would use to describe it to a friend.
+ *
+ * Short because the demo is directly underneath it. A headline competing with a
+ * working copy of the product loses, so this stops at the hook and lets the
+ * thing itself do the explaining — which is also why the subhead is one line
+ * now instead of forty words restating this one.
+ */
+export const HEADLINE = 'A social network you type.'
 
 export const SUBHEAD =
-  'You type where you want to go, and it takes you there. Rooms full of people talking, and nothing in between you and them — no algorithm, no likes, no feed deciding what you see next.'
+  'No feed, no likes, no algorithm. Rooms full of people, and a prompt that walks you into them.'
+
+/**
+ * What a search result says, which is not what the headline says.
+ *
+ * The headline can afford to be short because the demo is under it. A search
+ * result has no demo under it and about 155 characters, so it spends them on
+ * the words somebody would actually type into a search box — "command prompt"
+ * among them, which the headline no longer contains.
+ */
+export const DESCRIPTION =
+  'A social site where the whole interface is a command prompt. Rooms, posts and replies, navigated by typing — no feed, no likes, no algorithm.'
+
+/**
+ * The one place the page raises its voice.
+ *
+ * A page with no scale contrast reads as a list: every section the same size,
+ * so nothing is emphasised and the eye has nowhere to land. This is the
+ * sentence worth stopping on, and it is lifted from `lib/guide/about.ts`
+ * unchanged — it is the best sentence in the codebase and it is the argument
+ * every other line here is in service of.
+ */
+export const STATEMENT =
+  'Everything here is written by a person, to be read by a person. That is the whole product.'
 
 export interface Proof {
   heading: string
@@ -43,7 +73,7 @@ export interface Proof {
 export const PROOFS: readonly Proof[] = [
   {
     heading: 'You always know where you are',
-    body: 'The text in front of your cursor is your name, the room, and what you are reading. Nothing else on the screen has to spend itself saying that, which is most of why this fits on a phone.',
+    body: 'The text in front of your cursor is your name, the room, and what you are reading. Nothing else on the screen has to say it.',
     sample: [
       { text: 'jameson:music/12$ look', tone: 'echo' },
       { text: '' },
@@ -54,7 +84,7 @@ export const PROOFS: readonly Proof[] = [
   },
   {
     heading: 'Rooms, not a feed',
-    body: 'Walk into one, read what people said, say something back. A room has a last post and you can reach it — nothing here scrolls forever, and nothing decides the order for you but time.',
+    body: 'Walk in, read what people said, say something back. A room has a last post and you can reach it. Nothing here scrolls forever.',
     sample: [
       { text: 'guest:lobby$ go kitchen', tone: 'echo' },
       { text: '' },
@@ -64,7 +94,7 @@ export const PROOFS: readonly Proof[] = [
   },
   {
     heading: 'Reading asks nothing of you',
-    body: 'No account to look around, and no wall in front of the good part. The first time you say something you are asked what to call you, and that is the whole of signing up.',
+    body: 'No account to look around. The first time you say something you are asked what to call you, and that is the whole of signing up.',
     sample: [
       { text: 'guest:kitchen$ say the trick is roasting them all at once', tone: 'echo' },
       { text: '' },
@@ -108,6 +138,9 @@ export const POSTER_ALT =
 
 export const CTA_PRIMARY = 'open the prompt'
 export const CTA_SECONDARY = 'read the rundown'
+
+/** The last thing said, above the last way in. */
+export const CLOSING = 'There is a prompt waiting, and people behind it.'
 
 /** Under the demo, once it has played itself out. */
 export const DEMO_INVITATION = 'your turn — tap a command, then press enter'

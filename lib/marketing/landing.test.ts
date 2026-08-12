@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createChipsFor, createRunner } from '@/lib/commands/run'
 import { findCommand } from '@/lib/commands/registry'
+import { ABOUT } from '@/lib/guide/about'
 import {
   CARD_ALT,
   CARD_BODY,
@@ -15,9 +16,11 @@ import {
   DEMO_REPLIES_ELSEWHERE,
   DEMO_SCRIPT,
   DEMO_TURNS,
+  DESCRIPTION,
   HEADLINE,
   POSTER_ALT,
   PROOFS,
+  STATEMENT,
   SUBHEAD,
 } from '@/lib/marketing/landing'
 import { answerAs, demoWorld, fixtureSignup, fixtureWriter, newestBy } from '@/lib/shell/demo'
@@ -57,11 +60,33 @@ function demo() {
 }
 
 describe('the landing copy', () => {
-  it('leads with what it is, in a sentence somebody could repeat', () => {
-    expect(HEADLINE).toMatch(/command prompt/)
-    // Long enough to say something, short enough to be a headline rather than
-    // the first paragraph of one.
-    expect(HEADLINE.split(/\s+/).length).toBeLessThan(12)
+  it('leads with a line somebody could repeat, and lets the demo explain it', () => {
+    /*
+     * The headline is short because a working copy of the product is directly
+     * underneath it, and a headline competing with that loses. It used to carry
+     * "command prompt" and forty words of subhead saying the same thing again.
+     */
+    expect(HEADLINE.split(/\s+/).length).toBeLessThan(8)
+    expect(SUBHEAD.split(/\s+/).length).toBeLessThan(24)
+  })
+
+  it('still says "command prompt" where a search result will read it', () => {
+    /*
+     * The half the headline gave up. A search result has no demo under it and
+     * about 155 characters, so it spends them on the words somebody would type
+     * into a search box — and the page still says it out loud in the section
+     * about links, which is where a reader who scrolled will meet it.
+     */
+    expect(DESCRIPTION).toMatch(/command prompt/)
+    expect(DESCRIPTION.length).toBeLessThanOrEqual(155)
+  })
+
+  it('raises its voice exactly once', () => {
+    // A page with no scale contrast reads as a list. This is the sentence worth
+    // stopping on, and it is the one /about opens with — the argument every
+    // other line here is in service of.
+    expect(STATEMENT).toMatch(/written by a person/)
+    expect(ABOUT.flatMap((section) => section.body).join(' ')).toContain(STATEMENT)
   })
 
   it('names only commands that exist', () => {

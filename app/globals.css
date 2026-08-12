@@ -630,10 +630,19 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/*
+ * Two widths, on purpose.
+ *
+ * The page was one 52rem column with everything in it, so the demo, the prose
+ * and the samples all measured the same and the page had no rhythm at all. The
+ * frame and the picture take the column; anything anybody has to *read* is
+ * capped at a measure — `--prose` — because 58rem of monospace is a wall.
+ */
 .landing-inner {
-  max-width: 52rem;
+  --prose: 36rem;
+  max-width: 58rem;
   margin: 0 auto;
-  padding: 40px 20px 72px;
+  padding: 32px 20px 72px;
 }
 
 /*
@@ -646,11 +655,11 @@ body {
  * it is set by the width it actually has, starting at 380px.
  */
 .landing-headline {
-  font-size: clamp(27px, 7.6vw, 46px);
+  font-size: clamp(30px, 8.4vw, 52px);
   font-weight: 400;
-  line-height: 1.12;
+  line-height: 1.08;
   letter-spacing: -0.02em;
-  margin: 12px 0 0;
+  margin: 10px 0 0;
   color: var(--fg);
   text-wrap: balance;
 }
@@ -665,23 +674,12 @@ body {
   color: var(--accent);
 }
 
-/* The short bar under the headline, which the share card also draws. It is the
-   only ornament on the page and it earns its place by marking where the pitch
-   stops and the explanation starts. */
-.landing-rule {
-  width: 44px;
-  height: 2px;
-  background: var(--accent);
-  border: 0;
-  margin: 22px 0;
-}
-
 .landing-sub {
-  margin: 0 0 26px;
-  max-width: 38rem;
+  margin: 14px 0 22px;
+  max-width: var(--prose);
   color: var(--fg-dim);
   font-size: clamp(15px, 4vw, 17px);
-  line-height: 1.6;
+  line-height: 1.55;
 }
 
 .landing-actions {
@@ -689,7 +687,7 @@ body {
   flex-wrap: wrap;
   align-items: center;
   gap: 14px 20px;
-  margin: 0 0 28px;
+  margin: 22px 0 0;
 }
 
 .landing-button {
@@ -766,7 +764,7 @@ body {
  * components/Demo.tsx about never dragging the page.
  */
 .demo-pane {
-  height: clamp(250px, 44vh, 360px);
+  height: clamp(280px, 46vh, 420px);
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
@@ -778,30 +776,79 @@ body {
   background: var(--bg);
 }
 
+/* Left, under the prompt it is talking about. Centred, it was the one line on
+   the page that did not start where every other line starts. */
 .demo-invitation {
-  margin: 10px 0 0;
+  margin: 0;
+  padding: 2px 12px 12px;
   color: var(--accent);
-  text-align: center;
 }
 
 .landing-footnote {
   margin: 12px 0 0;
+  max-width: var(--prose);
   color: var(--fg-faint);
   font-size: 13px;
+  line-height: 1.5;
 }
 
+/*
+ * The one loud thing.
+ *
+ * Every other section on this page is 15–22px, so without this the whole thing
+ * reads at one volume and the eye has nowhere to stop. Rules top and bottom
+ * rather than a box: it is a held note in the middle of the argument, not a
+ * callout panel.
+ */
+.landing-statement {
+  margin: 72px 0 0;
+  padding: 40px 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+.landing-statement p {
+  margin: 0;
+  max-width: 30ch;
+  font-size: clamp(21px, 5.6vw, 32px);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  text-wrap: balance;
+}
+
+/*
+ * Three across where there is room, and the reason is monotony rather than
+ * space: stacked, they were three identical heading-paragraph-box blocks in a
+ * column, which reads as a list of features however good the words are. Side by
+ * side they read as one idea in three parts, and the page is a screen shorter.
+ */
 .landing-proofs {
-  margin: 64px 0 0;
+  margin: 56px 0 0;
   display: grid;
-  gap: 44px;
+  gap: 40px 32px;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+
+/* A column, so the samples line up along the bottom whatever length the
+   sentences above them run to. Three boxes at three different heights is the
+   difference between a grid and three things that happen to be side by side. */
+.proof {
+  display: flex;
+  flex-direction: column;
+}
+
+.proof .proof-sample {
+  margin-top: auto;
 }
 
 .proof h2 {
-  margin: 0 0 10px;
-  font-size: clamp(17px, 5vw, 22px);
+  margin: 0 0 8px;
+  font-size: 17px;
   font-weight: 400;
   color: var(--accent);
-  line-height: 1.25;
+  line-height: 1.3;
+  text-wrap: balance;
 }
 
 /*
@@ -813,39 +860,45 @@ body {
  * of the interface. Measured, after looking at it and not being sure.
  */
 .proof > p {
-  margin: 0 0 16px;
-  max-width: 38rem;
+  margin: 0 0 14px;
+  max-width: var(--prose);
   color: var(--fg-dim);
-  line-height: 1.6;
+  line-height: 1.55;
 }
 
-/* A piece of the real screen, in a box that says so without pretending to be a
-   window: the frame above is the window, and two of them would compete. */
+/*
+ * A piece of the real screen, and quieter than it was.
+ *
+ * It had a raised ground and a rounded edge, which made three little windows
+ * competing with the real one at the top of the page. A rule and some space is
+ * enough to say "this is the screen talking" — and at 13px it sits under the
+ * sentence it is evidence for rather than beside it.
+ */
 .proof-sample {
-  padding: 14px 16px;
-  border-left: 2px solid var(--rule);
-  background: var(--bg-raised);
-  border-radius: 0 6px 6px 0;
+  padding: 2px 0 2px 14px;
+  border-left: 1px solid var(--rule);
+  font-size: 13px;
   overflow-x: auto;
 }
 
 .landing-card {
-  margin: 64px 0 0;
+  margin: 72px 0 0;
 }
 
 .landing-card h2 {
   margin: 0 0 10px;
-  font-size: clamp(17px, 5vw, 22px);
+  font-size: clamp(18px, 5vw, 24px);
   font-weight: 400;
   color: var(--accent);
   line-height: 1.25;
+  text-wrap: balance;
 }
 
 .landing-card > p {
   margin: 0 0 20px;
-  max-width: 38rem;
+  max-width: var(--prose);
   color: var(--fg-dim);
-  line-height: 1.6;
+  line-height: 1.55;
 }
 
 .landing-shot {
@@ -857,9 +910,20 @@ body {
 }
 
 .landing-end {
-  margin: 72px 0 0;
-  padding-top: 36px;
+  margin: 80px 0 0;
+  padding-top: 40px;
   border-top: 1px solid var(--rule);
+}
+
+/* So the poster is not the last word. A picture with nothing said next to it
+   is decoration; a picture under a sentence is the end of an argument. */
+.landing-closing {
+  margin: 0 0 24px;
+  max-width: 24ch;
+  font-size: clamp(20px, 5.4vw, 28px);
+  line-height: 1.25;
+  color: var(--fg);
+  text-wrap: balance;
 }
 
 /* The poster. Wider than the column it sits in would be pointless — it is one

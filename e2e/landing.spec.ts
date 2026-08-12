@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { DEMO_QUIET, DEMO_REPLIES, DEMO_TURNS } from '@/lib/marketing/landing'
+import { DEMO_QUIET, DEMO_REPLIES, DEMO_TURNS, HEADLINE } from '@/lib/marketing/landing'
 
 /**
  * /hello — the page you send somebody who has not seen this before.
@@ -25,11 +25,36 @@ test('says what this is, in the HTML, before any script runs', async ({ page }) 
   await page.route('**/*.js', (route) => route.abort())
   await page.goto('/hello')
 
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('command prompt')
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(HEADLINE)
   await expect(page.getByRole('link', { name: /open the prompt/ }).first()).toBeVisible()
   // The demo frame is not empty without its JavaScript: the lobby listing is
   // rendered on the server and stands in until the live one replaces it.
   await expect(pane(page)).toContainText('music')
+
+  // The headline is short enough to leave the explaining to the demo, so the
+  // words a search result needs live in the description instead.
+  const html = await page.content()
+  expect(html).toMatch(/<meta name="description" content="[^"]*command prompt/)
+})
+
+test('shows the working prompt before it offers a way out', async ({ page }) => {
+  /*
+   * The thing that was wrong with the first version of this page.
+   *
+   * The demo was the eighth thing on it — wordmark, headline, rule, five lines
+   * of subhead and two buttons, one of them a way off the page, before the
+   * working copy of the product appeared below the fold on a phone. Order is
+   * the whole argument here: the reason to stay has to come before the exit.
+   */
+  await page.goto('/hello')
+
+  const frame = await page.locator('.demo').boundingBox()
+  const cta = await page.getByRole('link', { name: /open the prompt/ }).first().boundingBox()
+  expect(frame!.y).toBeLessThan(cta!.y)
+
+  // And it is on the first screen rather than under it.
+  const fold = page.viewportSize()!.height
+  expect(frame!.y).toBeLessThan(fold * 0.45)
 })
 
 test('has one h1, and it is the pitch', async ({ page }) => {
