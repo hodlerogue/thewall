@@ -718,6 +718,16 @@ Two things it does not do. `/` still redirects into commons, so nothing about
 how this site is entered has changed. And `hello` is now a reserved slug, in the
 schema and in the fixture, so no room can be made that the page would shadow.
 
+**The artwork exists three times, and each copy has a job.**
+`assets/thewallopengraph.png` is the master — 1731×909 as it was drawn, beside
+the vendored typeface, served to nobody and kept so the other two can be made
+again. `app/opengraph-image.png` is the 1200×630 crop Next attaches as the share
+card, at about 130 KB because that is the size a chat app will wait for.
+`public/thewallopengraph.png` is 1600×840 and is the one the landing page shows.
+Re-export the master and the other two are `sharp(...).resize(...)` away; edit
+one of the derived files alone and the three quietly stop being the same
+picture.
+
 ## Not built, on purpose
 
 Private messages, and reply-to-reply (§4.3 makes flatness a stated constraint,

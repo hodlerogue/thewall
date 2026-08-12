@@ -191,4 +191,23 @@ describe('the page', () => {
     expect(page).toMatch(/width=\{1600\}/)
     expect(page).toMatch(/height=\{840\}/)
   })
+
+  it('has the picture at the size it says, and the master it was cut from', () => {
+    /*
+     * Three copies of one artwork, each with a job: the master in `assets/`
+     * that is served to nobody, the 1200×630 crop Next attaches as the share
+     * card, and the 1600×840 the page shows. The dimensions in the markup are
+     * what stop the page reflowing when it lands, so they are read out of the
+     * file rather than trusted — a re-export at another size would otherwise
+     * leave the page reserving the wrong hole for it.
+     */
+    const size = (path: string) => {
+      const png = readFileSync(join(process.cwd(), path))
+      return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
+    }
+
+    expect(size('public/thewallopengraph.png')).toEqual({ width: 1600, height: 840 })
+    expect(size('app/opengraph-image.png')).toEqual({ width: 1200, height: 630 })
+    expect(size('assets/thewallopengraph.png').width).toBeGreaterThan(1600)
+  })
 })
