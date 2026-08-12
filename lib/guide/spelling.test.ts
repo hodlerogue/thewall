@@ -25,6 +25,7 @@ import { describe, expect, it } from 'vitest'
 /** Everything a person could read on the screen or in an email. */
 const SOURCES = [
   'lib/guide/about.ts',
+  'lib/marketing/landing.ts',
   'lib/legal/documents.ts',
   'lib/shell/fixtures.ts',
   'lib/shell/themes.ts',
@@ -42,7 +43,9 @@ const SOURCES = [
   'components/Shell.tsx',
   'components/Palette.tsx',
   'components/Readable.tsx',
+  'components/Demo.tsx',
   'app/about/page.tsx',
+  'app/hello/page.tsx',
   'app/legal/Document.tsx',
   'app/layout.tsx',
   'app/manifest.ts',

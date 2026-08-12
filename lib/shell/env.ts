@@ -143,6 +143,7 @@ export const RESERVED_SLUGS = new Map([
   ['opengraph-image', 'that is a route'],
   ['feed', 'that is the wall feed'],
   ['unsubscribe', 'that is a route'],
+  ['hello', 'that is a route'],
 ])
 
 /** §4.2's fade, matching the interval in the lobby query. */

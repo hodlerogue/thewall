@@ -38,13 +38,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   /*
    * The pages that exist whether or not a database answers.
    *
-   * `/about` is deliberately first and weighted highest: it is the one page on
-   * this site that already reads as a page — 1,412 words of prose explaining
-   * what a command prompt is doing on a social site — and it is the answer to
-   * every query that could plausibly bring somebody here cold.
+   * `/hello` and `/about` are weighted highest, and they are the two halves of
+   * the same job: the first is the four-second version with a working demo of
+   * the prompt in it, the second is the rundown that explains what a command
+   * prompt is doing on a social site. Between them they are the answer to every
+   * query that could plausibly bring somebody here cold.
    */
   const always: MetadataRoute.Sitemap = [
     { url: at('/'), changeFrequency: 'hourly', priority: 1 },
+    { url: at('/hello'), changeFrequency: 'monthly', priority: 0.9 },
     { url: at('/about'), changeFrequency: 'monthly', priority: 0.9 },
     { url: at('/lobby'), changeFrequency: 'hourly', priority: 0.8 },
     { url: at('/terms'), changeFrequency: 'yearly', priority: 0.1 },

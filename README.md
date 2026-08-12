@@ -689,6 +689,35 @@ is deliberately absent from it: everything said there is gone in 24 hours and a
 crawl returns in days, so every visit would find a different room and none of it
 the room that was indexed.
 
+## The page you send somebody
+
+`/hello` is the four-second version, and the only page here allowed to sell
+anything. `/about` stays what it is — 1,400 words with, in its own words, "no
+marketing, no feature bullets" — which is right for somebody who has already
+arrived and useless as a link in a group chat.
+
+The hero is **the product running**, not a picture of it. `components/Demo.tsx`
+builds the same fixture world the demo deploy uses, hands it to the real
+`createRunner`, and plays a three-command script — `go music`, `go 12`, `who` —
+typing each one out. Then it stops and the visitor has it: chips insert, `↵`
+runs, and the prompt takes anything the site takes. Nothing is written anywhere.
+Because the output comes from the registry rather than a transcript, a renamed
+verb fails a test instead of playing a session the site would refuse.
+
+It is deliberately not `Shell`, which owns the viewport it is in — visualViewport
+maths, URL rewriting, scroll capture, a service worker — none of which belongs
+in a page. The world both of them use lives in `lib/shell/demo.ts`, once.
+
+The rest is short: three proofs, each carrying a piece of real output in the
+real tones rather than an icon; the share card, captioned as what it is; and one
+way out, which is the prompt rather than a signup. Everything but the demo is
+server-rendered, so the words are in the HTML and on the screen before any
+script arrives.
+
+Two things it does not do. `/` still redirects into commons, so nothing about
+how this site is entered has changed. And `hello` is now a reserved slug, in the
+schema and in the fixture, so no room can be made that the page would shadow.
+
 ## Not built, on purpose
 
 Private messages, and reply-to-reply (§4.3 makes flatness a stated constraint,

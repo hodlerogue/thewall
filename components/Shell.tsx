@@ -6,11 +6,10 @@ import { createChipsFor, createRunner } from '@/lib/commands/run'
 import { createLive, type Live } from '@/lib/data/live'
 import { supabaseEnv } from '@/lib/data/supabaseEnv'
 import { httpSignupApi, supabaseWriter } from '@/lib/data/writer'
-import { fixtureEnv, type Env, type FixturePerson } from '@/lib/shell/env'
+import { demoWorld, fixtureSignup, fixtureWriter } from '@/lib/shell/demo'
+import { fixtureEnv, type Env } from '@/lib/shell/env'
 import { startArrivalReads, type ArrivalReads } from '@/lib/shell/boot'
-import { PEOPLE, ROOMS } from '@/lib/shell/fixtures'
 import { describeError } from '@/lib/shell/errors'
-import type { Room } from '@/lib/shell/model'
 import { shouldSuggest, suggestion, watchForInstall } from '@/lib/pwa/install'
 import { renderFeed, renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
@@ -131,24 +130,16 @@ export function Shell({
       const ephemeralNames: string[] = []
 
       if (useFixtures) {
-        // Whoever signs up in the demo gets a page, because their own page is
-        // the only place a wall can be tried. The real Env gets this from the
-        // profiles table; here it is an array the fake signup pushes to and
-        // fixtureEnv reads at call time.
-        const demoPeople: FixturePerson[] = [...PEOPLE]
         /*
-         * The demo's own copy of the rooms, which it is allowed to write to.
+         * The demo's own world, which it is allowed to write to.
          *
-         * `fixtureWriter` used to return an address and keep nothing, so
-         * everything typed in the demo vanished the moment you looked again —
-         * the count under a post you had just answered went back down, which is
-         * the fixture telling a visitor the site does not work. A copy rather
-         * than the module's array, so the seed stays what every test imports.
+         * Whoever signs up here gets a page, because their own page is the only
+         * place a wall can be tried; and the rooms are a copy rather than the
+         * module's arrays, so the seed stays what every test imports. Both live
+         * in lib/shell/demo.ts now that the landing page's hero needs the same
+         * world — see the note there about two fixtures being free to drift.
          */
-        const demoRooms: Room[] = ROOMS.map((room) => ({
-          ...room,
-          posts: room.posts.map((post) => ({ ...post, replies: [...post.replies] })),
-        }))
+        const { rooms: demoRooms, people: demoPeople } = demoWorld()
         env = fixtureEnv(demoRooms, demoPeople)
         // `session` is declared below and only ever read at write time, which
         // is long after. Keep it that way: calling this during boot would be a
@@ -501,135 +492,3 @@ async function arriveAt(
   return { lines: renderPost(post), location: { room: room.slug, postId: post.id } }
 }
 
-/**
- * Fixture-mode stand-ins, so the mobile gate can walk the whole signup flow
- * without a database. Nothing here runs when Supabase is configured.
- */
-function fixtureWriter(rooms: Room[], whoami: () => string | null): Writer {
-  const taken = new Set(['jameson', 'marisol', 'tuck', 'ren', 'dev'])
-  const find = (slug: string) => rooms.find((room) => room.slug === slug)
-
-  /*
-   * It writes, and that is the whole change.
-   *
-   * This used to hand back an address and keep nothing, so the demo answered a
-   * post and then showed the same reply count a moment later — a visitor's
-   * first impression being the site forgetting what they had just done. The
-   * numbers were invented too: a counter starting at zero per post returned
-   * "reply 1" under a thread that already had two.
-   *
-   * Both are the same rule, and it is the one CHANGING-IT keeps having to
-   * restate — **the fixture must not be a different shape from the thing it
-   * stands in for.** Small is fine; different is not.
-   */
-  return {
-    async post(room: string, body: string) {
-      const found = find(room)
-      // Every address in a room, ever, so numbers are never reused (§3.4).
-      const id = found ? found.posts.reduce((high, post) => Math.max(high, post.id), 0) + 1 : 1
-      found?.posts.unshift({
-        id,
-        author: whoami() ?? 'you',
-        body,
-        createdAt: new Date(),
-        replies: [],
-      })
-      return id
-    },
-    async reply(room: string, postNo: number, body: string, toReply?: number) {
-      const post = find(room)?.posts.find((p) => p.id === postNo)
-      // Per post, because that is what a reply number is — and counted from
-      // what is already there rather than from zero.
-      const id = post ? post.replies.reduce((high, reply) => Math.max(high, reply.id), 0) + 1 : 1
-      post?.replies.push({ id, author: whoami() ?? 'you', body, createdAt: new Date(), toReply })
-      return id
-    },
-    async rename(name: string) {
-      if (taken.has(name)) return { ok: false as const, reason: `${name} is taken` }
-      return { ok: true as const, name }
-    },
-  }
-}
-
-/**
- * Not a secret, and not meant to be. See `login` below for why the demo hands
- * this over rather than pretending mail exists.
- */
-const DEMO_CODE = '123456'
-
-function fixtureSignup(people: FixturePerson[]): SignupApi {
-  const taken = new Set(['jameson', 'marisol', 'tuck', 'ren', 'dev'])
-  return {
-    async checkName(name: string) {
-      const available = !taken.has(name)
-      return {
-        available,
-        alternates: available ? [] : [`${name}_`, `${name}1`, `the${name}`],
-      }
-    },
-    async resend() {
-      return { note: 'nothing to send — this is a demo.' }
-    },
-    async logout() {
-      // Nothing to end — the demo never had a session. Answering `ok` is the
-      // truth of it: after this you are a guest here, same as the real site.
-      return { ok: true as const }
-    },
-    async login(name: string) {
-      // Both branches, not a single cheerful one. `login` is reachable from
-      // `help` here as it is anywhere, so the fixture build is where somebody
-      // finds out what it does — and "no one is called that" is half of what
-      // it does.
-      if (!taken.has(name) && !people.some((person) => person.name === name)) {
-        return {
-          ok: false as const,
-          reason: `no one here is called ${name}. if you’ve not been here before, say something and i’ll set you up.`,
-        }
-      }
-      /*
-       * The demo asks for a code and tells you what it is.
-       *
-       * The alternative — say "nothing was sent" and stop — leaves the whole
-       * code flow unwalkable in the demo build and therefore untested by the
-       * phone suite, which is §8's kill condition. That is the fixture-is-a-
-       * different-shape trap this codebase keeps falling into: a listing that
-       * paged on the real site and not in fixtures hid a truncation bug for
-       * weeks.
-       *
-       * Saying the code out loud is honest rather than cute. Nothing was
-       * emailed and nothing was kept; what is being demonstrated is the shape
-       * of the exchange, and a demo that hands you the answer is obviously a
-       * demo.
-       */
-      return {
-        ok: true as const,
-        name,
-        codeSent: true,
-        note: `nothing was emailed — this is a demo. on the real site a key would be in that account’s inbox; here the code is ${DEMO_CODE}.`,
-      }
-    },
-
-    async loginCode(name: string, code: string) {
-      if (code.trim().toLowerCase().replace(/[\s-]/g, '') !== DEMO_CODE) {
-        return {
-          ok: false as const,
-          reason: `that code didn’t work. in this demo it is ${DEMO_CODE}.`,
-        }
-      }
-      return { ok: true as const, name }
-    },
-    async create(name: string) {
-      // Nothing is stored anywhere, but the demo does have to be able to show
-      // you `~yourname` a second later, or `say` on your own wall has nowhere
-      // to land and the feature cannot be tried at all.
-      people.push({ name, joinedAt: new Date(), verified: false })
-      // No account was made and no mail was sent. Say so — this build gets
-      // deployed to public URLs, and people type real addresses into it.
-      return {
-        ok: true as const,
-        name,
-        note: 'nothing was sent — this is a demo, and your address wasn’t kept.',
-      }
-    },
-  }
-}

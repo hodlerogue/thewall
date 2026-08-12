@@ -983,6 +983,42 @@ same posts and both are scanned, and changing either means regenerating the
 bundle — `./scripts/db-bundle.sh > supabase/setup.sql`, which writes to stdout,
 so redirecting it is the whole of the command.
 
+**A page-level `openGraph` replaces the layout's, image and all.** `/hello`
+declared `openGraph` to give the landing page its own card title, and the built
+HTML came back with **no `og:image` at all** — the file-convention image from
+`app/opengraph-image.png` gone, and `og:type` and `og:site_name` with it.
+Nothing warns, at build time or after; the only place to notice is somebody
+else's timeline. So a page that sets `openGraph` restates the whole of it,
+including `images`, and `e2e/landing.spec.ts` follows the URL and checks it is a
+real image rather than a string that parses. This is the second time this tag
+has disappeared silently — the first was a trailing newline in the `.alt.txt`.
+
+**A landing page is marketing, and marketing rots faster than code.** The copy
+lives in `lib/marketing/landing.ts` alone, so `landing.test.ts` can check every
+command it names against `COMMANDS` and the spelling guard can read it. The
+demo in the hero is not copy at all: it is a list of commands run through the
+real `createRunner` against the fixture world, so a renamed verb fails a test
+rather than playing a session the site would refuse. One rule shapes the script
+— **nothing in it may start the signup**, because while the session is asking,
+the runner treats anything typed as the answer, and a visitor taking over would
+find their first tapped command submitted as their name.
+
+`components/Demo.tsx` is deliberately not `Shell`: that component owns the
+viewport — `visualViewport` maths on the document root, `pushState` on every
+move, scroll capture, a service worker — all of which is correct for the site
+and wrong inside a page. The demo world itself lives in `lib/shell/demo.ts`,
+shared with `Shell`, because two fixtures are free to drift from each other as
+well as from the site.
+
+**A descendant selector will eat the tones inside it.** `.proof p` also matched
+every `.line` in the sample below it — one class more specific than
+`.line-accent` — so every tone collapsed to the same colour and the samples
+quietly stopped being pictures of the interface. It does not look like a bug, it
+looks like a slightly dull page, which is why it was found by reading computed
+styles rather than by looking. `.proof > p` fixes it and an e2e assertion holds
+it: the accent lines must equal `--accent`, and the sample must contain more
+than two distinct colours.
+
 **The fixture Env must not lie.** The e2e suite runs entirely against
 `fixtureEnv`, so a fixture that disagrees with the database is a green suite
 over a broken site — not a smaller problem than a bug, a bigger one, because it

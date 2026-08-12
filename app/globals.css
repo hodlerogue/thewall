@@ -520,3 +520,299 @@ body {
   margin: 0.15rem 0 0;
   color: var(--fg-dim);
 }
+
+/*
+ * =============================================================================
+ * /hello — the one page that is allowed to sell this
+ * =============================================================================
+ *
+ * Everything here is drawn from the theme tokens, so all four palettes work and
+ * `themes.test.ts` keeps measuring the colours this actually paints. Nothing
+ * below invents a value.
+ *
+ * The scroll trick is `.document`'s, for the same reason: `body` has
+ * `overflow: hidden` because the terminal owns scrolling and that is what keeps
+ * the prompt above the keyboard, so a page that has to scroll takes the whole
+ * viewport as its own scroll container rather than changing that globally.
+ */
+.landing {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.landing-inner {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 40px 20px 72px;
+}
+
+/*
+ * The one place this site departs from a single type size.
+ *
+ * Everything else is 15px including every heading, which is deliberate — a
+ * terminal has one size, and a document that grows headings out of a scrollback
+ * stops looking like one. A landing page has four seconds and no context, and
+ * needs somewhere for the eye to land first. `clamp` rather than a breakpoint so
+ * it is set by the width it actually has, starting at 380px.
+ */
+.landing-headline {
+  font-size: clamp(27px, 7.6vw, 46px);
+  font-weight: 400;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  margin: 12px 0 0;
+  color: var(--fg);
+  text-wrap: balance;
+}
+
+.landing-mark {
+  margin: 0;
+  color: var(--fg-faint);
+  letter-spacing: 0.04em;
+}
+
+.landing-chevron {
+  color: var(--accent);
+}
+
+/* The short bar under the headline, which the share card also draws. It is the
+   only ornament on the page and it earns its place by marking where the pitch
+   stops and the explanation starts. */
+.landing-rule {
+  width: 44px;
+  height: 2px;
+  background: var(--accent);
+  border: 0;
+  margin: 22px 0;
+}
+
+.landing-sub {
+  margin: 0 0 26px;
+  max-width: 38rem;
+  color: var(--fg-dim);
+  font-size: clamp(15px, 4vw, 17px);
+  line-height: 1.6;
+}
+
+.landing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 20px;
+  margin: 0 0 28px;
+}
+
+.landing-button {
+  display: inline-block;
+  padding: 11px 18px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 5px;
+  background: var(--bg-raised);
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.landing-button:active {
+  border-color: var(--accent);
+}
+
+@media (hover: hover) {
+  .landing-button:hover {
+    border-color: var(--accent);
+  }
+}
+
+.landing-link {
+  color: var(--fg-faint);
+  text-underline-offset: 3px;
+}
+
+/*
+ * The demo, framed as the window it is a picture of.
+ *
+ * The glow is an outer shadow, which `overflow: hidden` does not clip — it
+ * clips children, not the box's own shadow — so the frame can round its corners
+ * over the scrollback and still sit in a warm pool of its own light, which is
+ * what the share card does and what makes the two read as one thing.
+ */
+.demo {
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg);
+  box-shadow: 0 20px 70px -34px var(--accent);
+}
+
+.demo-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--rule);
+}
+
+.demo-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--rule);
+}
+
+.demo-title {
+  flex: 1 1 auto;
+  text-align: center;
+  /* The three dots have no counterweight on the right, so the title is nudged
+     back by their width rather than being left visibly off-centre. */
+  margin-right: 45px;
+  color: var(--fg-faint);
+  font-size: 12px;
+}
+
+/*
+ * Tall enough for a room listing, short enough that the pitch above it is not
+ * pushed off a phone. Scrolls itself and nothing else — see the note in
+ * components/Demo.tsx about never dragging the page.
+ */
+.demo-pane {
+  height: clamp(250px, 44vh, 360px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 12px 10px;
+}
+
+.demo-composer {
+  border-top: 1px solid var(--rule);
+  background: var(--bg);
+}
+
+/* The key that runs it. The chips beside it only ever insert (§3.6, §9), so
+   something visible has to be the thing that says "now do it". */
+.demo-enter {
+  flex: 0 0 auto;
+  min-width: 40px;
+  padding: 4px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--bg-raised);
+  color: var(--accent);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.demo-enter:active {
+  border-color: var(--accent-dim);
+}
+
+.demo-invitation {
+  margin: 10px 0 0;
+  color: var(--accent);
+  text-align: center;
+}
+
+.landing-footnote {
+  margin: 12px 0 0;
+  color: var(--fg-faint);
+  font-size: 13px;
+}
+
+.landing-proofs {
+  margin: 64px 0 0;
+  display: grid;
+  gap: 44px;
+}
+
+.proof h2 {
+  margin: 0 0 10px;
+  font-size: clamp(17px, 5vw, 22px);
+  font-weight: 400;
+  color: var(--accent);
+  line-height: 1.25;
+}
+
+/*
+ * The child combinator is load-bearing.
+ *
+ * Written as `.proof p` it also matched every `.line` inside the sample below
+ * — one class more specific than `.line-accent` — so every tone in the sample
+ * collapsed to the same colour and the samples silently stopped being pictures
+ * of the interface. Measured, after looking at it and not being sure.
+ */
+.proof > p {
+  margin: 0 0 16px;
+  max-width: 38rem;
+  color: var(--fg-dim);
+  line-height: 1.6;
+}
+
+/* A piece of the real screen, in a box that says so without pretending to be a
+   window: the frame above is the window, and two of them would compete. */
+.proof-sample {
+  padding: 14px 16px;
+  border-left: 2px solid var(--rule);
+  background: var(--bg-raised);
+  border-radius: 0 6px 6px 0;
+  overflow-x: auto;
+}
+
+.landing-card {
+  margin: 64px 0 0;
+}
+
+.landing-card h2 {
+  margin: 0 0 10px;
+  font-size: clamp(17px, 5vw, 22px);
+  font-weight: 400;
+  color: var(--accent);
+  line-height: 1.25;
+}
+
+.landing-card > p {
+  margin: 0 0 20px;
+  max-width: 38rem;
+  color: var(--fg-dim);
+  line-height: 1.6;
+}
+
+.landing-shot {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+.landing-end {
+  margin: 72px 0 0;
+  padding-top: 36px;
+  border-top: 1px solid var(--rule);
+}
+
+.landing-end h2 {
+  margin: 0 0 18px;
+  font-size: clamp(20px, 6vw, 28px);
+  font-weight: 400;
+  color: var(--fg);
+}
+
+.landing-footer {
+  margin: 0;
+  color: var(--fg-faint);
+}
+
+.landing-footer a {
+  color: var(--fg-faint);
+  text-underline-offset: 3px;
+}
+
+.landing a:focus-visible,
+.demo-enter:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

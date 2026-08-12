@@ -3838,6 +3838,26 @@ comment on constraint posts_body_length on public.posts is
 
 
 -- ==========================================================================
+-- 20260812010000_hello_is_a_route.sql
+-- ==========================================================================
+
+-- /hello is the landing page now, so nobody may take it as a room name.
+--
+-- In its own migration rather than added to the insert that created the table:
+-- that one may already be applied, and a row added to an applied file never
+-- runs. This is the rule `CHANGING-IT.md` states for adding a route, followed.
+--
+-- A room called `hello` would be shadowed by the page forever — `go hello`
+-- would work, thewall.social/hello would not be the room, and §3.4's "the
+-- prompt path is the URL" would be quietly false for exactly one room.
+insert into public.reserved_slugs (slug, reason)
+values ('hello', 'that is a route')
+on conflict (slug) do nothing;
+
+;
+
+
+-- ==========================================================================
 -- seed.sql — §5, the rooms arrive warm
 -- ==========================================================================
 
@@ -4177,7 +4197,8 @@ insert into public.applied_migrations (filename) values
   ('20260809000000_no_mail_to_nowhere.sql'),
   ('20260810000000_lobby_uses_its_index.sql'),
   ('20260811000000_reply_to_a_reply.sql'),
-  ('20260812000000_four_thousand.sql')
+  ('20260812000000_four_thousand.sql'),
+  ('20260812010000_hello_is_a_route.sql')
 on conflict do nothing;
 
 commit;
