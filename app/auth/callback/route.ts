@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { EmailOtpType } from '@supabase/supabase-js'
 import { landingPath } from '@/lib/auth/links'
-import { createRouteClient } from '@/lib/supabase/server'
+import { createAdminClient, createRouteClient } from '@/lib/supabase/server'
 
 /**
  * Where the magic link lands.
@@ -42,12 +42,16 @@ export async function GET(request: Request) {
 
   // They can read the inbox. That is the claim §4.7 needs, and now it is true.
   //
-  // Through an RPC rather than a direct update: writing this column from the
-  // user's own session required a table-wide UPDATE grant, and that grant let
-  // anyone set verified_at from the browser console — bypassing the entire
-  // gate. security definer + auth.uid() means a caller can only mark
-  // themselves, and the grant is gone.
-  const { error: markError } = await supabase.rpc('mark_verified')
+  // Under the service role, and naming the user, rather than through their own
+  // session. The session version was `rpc('mark_verified')` with no arguments,
+  // granted to `authenticated` — which meant anyone signed in could call it and
+  // be verified without ever opening the email. Everyone is signed in from the
+  // moment they pick a name, so that was the entire gate, one console line
+  // wide. This route is the right caller precisely because it has just watched
+  // a token minted for that address be spent.
+  const { error: markError } = await createAdminClient().rpc('mark_verified', {
+    p_user: data.user.id,
+  })
 
   if (markError) {
     /*
@@ -58,14 +62,15 @@ export async function GET(request: Request) {
      * still be told to click the link.
      *
      * It is also the exact shape of an unapplied migration. `mark_verified` is
-     * created by 20260804000000_column_scoped_grants.sql; without it PostgREST
+     * created by 20260804000000_column_scoped_grants.sql and re-signatured by
+     * 20260812020000_grants_are_a_denylist.sql; without either, PostgREST
      * answers PGRST202, and the only symptom anybody could see was a gate that
      * would not open.
      */
     console.error(
       `could not mark verified — ${markError.code ?? 'no code'}: ${markError.message}` +
         (markError.code === 'PGRST202'
-          ? '\n  mark_verified() does not exist on this project. Apply the migrations: ./scripts/db-deploy.sh'
+          ? '\n  mark_verified(p_user uuid) does not exist on this project. Apply the migrations: ./scripts/db-deploy.sh'
           : ''),
     )
     return backTo(next, 'failed')

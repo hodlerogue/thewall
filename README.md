@@ -103,9 +103,9 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 375 unit tests: parser, aliases, errors, signup, search, themes, names, walls
-npm run test:e2e   # 116 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 195 assertions against the real migrations, on a throwaway database
+npm test           # 761 unit tests: parser, aliases, errors, signup, search, themes, names, walls
+npm run test:e2e   # 199 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm run test:db    # 293 assertions against the real migrations, on a throwaway database
 ```
 
 To see what is actually in a deployed project — read-only, and it tells apart

@@ -2536,4 +2536,157 @@ select tests.ok(
 );
 
 \echo ''
+\echo '§4.7 and §3.9 — the grant layer, measured as a whole rather than case by case'
+
+/*
+ * Everything above this point asks "can this role do this one thing". That is
+ * how forty assertions coexisted with `anon` holding INSERT, UPDATE, DELETE and
+ * TRUNCATE on every table: nobody had asked the open question, which is what
+ * these roles hold that nothing here mentions.
+ *
+ * A Supabase project grants ALL on every new object in `public` to anon and
+ * authenticated before a migration runs. `_shim.sql` now does the same, so this
+ * suite finally sees the permissions the real project will have — and the
+ * question below is the one worth asking of them.
+ */
+
+-- The whole matrix, as one string. A privilege that appears from nowhere — a
+-- new table, a default that came back, a `grant all` typed in haste — shows up
+-- here as a diff rather than as nothing.
+select tests.ok(
+  (
+    select coalesce(string_agg(line, E'\n' order by line), '')
+      from (
+        select c.relname || ' ' || r.rolname || ' ' || a.privilege_type as line
+          from pg_class c
+          join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
+         cross join lateral aclexplode(
+           coalesce(c.relacl, acldefault(
+             (case c.relkind when 'S' then 'S' else 'r' end)::"char", c.relowner))) a
+          join pg_roles r on r.oid = a.grantee
+         where c.relkind in ('r', 'v', 'm', 'S')
+           and r.rolname in ('anon', 'authenticated')
+      ) held
+  ) = concat_ws(E'\n',
+    'posts anon SELECT',            'posts authenticated SELECT',
+    'profiles anon SELECT',         'profiles authenticated SELECT',
+    'replies anon SELECT',          'replies authenticated SELECT',
+    'reserved_slugs anon SELECT',   'reserved_slugs authenticated SELECT',
+    'room_overview anon SELECT',    'room_overview authenticated SELECT'
+  ),
+  'the browser roles hold SELECT on five relations and nothing else, anywhere'
+);
+
+/*
+ * TRUNCATE deserves its own line even though the assertion above covers it,
+ * because it is the one privilege row-level security does not filter. There is
+ * no row to check, so the policies are simply not consulted: with the grant a
+ * Supabase project hands out by default, `truncate public.posts cascade` from
+ * the publishable key emptied the site — posts and replies both, verified
+ * against a database built the way the real one is. PostgREST does not speak
+ * the verb today, which is why this was survivable rather than fatal, and is
+ * not a reason to keep holding it.
+ */
+select tests.ok(
+  not exists (
+    select 1
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
+     cross join lateral unnest(array['anon', 'authenticated']) role
+     where c.relkind = 'r'
+       and has_table_privilege(role, c.oid, 'truncate')
+  ),
+  'and TRUNCATE nowhere — the one write RLS would not have filtered'
+);
+
+-- `rooms` is absent from the matrix above and readable all the same, because
+-- its grant is per column. Which makes the omission the assertion: `created_by`
+-- is the reason the table grant was taken away in the first place.
+select tests.ok(
+  has_column_privilege('anon', 'public.rooms', 'slug', 'select')
+    and has_column_privilege('anon', 'public.rooms', 'curated', 'select'),
+  'rooms is readable by the column, so the lobby still works'
+);
+select tests.ok(
+  not has_column_privilege('anon', 'public.rooms', 'created_by', 'select')
+    and not has_column_privilege('authenticated', 'public.rooms', 'created_by', 'select'),
+  'and who opened a room is still not among the columns (§4.2)'
+);
+
+-- Reading a post reaches `rooms` through `is_visible()`, which runs as the
+-- caller. So the column grant above is load-bearing for something that never
+-- names it, and the failure mode is "posts are gone" rather than "rooms are".
+set local role anon;
+select tests.ok(
+  (select count(*) from public.posts) > 0,
+  'and a signed-out reader can still read posts, which needs both'
+);
+reset role;
+
+/*
+ * Verification, which you may not award yourself.
+ *
+ * `mark_verified()` took no arguments, marked whoever called it, and was
+ * granted to `authenticated`. One line from the console of anyone signed in —
+ * and §3.9 signs you in the moment you pick a name — passed the §4.7 gate
+ * without an inbox ever being opened. The migration that introduced it argued
+ * that `auth.uid()` meant a caller could only mark themselves, which is true
+ * and answers the wrong question: the gate is about whether anybody read the
+ * email, not about whose row is touched.
+ *
+ * Both signatures are checked. Leaving the old one behind would be worse than
+ * never having changed it — PostgREST would resolve the no-argument call and
+ * every assertion below would still pass.
+ */
+select tests.ok(
+  to_regprocedure('public.mark_verified()') is null,
+  'the self-service mark_verified is gone, not shadowed by the new one'
+);
+select tests.ok(
+  to_regprocedure('public.mark_verified(uuid)') is not null,
+  'and the caller now has to say who, which only the server can know'
+);
+select tests.ok(
+  not has_function_privilege('anon', 'public.mark_verified(uuid)', 'execute')
+    and not has_function_privilege('authenticated', 'public.mark_verified(uuid)', 'execute'),
+  'no browser role may call it — the two routes that do hold the service key'
+);
+select tests.ok(
+  has_function_privilege('service_role', 'public.mark_verified(uuid)', 'execute'),
+  'and the service role, which has just watched a token be spent, may'
+);
+
+-- The other half of the same slip. `20260804020000` says it revokes this from
+-- `public, anon` — a list that omits the one role a Supabase project grants to
+-- by default, so on the real project any signed-in account could ask whether
+-- an arbitrary user id was allowed to contribute.
+select tests.ok(
+  not has_function_privilege('authenticated', 'public.require_can_contribute(uuid)', 'execute'),
+  'and the contribution check is not an oracle for signed-in callers'
+);
+
+/*
+ * Writing, by contrast, is entirely functions: nine of them, and no table takes
+ * a write from a browser at all. Asserted as a whole for the same reason as the
+ * matrix above — a tenth granted by accident is invisible to a list of names.
+ *
+ * Phrased as the difference between the two roles rather than as what
+ * `authenticated` holds. The reading functions and the trigger functions are
+ * granted to PUBLIC, which every role inherits, so "what authenticated may
+ * call" is twenty entries of which eleven say nothing. What signing in *buys*
+ * you is the interesting set, and it should be exactly the verbs.
+ */
+select tests.ok(
+  (
+    select coalesce(string_agg(p.proname || '/' || p.pronargs, ',' order by p.proname, p.pronargs), '')
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace and n.nspname = 'public'
+     where has_function_privilege('authenticated', p.oid, 'execute')
+       and not has_function_privilege('anon', p.oid, 'execute')
+  ) = 'change_name/1,create_post/2,create_reply/4,create_room/3,mail/0,mail_count/0,'
+      || 'mark_mail_seen/0,notify_state/0,set_notify/1',
+  'and signing in buys exactly the nine functions that write, and nothing else'
+);
+
+\echo ''
 \echo 'all schema tests passed'

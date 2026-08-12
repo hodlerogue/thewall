@@ -382,8 +382,17 @@ still there after the next `db-deploy.sh` on a fresh project.
    the normal state and the probe is how anything knows.
 3. **Add a probe to `diagnose()` in `lib/data/supabaseEnv.ts`**, so `doctor`
    names your migration when it is missing. Probe a *column*, never a function —
-   calling `mark_verified` to ask whether it exists would mark you verified.
-4. Write assertions in `supabase/tests/schema.test.sql`, then `npm run test:db`.
+   `mark_verified` used to be callable from the browser, and asking whether it
+   existed would have marked you verified. It is service-role-only now, so that
+   particular gun is unloaded, but the rule is about the next function.
+4. **Grant what your new object needs, explicitly.** Nothing in `public` is
+   readable by the browser unless a migration says so:
+   `20260812020000_grants_are_a_denylist.sql` turns off the default privileges a
+   Supabase project ships with, so a new table arrives with no grants at all.
+   This is the safe direction — forgetting to grant gives you a visibly broken
+   feature, where forgetting to revoke used to give you a silently open table —
+   but it does mean a `create table` alone will not work.
+5. Write assertions in `supabase/tests/schema.test.sql`, then `npm run test:db`.
 
 Deploy with `./scripts/db-deploy.sh`, never `supabase db push` — the latter
 applies migrations and stops, leaving a schema with no rooms in it.

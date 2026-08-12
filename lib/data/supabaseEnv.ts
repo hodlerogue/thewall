@@ -383,8 +383,10 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
       /*
        * One column per migration that adds one, probed individually so a
        * missing one names itself. Cheaper and safer than calling the functions:
-       * `mark_verified` would mark you verified as a side effect of asking
-       * whether it exists.
+       * `mark_verified` used to be callable from here, and would have marked
+       * you verified as a side effect of asking whether it existed. It is
+       * service-role-only now — but the reason to probe columns outlives the
+       * one function that made the point.
        */
       for (const [table, column, migration] of [
         ['profiles', 'verified_at', '20260803020000_verify_to_continue'],
