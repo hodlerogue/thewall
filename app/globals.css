@@ -690,26 +690,6 @@ body {
   background: var(--bg);
 }
 
-/* The key that runs it. The chips beside it only ever insert (§3.6, §9), so
-   something visible has to be the thing that says "now do it". */
-.demo-enter {
-  flex: 0 0 auto;
-  min-width: 40px;
-  padding: 4px 10px;
-  border: 1px solid var(--rule);
-  border-radius: 4px;
-  background: var(--bg-raised);
-  color: var(--accent);
-  font: inherit;
-  font-size: 15px;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.demo-enter:active {
-  border-color: var(--accent-dim);
-}
-
 .demo-invitation {
   margin: 10px 0 0;
   color: var(--accent);
@@ -794,11 +774,14 @@ body {
   border-top: 1px solid var(--rule);
 }
 
-.landing-end h2 {
-  margin: 0 0 18px;
-  font-size: clamp(20px, 6vw, 28px);
-  font-weight: 400;
-  color: var(--fg);
+/* The poster. Wider than the column it sits in would be pointless — it is one
+   picture and the page is not a gallery — so it takes the column and stops. */
+.landing-poster {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 0 0 28px;
 }
 
 .landing-footer {
@@ -811,8 +794,7 @@ body {
   text-underline-offset: 3px;
 }
 
-.landing a:focus-visible,
-.demo-enter:focus-visible {
+.landing a:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

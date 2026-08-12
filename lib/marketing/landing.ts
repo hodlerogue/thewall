@@ -75,24 +75,42 @@ export const PROOFS: readonly Proof[] = [
 ]
 
 /**
- * The image, and what is true about it.
+ * Links, and the picture that is allowed to make the claim.
  *
- * It is the card for the domain itself. Rooms and posts draw their own from
- * `lib/brand/og.tsx`, out of the same `renderRoom` the screen uses — so a link
- * to a conversation previews as that conversation. Worth saying out loud,
- * because it is the sort of thing nobody notices working.
+ * This section showed the poster and said "this is the preview", which was
+ * wrong twice over: the poster is drawn art rather than a screenshot, and the
+ * claim it was attached to is specifically about the cards the site *generates*
+ * — which are a different thing, made by `lib/brand/og.tsx` out of the same
+ * `renderRoom` the screen uses.
+ *
+ * So the picture here is now a real one, fetched live from the card route for a
+ * real room. It cannot flatter the product because the product drew it, and it
+ * cannot go stale because it is made when it is asked for.
  */
 export const CARD_HEADING = 'Links look like the thing they point at'
 export const CARD_BODY =
-  'Paste the address anywhere and this is the preview. Link a room, or one conversation inside it, and the preview is that conversation — drawn by the site out of the same lines you would have read on the screen.'
-export const CARD_ALT =
-  'The share card for thewall.social: a terminal window listing rooms, with the commands look, go, who and theme underneath.'
+  'Send somebody a room, or one conversation inside it, and the preview is that conversation — drawn by the site out of the same lines you would have read on the screen. The picture below is not a mock-up of one. It is the live card for the music room, made when this page loaded.'
+
+/** The room the live card is drawn from. Seeded, curated, and never empty. */
+export const CARD_ROOM = 'music'
+export const CARD_ALT = `The share card for the ${CARD_ROOM} room: a terminal window showing what people have been saying in it.`
+
+/**
+ * The poster, and the one thing it is honest to say about it.
+ *
+ * Drawn rather than captured — the rooms and commands in it are real, the
+ * layout is an illustrator's, and it is the site's own share card. That makes
+ * it brand art, and brand art has to sit somewhere it is not claiming to be a
+ * screenshot. Here, at the end, with nothing asserted about it.
+ */
+export const POSTER_ALT =
+  'thewall.social, illustrated: a terminal window listing rooms and the commands look, go, who and theme, beside the words "social network, but in command prompt".'
 
 export const CTA_PRIMARY = 'open the prompt'
 export const CTA_SECONDARY = 'read the rundown'
 
 /** Under the demo, once it has played itself out. */
-export const DEMO_INVITATION = 'your turn — tap a command, then ↵'
+export const DEMO_INVITATION = 'your turn — tap a command, then press enter'
 export const DEMO_FOOTNOTE =
   'A real one, running on example rooms. Nothing you type here is saved or sent anywhere.'
 
