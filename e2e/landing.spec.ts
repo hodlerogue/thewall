@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { DEMO_QUIET, DEMO_REPLIES, DEMO_TURNS } from '@/lib/marketing/landing'
 
 /**
  * /hello — the page you send somebody who has not seen this before.
@@ -122,6 +123,79 @@ test('typing into it works, and the site answers', async ({ page }) => {
   // `help` lists what you can type from where you are standing — generated
   // from the registry, so this is the real one or nothing.
   await expect(pane(page)).toContainText('go — ')
+})
+
+test('somebody answers you once you have a name, and it is really in the room', async ({
+  page,
+}) => {
+  /*
+   * The demo's last act used to be your own sentence landing in silence, which
+   * is the one thing a social site cannot demonstrate that way.
+   *
+   * The reply is written, not generated — see lib/marketing/landing.ts — so
+   * what is asserted here is the mechanism: somebody who is not you says
+   * something, a beat later, and it is a real row in the room rather than a
+   * line printed at you. `look` afterwards is the difference.
+   */
+  await page.goto('/hello')
+  await expect(label(page)).toHaveText('guest:music/12$', { timeout: 20_000 })
+
+  const type = async (text: string) => {
+    await input(page).fill(text)
+    await input(page).press('Enter')
+  }
+
+  await type('leave')
+  await type('say warped is the whole point')
+  await type('ryan')
+  await type('ryan@example.com')
+  await expect(label(page)).toHaveText('ryan:music$')
+
+  /*
+   * The reply's own words, not "a name appeared".
+   *
+   * The first version of this waited for /jameson|marisol|.../ and passed
+   * without a reply ever arriving — every one of those names is already in the
+   * room listing printed above. A test that cannot fail is worse than none.
+   */
+  const first = DEMO_REPLIES.music[0]
+  await expect(pane(page)).toContainText(first, { timeout: 10_000 })
+
+  // And it is in the room rather than printed at you, which is the difference
+  // between a demo and an animation.
+  await type('look')
+  await expect(pane(page)).toContainText('1 reply')
+})
+
+test('it runs out of people, and says that is the demo rather than the room', async ({ page }) => {
+  await page.goto('/hello')
+  await expect(label(page)).toHaveText('guest:music/12$', { timeout: 20_000 })
+
+  const type = async (text: string) => {
+    await input(page).fill(text)
+    await input(page).press('Enter')
+  }
+
+  await type('leave')
+  await type('say one')
+  await type('ryan')
+  await type('ryan@example.com')
+  await expect(label(page)).toHaveText('ryan:music$')
+
+  // Five turns, and the fifth is the last. Said out loud, because a room that
+  // simply stops answering reads as the site being broken.
+  for (let turn = 2; turn <= DEMO_TURNS; turn += 1) {
+    await expect(pane(page)).toContainText(DEMO_REPLIES.music[turn - 2], { timeout: 10_000 })
+    await type(`say ${turn}`)
+  }
+  await expect(pane(page)).toContainText(DEMO_QUIET, { timeout: 15_000 })
+
+  // And it stays run out. Nobody arrives for a sixth, and it does not say so
+  // twice — a line that repeats reads as a loop rather than an ending.
+  await type('say once more')
+  await page.waitForTimeout(3000)
+  const after = await pane(page).innerText()
+  expect(after.split(DEMO_QUIET).length - 1).toBe(1)
 })
 
 test('the samples are pictures of the interface, in its own colours', async ({ page }) => {

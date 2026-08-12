@@ -38,6 +38,83 @@ export function demoWorld(): { rooms: Room[]; people: FixturePerson[] } {
 const TAKEN = new Set(['jameson', 'marisol', 'tuck', 'ren', 'dev'])
 
 /**
+ * The newest thing you have said in a room, or nothing.
+ *
+ * How the demo notices you contributed, rather than parsing what you typed.
+ * `say`, `reply` and `write` all end in a row appearing under your name, and
+ * looking for the row covers all three — including the one that arrives two
+ * questions late, because the held sentence lands through the same writer.
+ */
+export function newestBy(
+  rooms: readonly Room[],
+  slug: string,
+  author: string,
+): { postId: number; body: string } | undefined {
+  const room = rooms.find((r) => r.slug === slug)
+  if (!room) return undefined
+
+  /*
+   * By time, not by position — which is the version that was wrong first.
+   *
+   * Posts come newest-first, so walking them and taking the first match found
+   * *a* post of yours rather than your latest words: answer somebody on an old
+   * post and the newest thing you have said lives under a post far down the
+   * list, while a post you made an hour ago sits at the top.
+   */
+  // Ties keep the first found, and are unreachable from a prompt that runs one
+  // command at a time — two writes would have to land in the same millisecond.
+  let newest: { postId: number; body: string; at: number } | undefined
+  const keep = (postId: number, body: string, at: Date) => {
+    if (!newest || at.getTime() > newest.at) newest = { postId, body, at: at.getTime() }
+  }
+
+  for (const post of room.posts) {
+    if (post.author === author) keep(post.id, post.body, post.createdAt)
+    // A reply counts as much as a post: answering somebody is a contribution,
+    // and deserves one back.
+    for (const reply of post.replies) {
+      if (reply.author === author) keep(post.id, reply.body, reply.createdAt)
+    }
+  }
+  return newest && { postId: newest.postId, body: newest.body }
+}
+
+/**
+ * Somebody other than you saying something, in a world with no server in it.
+ *
+ * The demo's writer writes as whoever is signed in, which is right for
+ * everything a person types and useless for the one thing the demo needs to
+ * show: a room with somebody else in it. This is the same write with the name
+ * supplied rather than looked up.
+ *
+ * Commons takes a post rather than a reply, because §3.10 gives it no permanent
+ * addresses and the schema's trigger refuses replies there. A fixture that
+ * allowed one would be teaching the demo a shape the site would refuse.
+ */
+export function answerAs(
+  rooms: Room[],
+  slug: string,
+  author: string,
+  body: string,
+  postId?: number,
+): { depth: 0 | 1; address?: number } | undefined {
+  const room = rooms.find((r) => r.slug === slug)
+  if (!room) return undefined
+
+  if (room.ephemeral || postId === undefined) {
+    const id = room.posts.reduce((high, post) => Math.max(high, post.id), 0) + 1
+    room.posts.unshift({ id, author, body, createdAt: new Date(), replies: [] })
+    return { depth: 0, address: room.ephemeral ? undefined : id }
+  }
+
+  const post = room.posts.find((p) => p.id === postId)
+  if (!post) return undefined
+  const id = post.replies.reduce((high, reply) => Math.max(high, reply.id), 0) + 1
+  post.replies.push({ id, author, body, createdAt: new Date() })
+  return { depth: 1, address: post.id }
+}
+
+/**
  * Fixture-mode stand-ins, so the whole signup flow can be walked without a
  * database. Nothing here runs when Supabase is configured.
  */

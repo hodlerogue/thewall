@@ -4,8 +4,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Palette } from '@/components/Palette'
 import { append, Scrollback, type Keyed } from '@/components/Scrollback'
 import { createChipsFor, createRunner, echoOf } from '@/lib/commands/run'
-import { DEMO_INVITATION, DEMO_SCRIPT } from '@/lib/marketing/landing'
-import { demoWorld, fixtureSignup, fixtureWriter } from '@/lib/shell/demo'
+import { arrivalLines } from '@/lib/data/live'
+import {
+  DEMO_INVITATION,
+  DEMO_QUIET,
+  DEMO_REPLIES,
+  DEMO_REPLIES_ELSEWHERE,
+  DEMO_SCRIPT,
+  DEMO_TURNS,
+} from '@/lib/marketing/landing'
+import { answerAs, demoWorld, fixtureSignup, fixtureWriter, newestBy } from '@/lib/shell/demo'
 import { fixtureEnv } from '@/lib/shell/env'
 import { describeError } from '@/lib/shell/errors'
 import { renderRoomList } from '@/lib/shell/render'
@@ -34,6 +42,15 @@ const PER_CHAR = 38
 const BEFORE_RUN = 480
 const BETWEEN = 1100
 
+/**
+ * How long somebody takes to answer you.
+ *
+ * Long enough to read as a person rather than a form validating, short enough
+ * that nobody has scrolled away. Not random: the demo has to be the same demo
+ * twice, or a screenshot in a bug report is not evidence of anything.
+ */
+const ANSWER_AFTER = 1600
+
 export function Demo({ children }: { children?: React.ReactNode }) {
   /*
    * One world, built once.
@@ -50,6 +67,8 @@ export function Demo({ children }: { children?: React.ReactNode }) {
     session = new Session(fixtureSignup(people), writer, null)
     const ephemeral = rooms.filter((room) => room.ephemeral).map((room) => room.slug)
     return {
+      rooms,
+      people,
       env,
       session,
       run: createRunner(env, ephemeral, session),
@@ -79,6 +98,16 @@ export function Demo({ children }: { children?: React.ReactNode }) {
   const takenRef = useRef(false)
   // A ref rather than state, because two fast Enters land in the same tick.
   const inFlight = useRef(false)
+  /*
+   * The answering, which has to survive re-renders and stop on unmount.
+   *
+   * `turns` is how many people are left; `answered` is the last thing of yours
+   * that got a reply, so saying two things in a row is answered twice and
+   * running `look` in between is not answered at all.
+   */
+  const turns = useRef(0)
+  const answered = useRef<string | null>(null)
+  const answering = useRef<ReturnType<typeof setTimeout> | null>(null)
   const paneRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -102,6 +131,72 @@ export function Demo({ children }: { children?: React.ReactNode }) {
     const pane = paneRef.current
     if (pane) pane.scrollTop = pane.scrollHeight
   }, [lines])
+
+  /**
+   * Somebody answers you, a beat later.
+   *
+   * Without this the demo's last act is your own sentence landing in silence,
+   * which is the one thing a social site cannot afford to demonstrate. It is
+   * scripted — see the note in lib/marketing/landing.ts — so nothing reads what
+   * you wrote and nothing leaves the browser.
+   *
+   * It goes through `answerAs`, so the reply is really in the room and `look`
+   * shows it afterwards; and it prints through `arrivalLines`, which is what
+   * the site itself prints when somebody speaks while you are standing there.
+   * Same shape, same suppression rule, one function.
+   */
+  const answer = useCallback(
+    (at: Location, name: string) => {
+      const room = at.room
+      if (room === undefined || turns.current <= 0) return
+
+      const mine = newestBy(world.rooms, room, name)
+      if (!mine) return
+      // One answer per thing you said. `look` between two sentences is not a
+      // sentence, and saying the same words twice is.
+      const said = `${room}/${mine.postId}/${mine.body}`
+      if (answered.current === said) return
+      answered.current = said
+
+      const pool = DEMO_REPLIES[room] ?? DEMO_REPLIES_ELSEWHERE
+      const turn = DEMO_TURNS - turns.current
+      const body = pool[turn % pool.length]
+      // Anybody but you. The demo's signup pushed your name into this list.
+      const speaker = world.people.map((person) => person.name).filter((n) => n !== name)
+      const author = speaker[turn % speaker.length] ?? 'marisol'
+
+      turns.current -= 1
+
+      if (answering.current) clearTimeout(answering.current)
+      answering.current = setTimeout(() => {
+        const landed = answerAs(world.rooms, room, author, body, mine.postId)
+        if (!landed) return
+        print([
+          { text: '' },
+          ...arrivalLines({
+            author,
+            mine: name,
+            body,
+            at: new Date().toISOString(),
+            depth: landed.depth,
+            address: landed.address,
+          }),
+        ])
+        // Said once, when the last of them has spoken, so the demo does not
+        // quietly stop and read as broken.
+        if (turns.current === 0) print([{ text: DEMO_QUIET, tone: 'faint', hint: true }])
+      }, ANSWER_AFTER)
+    },
+    [print, world],
+  )
+
+  // Nothing may fire into a component that is gone.
+  useEffect(
+    () => () => {
+      if (answering.current) clearTimeout(answering.current)
+    },
+    [],
+  )
 
   const perform = useCallback(
     async (text: string) => {
@@ -129,13 +224,26 @@ export function Demo({ children }: { children?: React.ReactNode }) {
       }
 
       print(result.lines)
+      const now = result.location ?? location
       if (result.location) setLocation(result.location)
       if (result.identity !== undefined) setName(result.identity)
       if (result.retry) setInput(result.retry)
       setComposing(result.composing ?? null)
       setAsking(world.session.isAsking())
+
+      /*
+       * The room fills up the moment you have a name.
+       *
+       * Before that, `say` is a signup question and answering it is not a
+       * contribution — so the people arrive when you do, and only then.
+       */
+      const who = world.session.name()
+      if (who !== null) {
+        if (turns.current === 0 && answered.current === null) turns.current = DEMO_TURNS
+        answer(now, who)
+      }
     },
-    [print, location, name, world],
+    [answer, print, location, name, world],
   )
 
   /*

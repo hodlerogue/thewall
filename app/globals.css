@@ -108,9 +108,37 @@ body {
   margin: 0 0 2px;
 }
 
+/*
+ * Where one command's answer stops and the next begins.
+ *
+ * Reported as: "after you type something and new text arrives it can be tough
+ * sometimes to see exactly what's all the new text and what was already there."
+ *
+ * The obvious fix is the wrong one. Scrolling your command to the top of the
+ * pane would make everything visible below it new by construction — and it
+ * would undo a decision made on purpose: lists print oldest-first so the newest
+ * thing lands by the prompt, and anchoring to the echo would show the oldest
+ * end of a room and hide the part you asked for.
+ *
+ * So the boundary is marked where it is rather than moved. A hairline in the
+ * quietest colour in the palette, above the line that says what you typed:
+ * everything under it is the answer to it. It is inset by the scrollback's own
+ * padding, so it reads as a division in the text rather than as furniture
+ * around it (§9).
+ */
 .line-echo {
   color: var(--fg-dim);
-  margin-top: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+}
+
+/* Except in the samples on /hello, where the echo is the first line of a
+   four-line picture and a rule above it would be drawing a box inside a box. */
+.proof-sample .line-echo {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 /*
