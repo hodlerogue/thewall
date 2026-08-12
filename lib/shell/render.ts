@@ -102,16 +102,6 @@ export function saidBy(
 }
 
 /**
- * §3.11 — proof of life: the difference between a busy building and a list of
- * doors. And §4.2's mitigation, now that anybody can add a door.
- *
- * The cap is the whole of it. "40 rooms with three people each kills the entire
- * feeling" is a claim about this list and nothing else, so the list is what is
- * bounded: the curated rooms, then the liveliest of whatever people have made,
- * and a line saying how to reach the rest. Everything stays addressable — this
- * hides nothing, it just refuses to make the front page a directory.
- */
-/**
  * How many rooms people made the lobby always has space for.
  *
  * A separate number from the cap above, and the reason is a bug that grew
@@ -137,6 +127,23 @@ export function saidBy(
  */
 export const MADE_SLOTS = 6
 
+/**
+ * §3.11 — proof of life: the difference between a busy building and a list of
+ * doors. And §4.2's mitigation, now that anybody can add a door.
+ *
+ * The cap is the whole of it. "40 rooms with three people each kills the entire
+ * feeling" is a claim about this list and nothing else, so the list is what is
+ * bounded: the curated rooms, the liveliest of whatever people have made, and a
+ * line saying how to reach the rest. Everything stays addressable — this hides
+ * nothing, it just refuses to make the front page a directory.
+ *
+ * **One list, in one order.** The two kinds used to be printed apart, under a
+ * heading that said "and rooms people made" — which read as a second tier, and
+ * was one: a room somebody opened could not appear above a seeded one however
+ * busy it got. Curation now decides which rooms are guaranteed a place, and
+ * nothing else. Where a room lands is decided by the same thing for all of
+ * them, which is the last thing said in it.
+ */
 export function renderRoomList(
   rooms: readonly RoomSummary[],
   now = new Date(),
@@ -156,9 +163,10 @@ export function renderRoomList(
 ): Line[] {
   const lines: Line[] = []
 
-  // Curated rooms are never the ones dropped. They are the furniture: the
-  // building has to look the same each time you walk in, or none of §3.11's
-  // argument about it reading as a place survives.
+  // Curated rooms are never the ones dropped — that is all curation buys, and
+  // it is invisible from the outside. They are the topical spine: without them
+  // a busy week could leave the lobby with nothing on it that says what this
+  // site is for.
   const curated = rooms.filter((room) => room.curated)
   const made = rooms.filter((room) => !room.curated)
   const shownMade = made.slice(0, Math.max(0, slots))
@@ -174,27 +182,21 @@ export function renderRoomList(
     })
   }
 
-  for (const room of curated) print(room)
-
   /*
-   * A gap and a line, before the ones people made.
+   * Liveliest last, so the freshest thing in the building is the line nearest
+   * the prompt — the same order every other list here prints in, and the reason
+   * the lobby is worth looking at rather than a menu (§3.11).
    *
-   * The two kinds used to run together, so the lobby read as one fixed list —
-   * and a newcomer had no way to learn that making a room was a thing that
-   * happens here, which is precisely the complaint the seeded feedback room
-   * makes. It is also where the "more" line belongs: the rooms not shown are
-   * all of this kind, never the furniture.
-   *
-   * Only when there are some. A site where nobody has made a room yet should
-   * not have a heading over nothing — §5's empty room, as a section.
+   * A room nobody has said anything in yet sorts to the top, where it is out of
+   * the way. `sort` is stable, so rooms that tie keep the order they arrived
+   * in, which for the quiet ones is the curated order.
    */
-  if (shownMade.length > 0) {
-    lines.push({ text: '' })
-    lines.push({ text: 'and rooms people made:', tone: 'faint' })
-    for (const room of shownMade) print(room)
-  }
+  const shown = [...curated, ...shownMade].sort(
+    (a, b) => (a.latest?.createdAt.getTime() ?? 0) - (b.latest?.createdAt.getTime() ?? 0),
+  )
+  for (const room of shown) print(room)
 
-  const hidden = total - curated.length - shownMade.length
+  const hidden = total - shown.length
   if (hidden > 0) {
     lines.push({ text: '' })
     lines.push({
@@ -202,6 +204,22 @@ export function renderRoomList(
       tone: 'faint',
     })
   }
+
+  /*
+   * What the heading used to say, without saying it about anybody's room.
+   *
+   * The old two-tier listing taught one useful thing by accident: that rooms
+   * here are made by people. The seeded feedback room is the complaint it
+   * answered — "wanted a room for cycling and did not realise i could just make
+   * one. the lobby looks like a fixed list." So the teaching stays and moves
+   * into a hint, where it is addressed to the reader rather than printed as a
+   * label over other people's rooms — and where `hints off` can silence it.
+   */
+  if (shown.length > 0) {
+    lines.push({ text: '' })
+    lines.push({ text: 'make <name> opens a room of your own.', tone: 'faint', hint: true })
+  }
+
   return lines
 }
 

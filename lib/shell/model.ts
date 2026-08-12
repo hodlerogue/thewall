@@ -101,8 +101,10 @@ export interface RoomSummary {
   ephemeral: boolean
   /**
    * False when somebody made this rather than it being seeded or opened by the
-   * operator. The lobby keeps the curated ones together and above, which is the
-   * whole of §4.2's mitigation now that anyone can open a door.
+   * operator. It buys one thing and it is invisible: a curated room is never
+   * the one dropped when the lobby runs out of slots (§4.2). It does not print
+   * differently and it does not sort higher — the lobby is one list, ordered by
+   * what was last said in each room.
    */
   curated: boolean
   latest?: { author: string; body: string; createdAt: Date }

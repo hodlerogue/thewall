@@ -724,6 +724,19 @@ site with three hundred of them. Nothing failed: the only assertion was about
 the *total*, so it kept passing while the split rotted. `MADE_SLOTS` is theirs
 now, and adding an eleventh curated room costs a line of length instead.
 
+**`curated` decides which rooms are kept, never how they are printed.** The
+lobby used to show the curated rooms, then a heading reading "and rooms people
+made", then the rest — reported as "I don't like how it's saying 'and rooms
+people made', treating those differently than the original rooms", which was
+right twice over: the heading labelled them, and printing curated ones first
+meant a room somebody opened could not appear above a seeded one however busy
+it got. `renderRoomList` now sorts everything it shows into one list by last
+activity, oldest first like every other listing here. The two-tier order
+survives in `listRooms` — in both `supabaseEnv` and the fixture — and that is
+deliberate: it decides which rooms make the page, so curated ones are never the
+ones dropped. Nothing about it reaches the screen. If you find yourself
+grouping by `curated` in a renderer, that is the thing that was removed.
+
 **An `or` in a lateral join costs the index.** `room_overview` found each room's
 newest post with `(feed case) or (ordinary case)`, and `p.room_slug = r.slug`
 inside an `or` cannot use `posts_room_recent` — so the lobby sequentially

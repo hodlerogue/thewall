@@ -246,6 +246,10 @@ export function fixtureEnv(
        * Paged and counted, like the database. Curated first, then the liveliest
        * of what people have made — the same order `supabaseEnv` asks for.
        *
+       * This decides which rooms are on the page, not what the lobby looks
+       * like: `renderRoomList` sorts the ones it shows into one list by last
+       * activity, so nothing about this order reaches the screen.
+       *
        * The demo has nine rooms and will never reach the cap, which is exactly
        * why this is here: a fixture that returns the whole table while the site
        * returns a page is how a room listing hid its own truncation for weeks.

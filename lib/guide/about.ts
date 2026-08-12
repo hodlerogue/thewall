@@ -52,7 +52,7 @@ export const ABOUT: readonly GuideSection[] = [
   {
     heading: 'Where you are',
     body: [
-      'The lobby lists the rooms that are always here, the liveliest of the ones people made, and how many more there are. go roomname walks into any of them — go music.',
+      'The lobby is one list of the liveliest rooms, whoever opened them, and how many more there are. go roomname walks into any of them — go music.',
       'A room holds posts. look shows them, each with a permanent number in front, never reused. go 12 opens it. leave backs out one step.',
       'The path in the prompt is also the web address: if it says music/12, then thewall.social/music/12 is that post, and a link you can send somebody.',
     ],

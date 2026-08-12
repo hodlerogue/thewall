@@ -41,15 +41,22 @@ test('make walks you into the room it just made, and the url follows', async ({ 
   await expect(scrollback(page)).toContainText('garden/')
 })
 
-test('a new room is in the lobby, under the curated ones', async ({ page }) => {
+test('a new room joins the lobby as a room, not as a second tier', async ({ page }) => {
   await withName(page)
   await type(page, 'make garden what you are growing')
+  await type(page, 'say four tomato plants and a lot of optimism')
 
   await type(page, 'leave')
   const lines = await scrollback(page).innerText()
   expect(lines).toContain('garden')
-  // The furniture is still the furniture, and still first.
-  expect(lines.indexOf('commons')).toBeLessThan(lines.lastIndexOf('garden'))
+
+  // No heading over it. The lobby used to print made rooms in their own
+  // section, which read as — and was — a lower shelf.
+  expect(lines).not.toContain('rooms people made')
+
+  // And it ranks like anything else: something was just said in it, so it is
+  // the line nearest the prompt, below rooms that were here first.
+  expect(lines.lastIndexOf('garden')).toBeGreaterThan(lines.lastIndexOf('music'))
 })
 
 test('make asks what a room is for, and opens it on the answer', async ({ page }) => {
