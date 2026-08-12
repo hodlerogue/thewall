@@ -85,12 +85,12 @@ test('a wall post opens from the page it is on, and has its own url', async ({ p
   await type(page, 'go 2')
   await expect(label(page)).toHaveText('guest:~marisol/2$')
   await expect(page).toHaveURL(/\/~marisol\/2$/)
-  await expect(scrollback(page)).toContainText('neighbours')
+  await expect(scrollback(page)).toContainText('neighbors')
 
   // The other direction: the address is a link somebody can send.
   await page.goto('/~marisol/2')
   await expect(label(page)).toHaveText('guest:~marisol/2$')
-  await expect(scrollback(page)).toContainText('neighbours')
+  await expect(scrollback(page)).toContainText('neighbors')
 
   // And backing out lands on the person, which survives a reload — the two
   // ways of spelling "at ~marisol" would otherwise disagree after one.

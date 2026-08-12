@@ -449,3 +449,62 @@ test('and does nothing at all while a longer post is being written', async ({ pa
   await prompt(page).press('Enter')
   await expect(page.getByTestId('composing')).toContainText('2 lines')
 })
+
+test('answering from the listing updates the count above it', async ({ page }) => {
+  /*
+   * "I'm replying using the reply 5 feature and it works, but it doesn't auto
+   * update the original post — it still shows as 1 reply underneath it."
+   *
+   * The data was never wrong: `look` re-reads a live count. The line already on
+   * the screen was, and on a phone that line is the whole interface. `reply 7`
+   * exists so you never have to leave the listing, so a listing that then lies
+   * about the thing you just did takes back most of what it bought.
+   */
+  await page.goto('/music')
+  const count = scrollback(page).locator('.line', { hasText: /^\d+ (reply|replies) — go / }).first()
+  await expect(count).toHaveText('2 replies — go 12')
+
+  await type(page, 'reply 12 the warped ones still play')
+  await type(page, 'ryan')
+  await type(page, 'ryan@example.com')
+
+  await expect(count).toHaveText('3 replies — go 12')
+})
+
+test('and corrects every printed copy, not just the newest', async ({ page }) => {
+  // A room looked at twice has two of these on screen. Fixing one and leaving
+  // the other is worse than fixing neither: it reads as a number that changes
+  // depending on where you scroll.
+  await page.goto('/music')
+  await type(page, 'look')
+  await type(page, 'look')
+
+  const counts = scrollback(page).locator('.line', { hasText: /^\d+ (reply|replies) — go 12$/ })
+  await expect(counts).toHaveCount(3)
+
+  await type(page, 'reply 12 me too')
+  await type(page, 'ryan')
+  await type(page, 'ryan@example.com')
+
+  await expect(counts).toHaveCount(3)
+  for (const line of await counts.all()) {
+    await expect(line).toHaveText('3 replies — go 12')
+  }
+})
+
+test('and rewrites nothing anybody wrote', async ({ page }) => {
+  /*
+   * The line this stops at. A count is a number the site derived about itself;
+   * a post is a record of what somebody said, and a scrollback that edits one
+   * has stopped being a transcript.
+   */
+  await page.goto('/music')
+  const body = scrollback(page).locator('.line', { hasText: 'found my dad’s records' }).first()
+  const before = await body.textContent()
+
+  await type(page, 'reply 12 me too')
+  await type(page, 'ryan')
+  await type(page, 'ryan@example.com')
+
+  await expect(body).toHaveText(before!)
+})

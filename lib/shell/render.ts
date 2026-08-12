@@ -42,6 +42,36 @@ function oldestFirst<T>(items: readonly T[]): T[] {
 }
 
 /**
+ * How many answers a post has, and how to go and read them.
+ *
+ * One helper for the two listings that print it — a room and the feed — because
+ * this is the line that gets rewritten when a reply lands, and a second copy of
+ * the grammar would be a second copy that does not get rewritten.
+ */
+function repliesLine(replies: number, room: string, postId: number, goTo: string): Line {
+  return {
+    text: `${replies} ${replies === 1 ? 'reply' : 'replies'} — go ${goTo}`,
+    tone: 'faint',
+    depth: 1,
+    counts: { room, postId, replies, goTo },
+  }
+}
+
+/**
+ * The same line, one higher, for a reply that has just landed on it.
+ *
+ * An increment rather than a re-read: the number came from the page you are
+ * looking at, and one more than that is exactly what you now know. Asking the
+ * database instead would be a round trip to correct a line nobody is reading
+ * for its precision, and would still be a snapshot a second later.
+ */
+export function withOneMoreReply(line: Line): Line {
+  if (!line.counts) return line
+  const { room, postId, replies, goTo } = line.counts
+  return repliesLine(replies + 1, room, postId, goTo)
+}
+
+/**
  * The header over something somebody said: its address, then who and when.
  *
  * One helper because every listing on the site prints this same shape, and
@@ -72,16 +102,6 @@ export function saidBy(
 }
 
 /**
- * §3.11 — proof of life: the difference between a busy building and a list of
- * doors. And §4.2's mitigation, now that anybody can add a door.
- *
- * The cap is the whole of it. "40 rooms with three people each kills the entire
- * feeling" is a claim about this list and nothing else, so the list is what is
- * bounded: the curated rooms, then the liveliest of whatever people have made,
- * and a line saying how to reach the rest. Everything stays addressable — this
- * hides nothing, it just refuses to make the front page a directory.
- */
-/**
  * How many rooms people made the lobby always has space for.
  *
  * A separate number from the cap above, and the reason is a bug that grew
@@ -107,6 +127,23 @@ export function saidBy(
  */
 export const MADE_SLOTS = 6
 
+/**
+ * §3.11 — proof of life: the difference between a busy building and a list of
+ * doors. And §4.2's mitigation, now that anybody can add a door.
+ *
+ * The cap is the whole of it. "40 rooms with three people each kills the entire
+ * feeling" is a claim about this list and nothing else, so the list is what is
+ * bounded: the curated rooms, the liveliest of whatever people have made, and a
+ * line saying how to reach the rest. Everything stays addressable — this hides
+ * nothing, it just refuses to make the front page a directory.
+ *
+ * **One list, in one order.** The two kinds used to be printed apart, under a
+ * heading that said "and rooms people made" — which read as a second tier, and
+ * was one: a room somebody opened could not appear above a seeded one however
+ * busy it got. Curation now decides which rooms are guaranteed a place, and
+ * nothing else. Where a room lands is decided by the same thing for all of
+ * them, which is the last thing said in it.
+ */
 export function renderRoomList(
   rooms: readonly RoomSummary[],
   now = new Date(),
@@ -126,9 +163,10 @@ export function renderRoomList(
 ): Line[] {
   const lines: Line[] = []
 
-  // Curated rooms are never the ones dropped. They are the furniture: the
-  // building has to look the same each time you walk in, or none of §3.11's
-  // argument about it reading as a place survives.
+  // Curated rooms are never the ones dropped — that is all curation buys, and
+  // it is invisible from the outside. They are the topical spine: without them
+  // a busy week could leave the lobby with nothing on it that says what this
+  // site is for.
   const curated = rooms.filter((room) => room.curated)
   const made = rooms.filter((room) => !room.curated)
   const shownMade = made.slice(0, Math.max(0, slots))
@@ -144,27 +182,21 @@ export function renderRoomList(
     })
   }
 
-  for (const room of curated) print(room)
-
   /*
-   * A gap and a line, before the ones people made.
+   * Liveliest last, so the freshest thing in the building is the line nearest
+   * the prompt — the same order every other list here prints in, and the reason
+   * the lobby is worth looking at rather than a menu (§3.11).
    *
-   * The two kinds used to run together, so the lobby read as one fixed list —
-   * and a newcomer had no way to learn that making a room was a thing that
-   * happens here, which is precisely the complaint the seeded feedback room
-   * makes. It is also where the "more" line belongs: the rooms not shown are
-   * all of this kind, never the furniture.
-   *
-   * Only when there are some. A site where nobody has made a room yet should
-   * not have a heading over nothing — §5's empty room, as a section.
+   * A room nobody has said anything in yet sorts to the top, where it is out of
+   * the way. `sort` is stable, so rooms that tie keep the order they arrived
+   * in, which for the quiet ones is the curated order.
    */
-  if (shownMade.length > 0) {
-    lines.push({ text: '' })
-    lines.push({ text: 'and rooms people made:', tone: 'faint' })
-    for (const room of shownMade) print(room)
-  }
+  const shown = [...curated, ...shownMade].sort(
+    (a, b) => (a.latest?.createdAt.getTime() ?? 0) - (b.latest?.createdAt.getTime() ?? 0),
+  )
+  for (const room of shown) print(room)
 
-  const hidden = total - curated.length - shownMade.length
+  const hidden = total - shown.length
   if (hidden > 0) {
     lines.push({ text: '' })
     lines.push({
@@ -172,6 +204,22 @@ export function renderRoomList(
       tone: 'faint',
     })
   }
+
+  /*
+   * What the heading used to say, without saying it about anybody's room.
+   *
+   * The old two-tier listing taught one useful thing by accident: that rooms
+   * here are made by people. The seeded feedback room is the complaint it
+   * answered — "wanted a room for cycling and did not realise i could just make
+   * one. the lobby looks like a fixed list." So the teaching stays and moves
+   * into a hint, where it is addressed to the reader rather than printed as a
+   * label over other people's rooms — and where `hints off` can silence it.
+   */
+  if (shown.length > 0) {
+    lines.push({ text: '' })
+    lines.push({ text: 'make <name> opens a room of your own.', tone: 'faint', hint: true })
+  }
+
   return lines
 }
 
@@ -200,7 +248,7 @@ export function renderFeed(
   if (posts.length === 0) {
     return [
       { text: 'nothing on anybody’s wall yet.', tone: 'faint' },
-      { text: 'go ~yourname and say something, and it shows up here.', tone: 'faint' },
+      { text: 'go ~yourname and say something, and it shows up here.', tone: 'faint', hint: true },
     ]
   }
 
@@ -209,11 +257,7 @@ export function renderFeed(
     lines.push(saidBy(`${post.room}/${post.id}`, `${post.author}, ${formatAgo(post.createdAt, now)}`))
     lines.push({ text: post.body, depth: 1 })
     if (post.replies) {
-      lines.push({
-        text: `${post.replies} ${post.replies === 1 ? 'reply' : 'replies'} — go ${post.room}/${post.id}`,
-        tone: 'faint',
-        depth: 1,
-      })
+      lines.push(repliesLine(post.replies, post.room, post.id, `${post.room}/${post.id}`))
     }
     lines.push({ text: '' })
   }
@@ -252,7 +296,11 @@ export function renderRoom(room: Room, now = new Date()): Line[] {
   const lines: Line[] = []
 
   if (room.ephemeral) {
-    lines.push({ text: 'commons keeps nothing. everything here is gone in 24 hours.', tone: 'faint' })
+    lines.push({
+      text: 'commons keeps nothing. everything here is gone in 24 hours.',
+      tone: 'faint',
+      hint: true,
+    })
     lines.push({ text: '' })
   }
 
@@ -285,7 +333,7 @@ export function renderRoom(room: Room, now = new Date()): Line[] {
     lines.push({ text: '' })
   }
 
-  lines.push(...renderPosts(room.posts, room.ephemeral, now))
+  lines.push(...renderPosts(room.posts, room.ephemeral, now, room.slug))
   lines.push(...renderGrewOut(room))
   return lines
 }
@@ -354,6 +402,15 @@ export function renderPosts(
   posts: readonly Post[],
   ephemeral: boolean,
   now = new Date(),
+  /**
+   * Which room these are in, so the reply count knows what it is counting.
+   *
+   * Defaulted rather than required because it is only used to keep that one
+   * line true when an answer lands, and every caller that has a slug passes it
+   * — a fixture that does not simply gets a line that never updates, which is
+   * where this started.
+   */
+  room = '',
 ): Line[] {
   const lines: Line[] = []
   for (const post of oldestFirst(posts)) {
@@ -367,11 +424,7 @@ export function renderPosts(
     )
     lines.push({ text: post.body, depth: 1 })
     if (!ephemeral && post.replies.length > 0) {
-      lines.push({
-        text: `${post.replies.length} ${post.replies.length === 1 ? 'reply' : 'replies'} — go ${post.id}`,
-        tone: 'faint',
-        depth: 1,
-      })
+      lines.push(repliesLine(post.replies.length, room, post.id, `${post.id}`))
     }
     lines.push({ text: '' })
   }
@@ -423,6 +476,7 @@ export function renderPost(post: Post, now = new Date()): Line[] {
   lines.push({
     text: 'reply <something> answers the post — reply 2 <something> answers 2.',
     tone: 'faint',
+    hint: true,
   })
   return lines
 }
@@ -503,6 +557,7 @@ export function renderProfile(profile: Profile, now = new Date()): Line[] {
   lines.push({ text: '' })
   lines.push({
     text: `each of those is an address — go ${newest.room}/${newest.id} opens that one.`,
+    hint: true,
     tone: 'faint',
   })
   return lines

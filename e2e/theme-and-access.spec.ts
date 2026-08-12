@@ -185,3 +185,71 @@ test('the rundown is a page, readable without typing anything', async ({ page })
   await expect(page.locator('a[href="/terms"]')).toBeVisible()
   await expect(page.locator('a[href="/privacy"]')).toBeVisible()
 })
+
+test('hints off quiets the instructions, and survives a reload', async ({ page }) => {
+  /*
+   * "Not sure people want to be constantly given instructions. There should be
+   * a setting that allows you to turn that off for sure."
+   *
+   * Kept on by default and switchable, because §3.6's argument for teaching is
+   * about the first ten minutes: somebody who has not learned the site cannot
+   * know to ask for help, and somebody who has can type four characters.
+   */
+  await page.goto('/music')
+  await type(page, 'go 12')
+  await expect(scrollback(page)).toContainText('reply <something> answers the post')
+
+  await type(page, 'hints off')
+  await expect(scrollback(page)).toContainText('hints off')
+
+  await type(page, 'look')
+  await type(page, 'go 12')
+  // The thread is still there; the line telling you how to answer it is not.
+  await expect(scrollback(page)).toContainText('warped ones still play')
+  const teaching = scrollback(page).locator('.line', {
+    hasText: 'reply <something> answers the post',
+  })
+  await expect(teaching).toHaveCount(1) // the one printed before it was switched off
+
+  // Per browser, like the theme — so a reload has to remember, including the
+  // boot lines, which are printed before any command runs.
+  await page.reload()
+  await expect(page.getByTestId('prompt-label')).toBeVisible()
+  await expect(scrollback(page)).not.toContainText('type look to see what’s around you')
+  await expect(scrollback(page)).toContainText('thewall.social')
+})
+
+test('and quiets nothing that was said, nor any error', async ({ page }) => {
+  /*
+   * The two things the filter must never reach. An error is the answer to
+   * something you just did, and content is the entire product — a setting that
+   * ate either would be a worse bug than the nagging it fixes.
+   *
+   * The third kind, a line reporting content you cannot see, needs a room
+   * bigger than the demo has; `lib/shell/hints.test.ts` asserts that one
+   * against `older`, the lobby's count and mail's cap directly.
+   */
+  await page.goto('/commons')
+  await type(page, 'hints off')
+
+  await type(page, 'go nowhere-at-all')
+  await expect(scrollback(page)).toContainText('there’s no room called')
+
+  // commons stops announcing what commons is, and still shows what is in it.
+  const banner = scrollback(page).locator('.line', { hasText: 'commons keeps nothing' })
+  await expect(banner, 'the room did not announce itself on arrival').toHaveCount(1)
+
+  await type(page, 'look')
+  await expect(scrollback(page)).toContainText('the AC in my building')
+  // Still one: the arrival printed it before hints were switched off, and
+  // nothing rewrites what is already on the screen.
+  await expect(banner).toHaveCount(1)
+})
+
+test('hints on brings them back', async ({ page }) => {
+  await page.goto('/music')
+  await type(page, 'hints off')
+  await type(page, 'hints on')
+  await type(page, 'go 12')
+  await expect(scrollback(page)).toContainText('reply <something> answers the post')
+})

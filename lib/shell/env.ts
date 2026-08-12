@@ -143,6 +143,7 @@ export const RESERVED_SLUGS = new Map([
   ['opengraph-image', 'that is a route'],
   ['feed', 'that is the wall feed'],
   ['unsubscribe', 'that is a route'],
+  ['hello', 'that is a route'],
 ])
 
 /** §4.2's fade, matching the interval in the lobby query. */
@@ -245,6 +246,10 @@ export function fixtureEnv(
       /*
        * Paged and counted, like the database. Curated first, then the liveliest
        * of what people have made — the same order `supabaseEnv` asks for.
+       *
+       * This decides which rooms are on the page, not what the lobby looks
+       * like: `renderRoomList` sorts the ones it shows into one list by last
+       * activity, so nothing about this order reaches the screen.
        *
        * The demo has nine rooms and will never reach the cap, which is exactly
        * why this is here: a fixture that returns the whole table while the site

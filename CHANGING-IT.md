@@ -86,6 +86,14 @@ Terminal.tsx ──typed text──> run.ts ──parse──> registry.ts ─�
 | `lib/data/live.ts` | realtime: presence, and posts arriving while you stand there |
 | `lib/supabase/{client,server,reader}.ts` | the three clients: browser, route handler, and unauthenticated read |
 
+**An instruction has to name the shortest form that works from where somebody
+is standing.** `mail` printed `reply kitchen/6 <something>` whether or not you
+were in kitchen, where `reply 6` is the whole of it — reported as "I know it
+still works, but not the fastest way to do it while inside of a room." Any line
+that suggests an address needs to know where it is being read: compare
+`location.room`, not the context, because a wall is a room and `~marisol/2`
+shortens to `2` on it for exactly the same reason.
+
 **An instruction printed under a list has to be true of the whole list.** A
 profile closed with "these live in rooms — go poker, then go 4", built from
 whichever post was newest and printed under posts spanning several rooms. It was
@@ -380,6 +388,30 @@ the e2e suite runs entirely against it, so a fixture that lies produces a green
 suite over a broken site.
 
 Identity does not go here. `Session` owns it.
+
+## Add a hint, or stop one being one
+
+`Line.hint` marks a line, `hints off` drops it, and `lib/shell/hints.ts` holds
+the rule — which is the only part that needs thinking about:
+
+> **A hint teaches a command you could type next, and nothing else.**
+
+Two kinds of line may never carry it. Anything **reporting content you cannot
+see** — `older — the page before this one`, `4 more rooms`, `these are the
+newest 100` — reads like an instruction and is not one: it is the site
+admitting it is showing a slice, and silencing those brings back the silent
+truncation each was written to end. And **an error is never a hint**: it is the
+answer to something somebody just did, and §3.7 spends its whole budget making
+errors teach.
+
+The filter runs in `Terminal`'s `append`, where lines enter the scrollback, so
+it catches the boot lines and live arrivals too and no renderer learns the
+setting exists. Confirmations of `hints off` must not be hints themselves, or
+the command answers with silence and reads as a typo.
+
+Stored per browser in `localStorage`, like the theme, for the same reason: a
+preference about this screen rather than a fact about the person, so it needs
+no account, no column and no round trip — and a guest can have one.
 
 ## Add a theme
 
@@ -692,6 +724,19 @@ site with three hundred of them. Nothing failed: the only assertion was about
 the *total*, so it kept passing while the split rotted. `MADE_SLOTS` is theirs
 now, and adding an eleventh curated room costs a line of length instead.
 
+**`curated` decides which rooms are kept, never how they are printed.** The
+lobby used to show the curated rooms, then a heading reading "and rooms people
+made", then the rest — reported as "I don't like how it's saying 'and rooms
+people made', treating those differently than the original rooms", which was
+right twice over: the heading labelled them, and printing curated ones first
+meant a room somebody opened could not appear above a seeded one however busy
+it got. `renderRoomList` now sorts everything it shows into one list by last
+activity, oldest first like every other listing here. The two-tier order
+survives in `listRooms` — in both `supabaseEnv` and the fixture — and that is
+deliberate: it decides which rooms make the page, so curated ones are never the
+ones dropped. Nothing about it reaches the screen. If you find yourself
+grouping by `curated` in a renderer, that is the thing that was removed.
+
 **An `or` in a lateral join costs the index.** `room_overview` found each room's
 newest post with `(feed case) or (ordinary case)`, and `p.room_slug = r.slug`
 inside an `or` cannot use `posts_room_recent` — so the lobby sequentially
@@ -901,6 +946,79 @@ URL (`arriveAt`), the lobby line (`room_overview` and `fixtureEnv.listRooms`),
 the share card, and the count in `find --rooms`. When something is a view rather
 than a container, walk all five.
 
+**A count the site printed about itself may be rewritten. Nothing anybody said
+ever is.** The scrollback is a transcript, with one exception: `3 replies — go 7`
+is a number the site derived, and `reply 7 <something>` exists precisely so you
+never leave the listing that line is in — so the listing going stale about the
+thing you just did takes back most of what the feature bought. Reported that
+way: "it works but it doesn't auto update the original post."
+
+`Line.counts` marks the line and carries what it counts; a write that lands
+returns `answered` and `Terminal` rewrites **every** printed copy, because a
+room looked at twice has two and fixing one reads as a number that changes with
+the scroll position. Every path that can write a reply sets `answered`,
+including the held sentence, which lands two questions after it was typed —
+a field only some of them set is a line that updates sometimes.
+
+The boundary is the whole of it. Extend this to a post's body, or an author, or
+anything a person typed, and the scrollback stops being a record of what
+happened.
+
+**The site speaks American, and the person writing it does not.** Reported as
+"theme says 'change the colours', I'm in US not UK" — and it was seven strings,
+not one: the theme gloss, "a fortnight of silence" in the rundown, "automated
+defence" and a second fortnight in the terms, and three seeded posts carrying
+"realised", "neighbours" and "rumour". Whoever writes the next line will write
+it the same way, so `lib/guide/spelling.test.ts` reads what the site would
+print and refuses the list.
+
+Two exclusions, both deliberate. Comments are stripped first — the reasoning
+around a line is not the line. And a string with no space in it is not a
+sentence, which is what keeps `colour` alive as an **alias**: somebody who types
+the British spelling should still be understood, they just should not be
+answered in it.
+
+Seed content counts. `supabase/seed.sql` and `lib/shell/fixtures.ts` carry the
+same posts and both are scanned, and changing either means regenerating the
+bundle — `./scripts/db-bundle.sh > supabase/setup.sql`, which writes to stdout,
+so redirecting it is the whole of the command.
+
+**A page-level `openGraph` replaces the layout's, image and all.** `/hello`
+declared `openGraph` to give the landing page its own card title, and the built
+HTML came back with **no `og:image` at all** — the file-convention image from
+`app/opengraph-image.png` gone, and `og:type` and `og:site_name` with it.
+Nothing warns, at build time or after; the only place to notice is somebody
+else's timeline. So a page that sets `openGraph` restates the whole of it,
+including `images`, and `e2e/landing.spec.ts` follows the URL and checks it is a
+real image rather than a string that parses. This is the second time this tag
+has disappeared silently — the first was a trailing newline in the `.alt.txt`.
+
+**A landing page is marketing, and marketing rots faster than code.** The copy
+lives in `lib/marketing/landing.ts` alone, so `landing.test.ts` can check every
+command it names against `COMMANDS` and the spelling guard can read it. The
+demo in the hero is not copy at all: it is a list of commands run through the
+real `createRunner` against the fixture world, so a renamed verb fails a test
+rather than playing a session the site would refuse. One rule shapes the script
+— **nothing in it may start the signup**, because while the session is asking,
+the runner treats anything typed as the answer, and a visitor taking over would
+find their first tapped command submitted as their name.
+
+`components/Demo.tsx` is deliberately not `Shell`: that component owns the
+viewport — `visualViewport` maths on the document root, `pushState` on every
+move, scroll capture, a service worker — all of which is correct for the site
+and wrong inside a page. The demo world itself lives in `lib/shell/demo.ts`,
+shared with `Shell`, because two fixtures are free to drift from each other as
+well as from the site.
+
+**A descendant selector will eat the tones inside it.** `.proof p` also matched
+every `.line` in the sample below it — one class more specific than
+`.line-accent` — so every tone collapsed to the same colour and the samples
+quietly stopped being pictures of the interface. It does not look like a bug, it
+looks like a slightly dull page, which is why it was found by reading computed
+styles rather than by looking. `.proof > p` fixes it and an e2e assertion holds
+it: the accent lines must equal `--accent`, and the sample must contain more
+than two distinct colours.
+
 **The fixture Env must not lie.** The e2e suite runs entirely against
 `fixtureEnv`, so a fixture that disagrees with the database is a green suite
 over a broken site — not a smaller problem than a bug, a bigger one, because it
@@ -909,6 +1027,16 @@ also removes the thing that would have told you. This has bitten once already:
 reaches replies" a claim proved only in `test:db` and false in the app anybody
 clicked. `lib/commands/rooms.test.ts` has a block that exists purely to pin the
 two together; add to it when you add behaviour to one side.
+
+The demo's *writer* was the same defect wearing different clothes, and it
+survived years because a comment described it instead of a test closing it:
+`fixtureWriter` returned an address and kept nothing, so everything typed into
+the demo vanished the moment you looked again, and it counted replies from zero
+per post — so answering a thread with two in it announced "reply 1". It writes
+into its own copy of the seed now, and `e2e/rooms.spec.ts` walks say → look and
+reply → go and checks both. Anchor those assertions: `toContainText` matches the
+*echo* of what was typed, so the first version of that test passed with the
+write removed.
 
 **A derived flag is not the same as the fact it approximates.** `rooms.curated`
 started as `created_by is null`, which is identical until `created_by` is

@@ -37,7 +37,7 @@ export const ABOUT: readonly GuideSection[] = [
     heading: 'What this is',
     body: [
       'thewall.social is a social site where the entire interface is a command prompt. You type words, and it does things. No algorithm deciding what you see next, no like button, no follower count.',
-      'It is one place made of rooms: you walk into one, read what people said there, and say something back.',
+      'It is made of rooms: you walk into one, read what people said, and say something back.',
       'Everything here is written by a person, to be read by a person. That is the whole product.',
     ],
   },
@@ -45,15 +45,15 @@ export const ABOUT: readonly GuideSection[] = [
     heading: 'Why a prompt',
     body: [
       'Because it answers "where am I" without being asked. The text before your cursor — jameson:music/12$ — is your name, the room, and what you are reading. Nothing else on the screen is spent saying that.',
-      'Because it cannot scroll forever. A room shows its newest sixty posts; older walks back sixty at a time until you reach the first thing anybody said there. It ends, and you can get to the end.',
+      'Because it cannot scroll forever. A room shows its newest sixty posts; older walks back sixty at a time until you reach the first thing said there. It ends, and you can get to the end.',
       'And because it teaches itself: help lists everything you can type from where you are standing, and what <command> explains any of it. If you have never opened a terminal, you do not need to have.',
     ],
   },
   {
     heading: 'Where you are',
     body: [
-      'The lobby lists the rooms that are always here, the liveliest of the ones people made, and how many more there are. go roomname walks into any of them — go music.',
-      'A room holds posts. look shows them, each with a permanent number in front, never reused. go 12 opens it and puts you inside the conversation. leave backs out one step.',
+      'The lobby is one list of the liveliest rooms, whoever opened them, and how many more there are. go roomname walks into any of them — go music.',
+      'A room holds posts. look shows them, each with a permanent number in front, never reused. go 12 opens it. leave backs out one step.',
       'The path in the prompt is also the web address: if it says music/12, then thewall.social/music/12 is that post, and a link you can send somebody.',
     ],
   },
@@ -81,22 +81,22 @@ export const ABOUT: readonly GuideSection[] = [
     body: [
       'go ~yourname — with the tilde — shows somebody: when they arrived, and what they have said lately, each with the address it lives at.',
       'Your own page is also your wall. Say something there and it goes on the wall rather than into a room. Only you can start something there; anybody can answer it.',
-      'Walls never appear in the lobby — a room for every person would turn a building into a directory. go feed is where they all are instead: everything anybody has put on their own wall. Say something there and it goes on your wall.',
+      'Walls never appear in the lobby — a room for every person would turn a building into a directory. go feed is where they all are: everything anybody has put on their own wall. Say something there and it goes on yours.',
     ],
   },
   {
     heading: 'Rooms people make',
     body: [
-      'make garden asks what the room is for, then walks you into it. You need to have followed your sign-in link, and you can make three in any seven days.',
+      'make garden asks what the room is for, then walks you into it. You need to have followed your sign-in link, and can make three in any seven days.',
       'A room you make is not yours. No owner and no moderator — inside it you are another person in a room, like anywhere else.',
       'Make one from inside another room and that room lists it at the bottom, as having grown out of it. Nothing is inside anything: the new room has an ordinary name of its own.',
-      'It sits in the lobby while people are talking in it and drops out after a fortnight of silence — not deleted, just unlisted. Search still finds it, and it returns the moment somebody posts.',
+      'It sits in the lobby while people talk in it and drops out after two weeks of silence — not deleted, just unlisted. Search still finds it, and it returns the moment somebody posts.',
     ],
   },
   {
     heading: 'Finding things',
     body: [
-      'find tomatoes looks through everything anybody has said — posts and replies both — and gives you each with the address to walk to. Narrow it with --room=kitchen, --by=marisol or --since=7d.',
+      'find tomatoes looks through everything anybody has said — posts and replies both — and gives you each with its address. Narrow it with --room=kitchen, --by=marisol or --since=7d.',
       'find --rooms growing searches rooms instead, by name and by what they are for.',
     ],
   },
@@ -104,14 +104,14 @@ export const ABOUT: readonly GuideSection[] = [
     heading: 'Replies to you',
     body: [
       'When somebody answers something you said, a count appears above the prompt. mail lists them, each with the address to answer. Nothing chases you — it waits until you ask, and reading it clears the count.',
-      'One email a day goes with an account, only on days somebody answered you — never more, and never anything else. notify off ends it, as does the link on every one.',
+      'One email a day goes with an account, only on days somebody answered you — never more, never anything else. notify off ends it, as does the link on every one.',
     ],
   },
   {
     heading: 'Your name',
     body: [
       'rename betterchoice changes what you are called, as often as you like. Everything you have ever said follows the new name, and the name you leave is free for anybody to take the same minute.',
-      'If a name recently belonged to somebody else, that is shown on the page of whoever holds it now — as a date, never as a person, so a reader is not fooled.',
+      'If a name recently belonged to somebody else, that shows on the page of whoever holds it now — as a date, never as a person, so a reader is not fooled.',
     ],
   },
   {
@@ -128,13 +128,14 @@ export const ABOUT: readonly GuideSection[] = [
     heading: 'On a phone',
     body: [
       'This was designed on a 380-pixel screen before anything else. The buttons above the prompt are the commands that make sense where you are standing; tapping one puts the word in rather than running it.',
+      'The site prints the odd line saying what you could type next; hints off ends those.',
       'install adds it to your home screen, where it opens without the browser around it. On an iPhone the browser will not let a page do that, so it tells you which two taps to make instead.',
     ],
   },
   {
     heading: 'The rest',
     body: [
-      'terms and privacy print the short version in the prompt; thewall.social/terms and thewall.social/privacy have the whole thing. If something is wrong, or you want everything about you deleted, the address is at the bottom of both.',
+      'terms and privacy print the short version in the prompt; thewall.social/terms and /privacy have the whole thing. If something is wrong, or you want everything about you deleted, the address is at the bottom of both.',
     ],
   },
 ]

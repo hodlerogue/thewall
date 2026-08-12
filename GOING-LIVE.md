@@ -12,12 +12,14 @@ these fail silently — the site keeps loading and one feature is quietly dead.
 ## 1. The database
 
 Your project was set up when there were three migrations. There are now
-twenty-three. What the rest add: the column-scoped grants that close two console
+twenty-four. What the rest add: the column-scoped grants that close two console
 bypasses, mail, the kill switch, rename, erasure, walls, rooms people make, the
 feed, three more rooms, the daily email, rooms that grew out of a room, that
-email being on by default, never mailing an address that cannot receive, and a
-lobby that uses its index, replies you can answer, and posts with paragraphs in them. **None of their features work until they are applied**, and none of them
-fail at build time — they fail in somebody's browser.
+email being on by default, never mailing an address that cannot receive, a
+lobby that uses its index, replies you can answer, posts with paragraphs in
+them, and `hello` reserved so the landing page cannot shadow a room. **None of
+their features work until they are applied**, and none of them fail at build
+time — they fail in somebody's browser.
 
 The one to apply first if you apply nothing else is
 `20260805050000_insert_grants.sql`. It is the security fix: without it a browser
@@ -61,7 +63,7 @@ This is safe to run repeatedly now. On its first run against an existing project
 it probes for each migration, records the ones already there, and applies only
 the rest — nothing runs twice and nothing is skipped.
 
-**Worked when:** `db-check.sh` shows all twenty-three as `applied`, every room has
+**Worked when:** `db-check.sh` shows all twenty-four as `applied`, every room has
 something in the last two columns, and the anon role reads all five objects.
 
 ---
@@ -381,6 +383,24 @@ against.
 For the database side, `./scripts/db-check.sh` is the authoritative list.
 
 ---
+
+### Dependencies, and the one that is pinned
+
+`npm audit --omit=dev` is the check that matters — dev-only advisories are about
+a build machine, not about anybody using the site. It should say zero.
+
+Two are held there by `overrides` in `package.json` rather than by upgrading the
+thing that pulls them in: **postcss** and **sharp** both arrive under `next`,
+and both had high-severity advisories — sharp's are four libvips CVEs, and sharp
+is what renders the share cards. The override takes the patched version without
+moving the framework.
+
+**`next` is pinned exactly, and that is deliberate.** Letting `npm install`
+resolve `^16.2.12` picked up 16.3.0, which broke three signup assertions: a
+magic link arriving at `/?key=ok` no longer reported anything, because the
+outcome is read from the query after a redirect and 16.3 changed something about
+that path. Nothing in this repo had changed. Upgrade it on purpose, with the
+suites in front of you, not as a side effect of installing something else.
 
 ## 8. Know how to turn it off
 

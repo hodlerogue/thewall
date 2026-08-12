@@ -289,11 +289,66 @@ describe('the lobby stays a building, not a directory (§4.2)', () => {
     expect(text(lines)).toContain('294 more rooms')
   })
 
-  it('says nothing about rooms people made when nobody has made one', () => {
-    // §5's empty room, as a section: a heading over nothing is worse than no
-    // heading, and a new project has exactly the curated set.
-    const only = Array.from({ length: 10 }, (_, i) => room(`curated${i}`, true))
-    expect(text(renderRoomList(only))).not.toContain('rooms people made')
+  it('prints one list, with no heading dividing it', () => {
+    /*
+     * "I don't like how it's saying 'and rooms people made', treating those
+     * differently than the original rooms."
+     *
+     * It was two lists under a heading, and the heading was the smaller half of
+     * the problem — see the ordering test below.
+     */
+    const both = [
+      ...Array.from({ length: 3 }, (_, i) => room(`curated${i}`, true)),
+      ...Array.from({ length: 3 }, (_, i) => room(`made${i}`, false)),
+    ]
+    const out = text(renderRoomList(both))
+
+    expect(out).not.toContain('rooms people made')
+    expect(out).not.toContain('people made')
+  })
+
+  it('ranks a room somebody opened by what was said in it, not by who opened it', () => {
+    /*
+     * The half a heading could not fix. Curated rooms printed first, so a room
+     * somebody opened could not appear above a seeded one however busy it got —
+     * which is a two-tier lobby whether or not there is a label on it.
+     *
+     * Ordered oldest-first like every other list here, so the liveliest room is
+     * the line nearest the prompt.
+     */
+    const at = (slug: string, curated: boolean, minutesAgo: number): RoomSummary => ({
+      ...room(slug, curated),
+      latest: {
+        author: 'someone',
+        body: 'a thing',
+        createdAt: new Date(Date.now() - minutesAgo * 60_000),
+      },
+    })
+
+    const slugs = renderRoomList([at('quiet-curated', true, 600), at('busy-made', false, 1)])
+      .filter((line) => line.tone === 'accent')
+      .map((line) => line.text)
+
+    expect(slugs).toEqual(['quiet-curated', 'busy-made'])
+  })
+
+  it('sends a room nobody has spoken in yet to the top, out of the way', () => {
+    const empty: RoomSummary = { ...room('brand-new', false), latest: undefined }
+    const slugs = renderRoomList([room('curated0', true), empty])
+      .filter((line) => line.tone === 'accent')
+      .map((line) => line.text)
+
+    expect(slugs).toEqual(['brand-new', 'curated0'])
+  })
+
+  it('says a room can be made, as a hint rather than as a label on other people’s', () => {
+    // What the heading taught by accident, kept — addressed to the reader, and
+    // silenced by `hints off` like every other piece of instruction.
+    const lines = renderRoomList([room('curated0', true)])
+    const teach = lines.find((line) => line.text.startsWith('make '))
+
+    expect(teach?.hint).toBe(true)
+    expect(teach?.text).toContain('make <name>')
   })
 })
 

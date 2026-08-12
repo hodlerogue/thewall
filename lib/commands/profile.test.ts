@@ -178,7 +178,7 @@ describe('a wall belongs to one person', () => {
     const result = await run('go 2', AT.person)
 
     expect(result.location).toEqual({ room: '~marisol', postId: 2 })
-    expect(text(result.lines)).toContain('neighbours')
+    expect(text(result.lines)).toContain('neighbors')
   })
 
   it('says so when the number is not on their wall', async () => {

@@ -41,15 +41,22 @@ test('make walks you into the room it just made, and the url follows', async ({ 
   await expect(scrollback(page)).toContainText('garden/')
 })
 
-test('a new room is in the lobby, under the curated ones', async ({ page }) => {
+test('a new room joins the lobby as a room, not as a second tier', async ({ page }) => {
   await withName(page)
   await type(page, 'make garden what you are growing')
+  await type(page, 'say four tomato plants and a lot of optimism')
 
   await type(page, 'leave')
   const lines = await scrollback(page).innerText()
   expect(lines).toContain('garden')
-  // The furniture is still the furniture, and still first.
-  expect(lines.indexOf('commons')).toBeLessThan(lines.lastIndexOf('garden'))
+
+  // No heading over it. The lobby used to print made rooms in their own
+  // section, which read as — and was — a lower shelf.
+  expect(lines).not.toContain('rooms people made')
+
+  // And it ranks like anything else: something was just said in it, so it is
+  // the line nearest the prompt, below rooms that were here first.
+  expect(lines.lastIndexOf('garden')).toBeGreaterThan(lines.lastIndexOf('music'))
 })
 
 test('make asks what a room is for, and opens it on the answer', async ({ page }) => {
@@ -154,7 +161,7 @@ test('the feed shows walls, with the whole address on every line', async ({ page
 
   await expect(label(page)).toHaveText('guest:feed$')
   await expect(scrollback(page)).toContainText('~marisol/2')
-  await expect(scrollback(page)).toContainText('neighbours own fans')
+  await expect(scrollback(page)).toContainText('neighbors own fans')
 
   // And the address it printed is the address `go` takes.
   await type(page, 'go ~marisol/2')
@@ -327,15 +334,44 @@ test('write takes more than one line, and the blank ones are paragraphs', async 
   await expect(scrollback(page)).toContainText('roommaker, just now')
 })
 
+test('what you write in the demo is there when you look again', async ({ page }) => {
+  /*
+   * `fixtureWriter` used to return an address and keep nothing, so everything
+   * typed in the demo vanished the moment you looked again — and it invented
+   * reply numbers from zero, so answering a thread with two replies in it
+   * announced "reply 1". A visitor's first impression was the site forgetting
+   * what they had just done and miscounting it on the way.
+   *
+   * CHANGING-IT's rule, for the fifth time: the fixture may be small, it may
+   * not be a different shape. Nothing asserted it, which is why it stayed
+   * broken through a comment that described the gap rather than closing it.
+   */
+  await page.goto('/music')
+  await withName(page)
+
+  await type(page, 'say a post nobody seeded')
+  await type(page, 'look')
+  // Anchored, because the echo of what was typed is in the scrollback too —
+  // `toContainText` matched `ryan:music$ say a post nobody seeded` and passed
+  // with the write removed, which is a test that proves the typing works.
+  await expect(
+    scrollback(page).locator('.line', { hasText: /^a post nobody seeded$/ }),
+  ).toHaveCount(1)
+
+  // And a reply is numbered from what the thread already has, not from one.
+  await type(page, 'reply 12 the warped ones still play')
+  await type(page, 'go 12')
+  const thread = scrollback(page).locator('.line', { hasText: 'the warped ones still play' }).last()
+  await expect(thread).toBeVisible()
+  await expect(
+    scrollback(page).locator('.line', { hasText: /^3 {2}\w+, just now$/ }),
+  ).toHaveCount(1)
+})
+
 /*
  * The lobby preview of a multi-line post is asserted in lib/commands/write.test.ts
- * against `renderRoomList` directly, not here.
- *
- * It cannot be walked in the demo: `fixtureWriter.post` returns an address and
- * does not add the post to the room, so the lobby keeps showing the seeded
- * line. That is a real gap between the demo and the site — worth knowing about,
- * and not worth papering over with a test that would pass by looking at
- * somebody else's post.
+ * against `renderRoomList` directly rather than here, because the preview is a
+ * function of one body and the walk would only re-prove the write.
  */
 test('cancel throws a draft away and says so', async ({ page }) => {
   await withName(page)

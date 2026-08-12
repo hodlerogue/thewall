@@ -81,8 +81,8 @@ export default function Page() {
       </section>
 
       <p className="document-meta">
-        <Link href="/terms">terms</Link> · <Link href="/privacy">privacy</Link> ·{' '}
-        <a href={`mailto:${CONTACT}`}>{CONTACT}</a>
+        <Link href="/hello">the short version</Link> · <Link href="/terms">terms</Link> ·{' '}
+        <Link href="/privacy">privacy</Link> · <a href={`mailto:${CONTACT}`}>{CONTACT}</a>
       </p>
       <p className="document-meta">
         <Link href="/">← go to the prompt</Link>

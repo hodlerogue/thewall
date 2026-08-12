@@ -3,7 +3,9 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Palette } from '@/components/Palette'
 import { echoOf } from '@/lib/commands/run'
+import { withOneMoreReply } from '@/lib/shell/render'
 import { describeError } from '@/lib/shell/errors'
+import { withoutHints } from '@/lib/shell/hints'
 import type { Chip, Line, Location, Runner } from '@/lib/shell/types'
 import { locationToPath, pathToLocation, promptLabel } from '@/lib/shell/types'
 import { Session } from '@/lib/shell/session'
@@ -115,7 +117,13 @@ const Scrollback = memo(function Scrollback({
 const MAX_LINES = 1500
 
 function append(previous: Keyed[], incoming: readonly Line[]): Keyed[] {
-  const next = [...previous, ...incoming.map(withKey)]
+  /*
+   * `hints off` is applied here rather than in the renderers, which is the
+   * whole reason it is one line of code: everything printed passes through
+   * this — command output, the boot lines, anything arriving live — and no
+   * renderer has to learn that a setting exists.
+   */
+  const next = [...previous, ...withoutHints(incoming).map(withKey)]
   return next.length > MAX_LINES ? next.slice(-MAX_LINES) : next
 }
 
@@ -182,7 +190,7 @@ export function Terminal({
   mailCount?: () => Promise<number>
   initialMail?: number
 }) {
-  const [lines, setLines] = useState<Keyed[]>(() => [...initialLines].map(withKey))
+  const [lines, setLines] = useState<Keyed[]>(() => withoutHints(initialLines).map(withKey))
   const [location, setLocation] = useState<Location>(initialLocation)
   const [name, setName] = useState<string | null>(initialName)
   const [input, setInput] = useState('')
@@ -426,6 +434,31 @@ export function Terminal({
 
       // §3.9 — the prompt stops saying `guest` the moment there is a name.
       if (result.identity !== undefined) setName(result.identity)
+
+      /*
+       * The listing above stops saying the post has one reply.
+       *
+       * `reply 7 <something>` exists so you never have to leave the room
+       * listing, and then the listing sat there saying "1 reply — go 7" about
+       * the post you had just answered. Reported that way: "it works but it
+       * doesn't auto update the original post".
+       *
+       * Only that one line, and only the number on it. Nothing anybody wrote is
+       * ever rewritten in the scrollback — this is a count the site derived
+       * about itself, and every printed copy of it is corrected, because a room
+       * looked at twice has two of them and fixing one would be worse than
+       * fixing neither.
+       */
+      if (result.answered) {
+        const { room, postId } = result.answered
+        setLines((prev) =>
+          prev.map((line) =>
+            line.counts?.room === room && line.counts.postId === postId
+              ? { ...withOneMoreReply(line), key: line.key }
+              : line,
+          ),
+        )
+      }
 
       // Words that did not send go back where they can be sent again.
       if (result.retry) setInput(result.retry)

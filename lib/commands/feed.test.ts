@@ -79,7 +79,7 @@ describe('the feed', () => {
     const { run } = harness()
     const out = text((await run('go feed', FEED)).lines)
 
-    expect(out).toContain('neighbours own fans')
+    expect(out).toContain('neighbors own fans')
     expect(out).toContain('marisol')
   })
 
@@ -189,7 +189,7 @@ describe('the feed is never rendered as an empty room', () => {
     const feed = rooms.find((room) => room.slug === 'feed')!
 
     expect(feed.latest, 'the feed line came back empty').toBeDefined()
-    expect(feed.latest!.body).toContain('neighbours own fans')
+    expect(feed.latest!.body).toContain('neighbors own fans')
   })
 
   it('never says "quiet in here" under itself', async () => {

@@ -145,3 +145,113 @@ test('a card is stable, so a shared link does not change under it', async ({ pag
   const twice = await (await page.request.get('/music/12/opengraph-image')).body()
   expect(once.equals(twice)).toBe(true)
 })
+
+/*
+ * What a crawler is handed.
+ *
+ * Measured against the built site before any of this: `/music` and `/music/12`
+ * returned **two words** of HTML — the loading line — with the same title and
+ * description as every other URL, and `/` and `/lobby` contained zero `<a href>`
+ * between them. Everything is fetched in the browser, so a search engine got an
+ * empty prompt and no second page to visit.
+ *
+ * These assert the three halves of the fix, and they are browser tests rather
+ * than unit ones for a reason: the only thing that settles this is what comes
+ * back over HTTP before a line of JavaScript runs.
+ */
+
+/** The document as a robot sees it: no scripts, no styles, no tags. */
+async function asRead(page: Page, path: string) {
+  const html = await (await page.request.get(path)).text()
+  const body = html
+    .replace(/<script[\s\S]*?<\/script>/g, '')
+    .replace(/<style[\s\S]*?<\/style>/g, '')
+  return {
+    html,
+    title: /<title>(.*?)<\/title>/s.exec(html)?.[1],
+    description: /<meta name="description" content="(.*?)"\/?>/s.exec(html)?.[1],
+    words: body.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean),
+    links: [...html.matchAll(/<a [^>]*href="([^"]+)"/g)]
+      .map((m) => m[1])
+      .filter((href) => !href.startsWith('#')),
+  }
+}
+
+test('a room and a post carry their content in the HTML', async ({ page }) => {
+  const room = await asRead(page, '/music')
+  expect(room.words.length, 'the room is still a loading line').toBeGreaterThan(40)
+  expect(room.words.join(' ')).toContain('found my dad’s records')
+
+  const post = await asRead(page, '/music/12')
+  expect(post.words.length).toBeGreaterThan(40)
+  expect(post.words.join(' '), 'the replies are missing').toContain('warped ones still play')
+})
+
+test('and a title and description of their own', async ({ page }) => {
+  // Every URL used to answer `thewall.social` with the same sentence under it.
+  // Three hundred rooms indistinguishable to a crawler is a deduplication
+  // problem rather than a ranking one.
+  const room = await asRead(page, '/music')
+  const post = await asRead(page, '/music/12')
+
+  expect(room.title).toBe('music — thewall.social')
+  expect(post.title).not.toBe(room.title)
+  expect(room.description).not.toBe(post.description)
+  for (const page_ of [room, post]) {
+    expect(page_.description!.length).toBeGreaterThan(20)
+    // Google shows about 155 characters and cuts the rest mid-word.
+    expect(page_.description!.length).toBeLessThanOrEqual(160)
+  }
+})
+
+test('and there is a way to walk from one to the next', async ({ page }) => {
+  /*
+   * The deeper half. Navigation is a command prompt, so `go music` leaves no
+   * trace a robot can follow — server-rendering every room would have changed
+   * nothing about discovery on its own.
+   */
+  const lobby = await asRead(page, '/lobby')
+  expect(lobby.links, 'the lobby links nowhere').toContain('/music')
+  expect(lobby.links.length).toBeGreaterThan(5)
+
+  const room = await asRead(page, '/music')
+  expect(room.links).toContain('/music/12')
+
+  const post = await asRead(page, '/music/12')
+  expect(post.links, 'a post is a dead end').toContain('/music')
+})
+
+test('the sitemap names the rooms, and leaves out the one that keeps nothing', async ({ page }) => {
+  const xml = await (await page.request.get('/sitemap.xml')).text()
+
+  expect(xml).toContain('<loc>https://thewall.social/music</loc>')
+  expect(xml).toContain('<loc>https://thewall.social/about</loc>')
+  // commons is gone in 24 hours and a crawl comes back in days, so every visit
+  // would find a different room and none of it the room that was indexed.
+  expect(xml, 'commons is being offered for indexing').not.toContain('/commons')
+})
+
+test('robots allows the site and points at the sitemap', async ({ page }) => {
+  const robots = await (await page.request.get('/robots.txt')).text()
+
+  expect(robots).toContain('Sitemap: https://thewall.social/sitemap.xml')
+  expect(robots).toContain('Allow: /')
+  // The one path that must never be crawled: following a key spends it.
+  expect(robots).toContain('Disallow: /auth/')
+})
+
+test('nothing indexable is hidden from the people reading it', async ({ page }) => {
+  /*
+   * The line between progressive enhancement and cloaking. What a crawler gets
+   * is what somebody with JavaScript switched off gets, and it is visible —
+   * text clipped to a pixel or set to display:none would be the other thing.
+   */
+  await page.route('**/*', (route) => route.continue())
+  await page.setContent(await (await page.request.get('/music')).text())
+
+  const readable = page.locator('.readable').first()
+  await expect(readable).toBeVisible()
+  const box = await readable.boundingBox()
+  expect(box!.height).toBeGreaterThan(20)
+  expect(box!.width).toBeGreaterThan(100)
+})

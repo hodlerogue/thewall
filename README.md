@@ -657,6 +657,77 @@ outage. `metadataBase` is not optional — Next emits a relative `og:image`
 without it and every crawler rejects those, so the card would build, deploy and
 never once be shown.
 
+## Being found
+
+Measured against the built site rather than assumed, which is the only way this
+was ever going to be honest: `/music` and `/music/12` returned **two words** of
+HTML — the loading line — with the same title and description as every other
+URL, and `/` and `/lobby` contained **zero** `<a href>` between them. Everything
+is fetched in the browser, so a search engine was handed an empty prompt and no
+second page to visit.
+
+Three things, and the third is the one that was not obvious.
+
+**The content is in the HTML.** `components/Readable.tsx` renders the same room,
+post, wall or lobby on the server, and the shell replaces it the moment it
+boots. Not a hidden block and not a duplicate: it is what the site is before its
+JavaScript arrives, styled like the site, and anybody can see it by switching
+scripting off. That it also ends the spinner on first paint is not a
+coincidence — the crawler fix and the speed fix were the same change.
+
+**Every page says what it is.** `lib/seo/pages.ts` builds a title, a description
+and a canonical from the same server-side reader the share cards use. A room is
+its name and gloss and the newest thing said in it; a post is its first line,
+which is the closest thing a post has to a subject.
+
+**And there is something to follow.** This is the half that server rendering
+does not fix by itself: navigation is a command prompt, so `go music` leaves no
+trace a robot can walk. The lobby names every listable room as a link, a room
+links to its posts, a post links back — and `app/sitemap.ts` exists because a
+sitemap is the only discovery mechanism a site with no link graph has. commons
+is deliberately absent from it: everything said there is gone in 24 hours and a
+crawl returns in days, so every visit would find a different room and none of it
+the room that was indexed.
+
+## The page you send somebody
+
+`/hello` is the four-second version, and the only page here allowed to sell
+anything. `/about` stays what it is — 1,400 words with, in its own words, "no
+marketing, no feature bullets" — which is right for somebody who has already
+arrived and useless as a link in a group chat.
+
+The hero is **the product running**, not a picture of it. `components/Demo.tsx`
+builds the same fixture world the demo deploy uses, hands it to the real
+`createRunner`, and plays a three-command script — `go music`, `go 12`, `who` —
+typing each one out. Then it stops and the visitor has it: chips insert, `↵`
+runs, and the prompt takes anything the site takes. Nothing is written anywhere.
+Because the output comes from the registry rather than a transcript, a renamed
+verb fails a test instead of playing a session the site would refuse.
+
+It is deliberately not `Shell`, which owns the viewport it is in — visualViewport
+maths, URL rewriting, scroll capture, a service worker — none of which belongs
+in a page. The world both of them use lives in `lib/shell/demo.ts`, once.
+
+The rest is short: three proofs, each carrying a piece of real output in the
+real tones rather than an icon; the share card, captioned as what it is; and one
+way out, which is the prompt rather than a signup. Everything but the demo is
+server-rendered, so the words are in the HTML and on the screen before any
+script arrives.
+
+Two things it does not do. `/` still redirects into commons, so nothing about
+how this site is entered has changed. And `hello` is now a reserved slug, in the
+schema and in the fixture, so no room can be made that the page would shadow.
+
+**The artwork exists three times, and each copy has a job.**
+`assets/thewallopengraph.png` is the master — 1731×909 as it was drawn, beside
+the vendored typeface, served to nobody and kept so the other two can be made
+again. `app/opengraph-image.png` is the 1200×630 crop Next attaches as the share
+card, at about 130 KB because that is the size a chat app will wait for.
+`public/thewallopengraph.png` is 1600×840 and is the one the landing page shows.
+Re-export the master and the other two are `sharp(...).resize(...)` away; edit
+one of the derived files alone and the three quietly stop being the same
+picture.
+
 ## Not built, on purpose
 
 Private messages, and reply-to-reply (§4.3 makes flatness a stated constraint,

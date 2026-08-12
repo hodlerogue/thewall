@@ -129,7 +129,7 @@ export const ROOMS: Room[] = [  {
         replies: [
           { id: 1,
             author: 'jameson',
-            body: 'level is a rumour. matchbook under the short leg and never speak of it again.',
+            body: 'level is a rumor. matchbook under the short leg and never speak of it again.',
             createdAt: minutes(240),
           },
         ],
@@ -262,7 +262,7 @@ export const ROOMS: Room[] = [  {
       {
         id: 1,
         author: 'ren',
-        body: 'three minutes into a thriller i realised i had seen it before and kept going anyway, because i could not remember the ending',
+        body: 'three minutes into a thriller i realized i had seen it before and kept going anyway, because i could not remember the ending',
         createdAt: minutes(420),
         replies: [],
       },
@@ -294,7 +294,7 @@ export const ROOMS: Room[] = [  {
       {
         id: 1,
         author: 'tuck',
-        body: 'wanted a room for cycling and did not realise i could just make one. the lobby looks like a fixed list.',
+        body: 'wanted a room for cycling and did not realize i could just make one. the lobby looks like a fixed list.',
         createdAt: minutes(260),
         replies: [],
       },
@@ -332,7 +332,7 @@ export const ROOMS: Room[] = [  {
       {
         id: 2,
         author: 'marisol',
-        body: 'three days without AC and i have learned which of my neighbours own fans and which of them share',
+        body: 'three days without AC and i have learned which of my neighbors own fans and which of them share',
         createdAt: minutes(15),
         replies: [
           { id: 1,

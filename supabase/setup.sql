@@ -3838,6 +3838,26 @@ comment on constraint posts_body_length on public.posts is
 
 
 -- ==========================================================================
+-- 20260812010000_hello_is_a_route.sql
+-- ==========================================================================
+
+-- /hello is the landing page now, so nobody may take it as a room name.
+--
+-- In its own migration rather than added to the insert that created the table:
+-- that one may already be applied, and a row added to an applied file never
+-- runs. This is the rule `CHANGING-IT.md` states for adding a route, followed.
+--
+-- A room called `hello` would be shadowed by the page forever — `go hello`
+-- would work, thewall.social/hello would not be the room, and §3.4's "the
+-- prompt path is the URL" would be quietly false for exactly one room.
+insert into public.reserved_slugs (slug, reason)
+values ('hello', 'that is a route')
+on conflict (slug) do nothing;
+
+;
+
+
+-- ==========================================================================
 -- seed.sql — §5, the rooms arrive warm
 -- ==========================================================================
 
@@ -4051,7 +4071,7 @@ insert into public.posts (room_slug, post_no, author_id, body, created_at) value
    now() - interval '95 minutes'),
 
   ('movies', 1, '44444444-4444-4444-8444-444444444444',
-   'three minutes into a thriller i realised i had seen it before and kept going anyway, because i could not remember the ending',
+   'three minutes into a thriller i realized i had seen it before and kept going anyway, because i could not remember the ending',
    now() - interval '420 minutes'),
   ('movies', 2, '11111111-1111-4111-8111-111111111111',
    'watched the same film my dad had on every sunday. it is not a good film. i cried at the credits anyway.',
@@ -4061,7 +4081,7 @@ insert into public.posts (room_slug, post_no, author_id, body, created_at) value
   -- beyond warmth: it says out loud that the lobby is not a fixed list, which
   -- is the thing people were not working out on their own.
   ('feedback', 1, '33333333-3333-4333-8333-333333333333',
-   'wanted a room for cycling and did not realise i could just make one. the lobby looks like a fixed list.',
+   'wanted a room for cycling and did not realize i could just make one. the lobby looks like a fixed list.',
    now() - interval '260 minutes'),
   ('feedback', 2, '44444444-4444-4444-8444-444444444444',
    'took me three goes to work out that go 12 opens a post rather than a room. once you know it is obvious, which is the problem.',
@@ -4074,7 +4094,7 @@ insert into public.posts (room_slug, post_no, author_id, body, created_at) value
    'putting things here instead of shouting them into a room feels different and i can''t say why yet',
    now() - interval '4 hours'),
   ('~marisol', 2, '22222222-2222-4222-8222-222222222222',
-   'three days without AC and i have learned which of my neighbours own fans and which of them share',
+   'three days without AC and i have learned which of my neighbors own fans and which of them share',
    now() - interval '15 minutes')
 on conflict do nothing;
 
@@ -4102,7 +4122,7 @@ select p.id, v.author_id::uuid, v.body, v.created_at
     ('kitchen', 1, '44444444-4444-4444-8444-444444444444',
      'freeze it flat in bags, it stacks and it thaws in about a minute', now() - interval '4 hours'),
     ('builders', 1, '11111111-1111-4111-8111-111111111111',
-     'level is a rumour. matchbook under the short leg and never speak of it again.',
+     'level is a rumor. matchbook under the short leg and never speak of it again.',
      now() - interval '4 hours'),
     ('builders', 2, '22222222-2222-4222-8222-222222222222',
      'there is always one bolt. it is a law of bicycles.', now() - interval '2 hours'),
@@ -4177,7 +4197,8 @@ insert into public.applied_migrations (filename) values
   ('20260809000000_no_mail_to_nowhere.sql'),
   ('20260810000000_lobby_uses_its_index.sql'),
   ('20260811000000_reply_to_a_reply.sql'),
-  ('20260812000000_four_thousand.sql')
+  ('20260812000000_four_thousand.sql'),
+  ('20260812010000_hello_is_a_route.sql')
 on conflict do nothing;
 
 commit;

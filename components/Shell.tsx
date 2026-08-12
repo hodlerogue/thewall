@@ -6,9 +6,9 @@ import { createChipsFor, createRunner } from '@/lib/commands/run'
 import { createLive, type Live } from '@/lib/data/live'
 import { supabaseEnv } from '@/lib/data/supabaseEnv'
 import { httpSignupApi, supabaseWriter } from '@/lib/data/writer'
-import { fixtureEnv, type Env, type FixturePerson } from '@/lib/shell/env'
+import { demoWorld, fixtureSignup, fixtureWriter } from '@/lib/shell/demo'
+import { fixtureEnv, type Env } from '@/lib/shell/env'
 import { startArrivalReads, type ArrivalReads } from '@/lib/shell/boot'
-import { PEOPLE } from '@/lib/shell/fixtures'
 import { describeError } from '@/lib/shell/errors'
 import { shouldSuggest, suggestion, watchForInstall } from '@/lib/pwa/install'
 import { renderFeed, renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
@@ -49,7 +49,25 @@ interface Boot {
  * depending on a database — there is deliberately no silent fallback, so a
  * missing project is reported rather than papered over.
  */
-export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLocation?: Location }) {
+export function Shell({
+  initialLocation = { room: DEFAULT_ROOM },
+  children,
+}: {
+  initialLocation?: Location
+  /**
+   * The page, rendered on the server, shown until the shell has booted.
+   *
+   * Everything here is fetched in the browser, so the HTML a crawler was handed
+   * used to be the loading line and nothing else — two words, and no link to
+   * follow. This is the same content as real markup: a room is a list of what
+   * people said, a post is a conversation, and both are made of links.
+   *
+   * Not hidden and not a duplicate. It is what the site is before its
+   * JavaScript arrives, which is also why the first paint is no longer a
+   * spinner — the crawler fix and the speed fix turned out to be one change.
+   */
+  children?: React.ReactNode
+}) {
   const [boot, setBoot] = useState<Boot | null>(null)
   const [failure, setFailure] = useState<Line[] | null>(null)
 
@@ -112,13 +130,21 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
       const ephemeralNames: string[] = []
 
       if (useFixtures) {
-        // Whoever signs up in the demo gets a page, because their own page is
-        // the only place a wall can be tried. The real Env gets this from the
-        // profiles table; here it is an array the fake signup pushes to and
-        // fixtureEnv reads at call time.
-        const demoPeople: FixturePerson[] = [...PEOPLE]
-        env = fixtureEnv(undefined, demoPeople)
-        writer = fixtureWriter()
+        /*
+         * The demo's own world, which it is allowed to write to.
+         *
+         * Whoever signs up here gets a page, because their own page is the only
+         * place a wall can be tried; and the rooms are a copy rather than the
+         * module's arrays, so the seed stays what every test imports. Both live
+         * in lib/shell/demo.ts now that the landing page's hero needs the same
+         * world — see the note there about two fixtures being free to drift.
+         */
+        const { rooms: demoRooms, people: demoPeople } = demoWorld()
+        env = fixtureEnv(demoRooms, demoPeople)
+        // `session` is declared below and only ever read at write time, which
+        // is long after. Keep it that way: calling this during boot would be a
+        // temporal dead zone rather than a null name.
+        writer = fixtureWriter(demoRooms, () => session.name())
         signup = fixtureSignup(demoPeople)
       } else {
         client = createClient()
@@ -218,7 +244,11 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
           ...(useFixtures
             ? [{ text: 'demo — nothing you type here is saved.', tone: 'faint' as const }]
             : []),
-          { text: 'type look to see what’s around you, or tap a command below.', tone: 'faint' },
+          {
+            text: 'type look to see what’s around you, or tap a command below.',
+            tone: 'faint',
+            hint: true,
+          },
           /*
            * One more line, and only for somebody who has not been here before.
            *
@@ -228,7 +258,7 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
            * does not need telling every load.
            */
           ...(existingName === null
-            ? [{ text: 'new here? type about.', tone: 'faint' as const }]
+            ? [{ text: 'new here? type about.', tone: 'faint' as const, hint: true as const }]
             : []),
           { text: '' },
           ...keyLines,
@@ -280,7 +310,7 @@ export function Shell({ initialLocation = { room: DEFAULT_ROOM } }: { initialLoc
     return (
       <div className="app">
         <div className="scrollback">
-          <p className="line line-faint">…</p>
+          {children ?? <p className="line line-faint">…</p>}
         </div>
       </div>
     )
@@ -462,113 +492,3 @@ async function arriveAt(
   return { lines: renderPost(post), location: { room: room.slug, postId: post.id } }
 }
 
-/**
- * Fixture-mode stand-ins, so the mobile gate can walk the whole signup flow
- * without a database. Nothing here runs when Supabase is configured.
- */
-function fixtureWriter(): Writer {
-  let next = 100
-  // Per post, because that is what a reply number is. A single counter would
-  // hand out 1, 2, 3 across different posts and teach the demo's visitor a
-  // rule the site does not have.
-  const replies = new Map<string, number>()
-  const taken = new Set(['jameson', 'marisol', 'tuck', 'ren', 'dev'])
-  return {
-    async post() {
-      return next++
-    },
-    async reply(room: string, postNo: number) {
-      const at = `${room}/${postNo}`
-      const no = (replies.get(at) ?? 0) + 1
-      replies.set(at, no)
-      return no
-    },
-    async rename(name: string) {
-      if (taken.has(name)) return { ok: false as const, reason: `${name} is taken` }
-      return { ok: true as const, name }
-    },
-  }
-}
-
-/**
- * Not a secret, and not meant to be. See `login` below for why the demo hands
- * this over rather than pretending mail exists.
- */
-const DEMO_CODE = '123456'
-
-function fixtureSignup(people: FixturePerson[]): SignupApi {
-  const taken = new Set(['jameson', 'marisol', 'tuck', 'ren', 'dev'])
-  return {
-    async checkName(name: string) {
-      const available = !taken.has(name)
-      return {
-        available,
-        alternates: available ? [] : [`${name}_`, `${name}1`, `the${name}`],
-      }
-    },
-    async resend() {
-      return { note: 'nothing to send — this is a demo.' }
-    },
-    async logout() {
-      // Nothing to end — the demo never had a session. Answering `ok` is the
-      // truth of it: after this you are a guest here, same as the real site.
-      return { ok: true as const }
-    },
-    async login(name: string) {
-      // Both branches, not a single cheerful one. `login` is reachable from
-      // `help` here as it is anywhere, so the fixture build is where somebody
-      // finds out what it does — and "no one is called that" is half of what
-      // it does.
-      if (!taken.has(name) && !people.some((person) => person.name === name)) {
-        return {
-          ok: false as const,
-          reason: `no one here is called ${name}. if you’ve not been here before, say something and i’ll set you up.`,
-        }
-      }
-      /*
-       * The demo asks for a code and tells you what it is.
-       *
-       * The alternative — say "nothing was sent" and stop — leaves the whole
-       * code flow unwalkable in the demo build and therefore untested by the
-       * phone suite, which is §8's kill condition. That is the fixture-is-a-
-       * different-shape trap this codebase keeps falling into: a listing that
-       * paged on the real site and not in fixtures hid a truncation bug for
-       * weeks.
-       *
-       * Saying the code out loud is honest rather than cute. Nothing was
-       * emailed and nothing was kept; what is being demonstrated is the shape
-       * of the exchange, and a demo that hands you the answer is obviously a
-       * demo.
-       */
-      return {
-        ok: true as const,
-        name,
-        codeSent: true,
-        note: `nothing was emailed — this is a demo. on the real site a key would be in that account’s inbox; here the code is ${DEMO_CODE}.`,
-      }
-    },
-
-    async loginCode(name: string, code: string) {
-      if (code.trim().toLowerCase().replace(/[\s-]/g, '') !== DEMO_CODE) {
-        return {
-          ok: false as const,
-          reason: `that code didn’t work. in this demo it is ${DEMO_CODE}.`,
-        }
-      }
-      return { ok: true as const, name }
-    },
-    async create(name: string) {
-      // Nothing is stored anywhere, but the demo does have to be able to show
-      // you `~yourname` a second later, or `say` on your own wall has nowhere
-      // to land and the feature cannot be tried at all.
-      people.push({ name, joinedAt: new Date(), verified: false })
-      // No account was made and no mail was sent. Say so — this build gets
-      // deployed to public URLs, and people type real addresses into it.
-      return {
-        ok: true as const,
-        name,
-        note: 'nothing was sent — this is a demo, and your address wasn’t kept.',
-      }
-    },
-  }
-}

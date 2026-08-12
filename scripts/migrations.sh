@@ -46,6 +46,7 @@ MIGRATION_PROBES=(
   "20260811000000_reply_to_a_reply.sql|select to_regproc('public.create_reply') is not null"
   # Probed by the number, not by the constraint existing — it existed before.
   "20260812000000_four_thousand.sql|select pg_get_constraintdef(oid) like '%4000%' from pg_constraint where conname = 'posts_body_length'"
+  "20260812010000_hello_is_a_route.sql|select exists (select 1 from public.reserved_slugs where slug = 'hello')"
 )
 
 probe_for() {
