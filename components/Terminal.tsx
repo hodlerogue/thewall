@@ -2,10 +2,10 @@
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Palette } from '@/components/Palette'
+import { append, MAX_LINES, Scrollback, type Keyed } from '@/components/Scrollback'
 import { echoOf } from '@/lib/commands/run'
 import { withOneMoreReply } from '@/lib/shell/render'
 import { describeError } from '@/lib/shell/errors'
-import { withoutHints } from '@/lib/shell/hints'
 import type { Chip, Line, Location, Runner } from '@/lib/shell/types'
 import { locationToPath, pathToLocation, promptLabel } from '@/lib/shell/types'
 import { Session } from '@/lib/shell/session'
@@ -17,115 +17,8 @@ import { Session } from '@/lib/shell/session'
  * makes them wrong — every line's tone and indent would shift up by one on
  * each trim — so the cap and the keys have to change together.
  */
-let nextKey = 0
-function withKey(line: Line): Keyed {
-  return { ...line, key: (nextKey += 1) }
-}
 
-type Keyed = Line & { key: number }
 
-/**
- * The scrollback, rendered apart from everything that changes while you type.
- *
- * `input` is state on `Terminal`, so every keystroke re-rendered the component
- * — and with it every line ever printed. Measured at 380×740: about 0.007ms
- * per line per keystroke, so the 600-line cap was costing ~4ms on a desktop
- * container and several times that on a phone, on every letter. That cost is
- * what set the cap, and the cap is what limited how much of a room could be
- * shown at once. A product decision was being made by a render loop.
- *
- * Memoised, `lines` only changes when something is actually printed, so typing
- * no longer touches this at all and the cap is free to be about memory and
- * usefulness instead of latency.
- */
-const Scrollback = memo(function Scrollback({
-  lines,
-  onInsert,
-}: {
-  lines: readonly Keyed[]
-  onInsert: (text: string) => void
-}) {
-  return (
-    <>
-      {lines.map((line) => (
-        <p
-          key={line.key}
-          className={[
-            'line',
-            line.tone && line.tone !== 'default' ? `line-${line.tone}` : '',
-            line.depth ? `depth-${line.depth}` : '',
-          ]
-            .filter(Boolean)
-            .join(' ')}
-        >
-          {line.prefix ? <span className="line-prefix">{line.prefix}</span> : null}
-          {line.tap ? (
-            <>
-              <button
-                type="button"
-                className="line-tap"
-                data-testid="tap"
-                /*
-                 * Not a tab stop. The scrollback is one focusable region on
-                 * purpose (WCAG 2.1.1, so a keyboard user can read their own
-                 * history), and a room listing would put sixty stops between
-                 * that region and the prompt. This is a shortcut for a thumb:
-                 * everything it does, typing does, so leaving it out of the tab
-                 * order costs a keyboard user nothing. The address itself stays
-                 * ordinary text in the log for anything reading the line aloud.
-                 */
-                tabIndex={-1}
-                aria-label={`answer ${line.tap.token}`}
-                // Same as a chip: never steal focus from the prompt, or the
-                // keyboard closes on every tap.
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => onInsert(line.tap!.insert)}
-              >
-                {line.tap.token}
-              </button>
-              {line.text.slice(line.tap.token.length)}
-            </>
-          ) : line.text === '' ? (
-            ' '
-          ) : line.prefix ? (
-            // Explicit rather than leaning on `:has()`. The prefix recedes and
-            // this does not, which is the whole point of the pair existing.
-            <span className="line-typed">{line.text}</span>
-          ) : (
-            line.text
-          )}
-        </p>
-      ))}
-    </>
-  )
-})
-
-/**
- * How much scrollback to keep.
- *
- * It grew without bound: no cap, no clear, no virtualisation, and every append
- * copies the array and forces a layout read for the autoscroll. A tab left
- * overnight — commons is explicitly meant to be left open, §3.10 calls it a
- * hallway — became a typing-latency problem and then a tab mobile Safari
- * reloads out from under you, taking a held sentence with it.
- *
- * Raised from 600 once typing stopped re-rendering it. It now holds roughly
- * seven pages of a busy room, so `older` can walk back a long way without the
- * page you started on being trimmed out from under you — which at 600 it
- * would have been, after one step.
- */
-const MAX_LINES = 1500
-
-function append(previous: Keyed[], incoming: readonly Line[]): Keyed[] {
-  /*
-   * `hints off` is applied here rather than in the renderers, which is the
-   * whole reason it is one line of code: everything printed passes through
-   * this — command output, the boot lines, anything arriving live — and no
-   * renderer has to learn that a setting exists.
-   */
-  const next = [...previous, ...withoutHints(incoming).map(withKey)]
-  return next.length > MAX_LINES ? next.slice(-MAX_LINES) : next
-}
 
 /**
  * Tab completion, over the verbs that are valid where you are standing.
@@ -190,7 +83,7 @@ export function Terminal({
   mailCount?: () => Promise<number>
   initialMail?: number
 }) {
-  const [lines, setLines] = useState<Keyed[]>(() => withoutHints(initialLines).map(withKey))
+  const [lines, setLines] = useState<Keyed[]>(() => append([], initialLines))
   const [location, setLocation] = useState<Location>(initialLocation)
   const [name, setName] = useState<string | null>(initialName)
   const [input, setInput] = useState('')

@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Palette } from '@/components/Palette'
+import { append, Scrollback, type Keyed } from '@/components/Scrollback'
 import { createChipsFor, createRunner, echoOf } from '@/lib/commands/run'
 import { DEMO_INVITATION, DEMO_SCRIPT } from '@/lib/marketing/landing'
 import { demoWorld, fixtureSignup, fixtureWriter } from '@/lib/shell/demo'
 import { fixtureEnv } from '@/lib/shell/env'
+import { describeError } from '@/lib/shell/errors'
 import { renderRoomList } from '@/lib/shell/render'
 import { Session } from '@/lib/shell/session'
 import type { Line, Location } from '@/lib/shell/types'
@@ -26,13 +28,6 @@ import { promptLabel } from '@/lib/shell/types'
  * cannot show a command the site does not have or output the site would not
  * produce. That is the entire reason it is worth the code.
  */
-
-let nextKey = 0
-type Keyed = Line & { key: number }
-const withKey = (line: Line): Keyed => ({ ...line, key: (nextKey += 1) })
-
-/** Enough to see where you have been, and short of a memory conversation. */
-const CAP = 120
 
 /** How fast the demo types, in ms per character, and how long it waits. */
 const PER_CHAR = 38
@@ -68,6 +63,9 @@ export function Demo({ children }: { children?: React.ReactNode }) {
   const [input, setInput] = useState('')
   const [asking, setAsking] = useState(false)
   const [played, setPlayed] = useState(false)
+  const [pending, setPending] = useState(false)
+  const [composing, setComposing] = useState<{ lines: number; chars: number } | null>(null)
+  const [focused, setFocused] = useState(false)
 
   /*
    * Whether the visitor has taken it over.
@@ -79,11 +77,22 @@ export function Demo({ children }: { children?: React.ReactNode }) {
    */
   const [taken, setTaken] = useState(false)
   const takenRef = useRef(false)
+  // A ref rather than state, because two fast Enters land in the same tick.
+  const inFlight = useRef(false)
   const paneRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const append = useCallback((incoming: readonly Line[]) => {
-    setLines((current) => [...current, ...incoming.map(withKey)].slice(-CAP))
+  /*
+   * The site's own `append` — cap, keys and `hints off` included.
+   *
+   * Not a local one. A demo that kept its own copy is what let every other
+   * difference in here happen, and the setting in particular is the browser's
+   * rather than the room's: somebody who turned the instructions off should not
+   * have them handed back by a demonstration of the thing they turned them off
+   * in.
+   */
+  const print = useCallback((incoming: readonly Line[]) => {
+    setLines((current) => append(current, incoming))
   }, [])
 
   // The pane scrolls itself and never the page. `scrollIntoView` would drag the
@@ -96,13 +105,37 @@ export function Demo({ children }: { children?: React.ReactNode }) {
 
   const perform = useCallback(
     async (text: string) => {
-      const result = await world.run(text, location, { typed: true })
-      append([echoOf(text, promptLabel(name, location)), ...result.lines, { text: '' }])
+      // One at a time, as on the site: a second Enter used to start a second
+      // command against the pre-move location, so outputs landed in completion
+      // order rather than submission order.
+      if (inFlight.current) return
+      inFlight.current = true
+      print([echoOf(text, promptLabel(name, location))])
+      setPending(true)
+
+      let result
+      try {
+        result = await world.run(text, location, { typed: true })
+      } catch (error) {
+        // A command that throws rendering nothing at all reads as a dead
+        // prompt. Say what went wrong and hand the words back, which is what
+        // the site does.
+        print(describeError(error))
+        setInput(text)
+        return
+      } finally {
+        inFlight.current = false
+        setPending(false)
+      }
+
+      print(result.lines)
       if (result.location) setLocation(result.location)
       if (result.identity !== undefined) setName(result.identity)
+      if (result.retry) setInput(result.retry)
+      setComposing(result.composing ?? null)
       setAsking(world.session.isAsking())
     },
-    [append, location, name, world],
+    [print, location, name, world],
   )
 
   /*
@@ -124,11 +157,10 @@ export function Demo({ children }: { children?: React.ReactNode }) {
     async function play() {
       const { rooms, total } = await world.env.listRooms()
       if (stopped()) return
-      append([
+      print([
         { text: `${promptLabel(null, {})} look`, tone: 'echo' },
         { text: '' },
         ...renderRoomList(rooms, undefined, undefined, total),
-        { text: '' },
       ])
 
       const motion =
@@ -164,7 +196,7 @@ export function Demo({ children }: { children?: React.ReactNode }) {
          */
         const result = await world.run(command, at, { typed: true })
         if (stopped()) return
-        append([echoOf(command, promptLabel(null, at)), ...result.lines, { text: '' }])
+        print([echoOf(command, promptLabel(null, at)), ...result.lines])
         if (result.location) {
           at = result.location
           setLocation(result.location)
@@ -178,7 +210,7 @@ export function Demo({ children }: { children?: React.ReactNode }) {
     return () => {
       cancelled = true
     }
-    // Once, on mount. `world` is a useMemo with no dependencies and `append` is
+    // Once, on mount. `world` is a useMemo with no dependencies and `print` is
     // stable; listing them would say this could re-run, and it must not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -209,7 +241,18 @@ export function Demo({ children }: { children?: React.ReactNode }) {
   const chips = world.chipsFor(location, name)
 
   return (
-    <div className="demo">
+    /*
+     * Tapping anywhere in here puts the caret back at the prompt, which is what
+     * `.app` does on the site: the frame is mostly output, and after tapping a
+     * line to read it there is nothing to aim at but a thin strip of nothing.
+     * Ignored while text is selected, so copying still works.
+     */
+    <div
+      className="demo"
+      onMouseUp={() => {
+        if (!window.getSelection()?.toString()) inputRef.current?.focus()
+      }}
+    >
       <div className="demo-bar" aria-hidden="true">
         <span className="demo-dot" />
         <span className="demo-dot" />
@@ -220,47 +263,36 @@ export function Demo({ children }: { children?: React.ReactNode }) {
       {/*
         * The scrollback, and what stands in for it until this component runs.
         *
-        * `children` is the same listing rendered on the server, so the frame is
-        * never empty and never a spinner — the page paints with the lobby
-        * already in it, and this replaces it with the live one on the same
-        * frame it appends to.
+        * `children` is the same listing rendered on the server, through the same
+        * `Scrollback`, so the frame is never empty and never a spinner — the
+        * page paints with the lobby already in it and this replaces it with the
+        * live one on the frame it first appends to.
         */}
       <div className="demo-pane" ref={paneRef} data-testid="demo-pane">
-        {lines.length === 0 ? (
-          children
-        ) : (
-          <>
-            {lines.map((line) => (
-              <p
-                key={line.key}
-                className={[
-                  'line',
-                  line.tone && line.tone !== 'default' ? `line-${line.tone}` : '',
-                  line.depth ? `depth-${line.depth}` : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-              >
-                {line.tap ? (
-                  <>
-                    <span className="line-accent">{line.tap.token}</span>
-                    {line.text.slice(line.tap.token.length)}
-                  </>
-                ) : (
-                  line.text
-                )}
-              </p>
-            ))}
-          </>
-        )}
+        {lines.length === 0 ? children : <Scrollback lines={lines} onInsert={insert} />}
       </div>
 
       <div className="demo-composer">
+        {/* The same second of nothing the site fills. Between Enter and the
+            answer there is otherwise a prompt that visibly swallowed what you
+            typed and printed no reply. */}
+        {pending && (
+          <p className="pending" data-testid="demo-pending">
+            …
+          </p>
+        )}
+        {composing && !pending && (
+          <p className="composing">
+            writing — {composing.lines} {composing.lines === 1 ? 'line' : 'lines'},{' '}
+            {composing.chars}/{Session.LIMIT} · a dot ends it
+          </p>
+        )}
         {/*
           * Chips insert. They never execute — §3.6 and §9 make that the line
           * between a real interface and a terminal costume, and a page selling
-          * this one is the last place to blur it. The ↵ beside the prompt is
-          * what runs things, and two taps is the demonstration.
+          * this one is the last place to blur it. Enter runs things, here as
+          * there; tapping a chip puts the caret in the prompt, which on a phone
+          * is what raises the keyboard whose go key is the other half of it.
           *
           * Hidden while the session is asking something, because mid-question
           * anything typed is the answer rather than a command: a chip there
@@ -268,11 +300,25 @@ export function Demo({ children }: { children?: React.ReactNode }) {
           */}
         {!asking && <Palette chips={chips} onInsert={insert} />}
 
-        <div className="prompt-row">
-          <span className="prompt-label" data-testid="demo-label">
+        <form
+          className="prompt-row"
+          onSubmit={(event) => {
+            event.preventDefault()
+            submit()
+          }}
+        >
+          <label
+            className={`prompt-label${name === null ? ' prompt-label-guest' : ''}`}
+            htmlFor="demo-prompt"
+            data-testid="demo-label"
+          >
             {promptLabel(name, location)}
-          </span>
+          </label>
+          {/* Where the caret would be, when there is not a real one — so the
+              block sits exactly where your first character lands. */}
+          {!focused && input === '' && <span className="caret" aria-hidden="true" />}
           <input
+            id="demo-prompt"
             ref={inputRef}
             className="prompt-input"
             data-testid="demo-input"
@@ -283,30 +329,17 @@ export function Demo({ children }: { children?: React.ReactNode }) {
               takeOver()
               setInput(event.target.value)
             }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                submit()
-              }
-            }}
-            aria-label="try a command"
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            aria-label={`${promptLabel(name, location)} command`}
             autoComplete="off"
-            autoCapitalize="off"
+            autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
             enterKeyHint="go"
-            maxLength={200}
+            maxLength={Session.LIMIT + 48}
           />
-          <button
-            type="button"
-            className="demo-enter"
-            onClick={submit}
-            aria-label="run it"
-            data-testid="demo-enter"
-          >
-            ↵
-          </button>
-        </div>
+        </form>
       </div>
 
       {/* Only once the script has finished, so it is an invitation rather than

@@ -708,11 +708,19 @@ It is deliberately not `Shell`, which owns the viewport it is in — visualViewp
 maths, URL rewriting, scroll capture, a service worker — none of which belongs
 in a page. The world both of them use lives in `lib/shell/demo.ts`, once.
 
+It draws its lines through `components/Scrollback.tsx`, which is the site's own
+renderer and not a copy of it — the copy it had for a day ignored `Line.prefix`,
+so a contribution's echo came out flat instead of a dim prompt in front of a
+bright sentence, and addresses stopped being tappable. There is one of these
+now, and the suite runs the same command in both and compares the HTML.
+
 The rest is short: three proofs, each carrying a piece of real output in the
-real tones rather than an icon; the share card, captioned as what it is; and one
-way out, which is the prompt rather than a signup. Everything but the demo is
-server-rendered, so the words are in the HTML and on the screen before any
-script arrives.
+real tones rather than an icon; a share card that the site drew when the page
+loaded, fetched live from `/music/opengraph-image` because a section claiming
+links preview as the conversation has to show one rather than an artist's
+impression of one; and one way out, which is the prompt rather than a signup.
+Everything but the demo is server-rendered, so the words are in the HTML and on
+the screen before any script arrives.
 
 Two things it does not do. `/` still redirects into commons, so nothing about
 how this site is entered has changed. And `hello` is now a reserved slug, in the
@@ -723,10 +731,17 @@ schema and in the fixture, so no room can be made that the page would shadow.
 the vendored typeface, served to nobody and kept so the other two can be made
 again. `app/opengraph-image.png` is the 1200×630 crop Next attaches as the share
 card, at about 130 KB because that is the size a chat app will wait for.
-`public/thewallopengraph.png` is 1600×840 and is the one the landing page shows.
-Re-export the master and the other two are `sharp(...).resize(...)` away; edit
-one of the derived files alone and the three quietly stop being the same
-picture.
+`public/thewallopengraph.png` is 1600×840 and is the poster at the foot of the
+landing page. Re-export the master and the other two are `sharp(...).resize(...)`
+away; edit one of the derived files alone and the three quietly stop being the
+same picture.
+
+All three are **drawn, not captured**, and that is the whole reason the poster
+sits where it does. The rooms and commands in it are real and the layout is an
+illustrator's, which makes it brand art — fine above a call to action, and not
+fine as evidence for a claim about what the site produces. The cards the site
+actually generates are the evidence, and the section that makes the claim shows
+one of those.
 
 ## Not built, on purpose
 

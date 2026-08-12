@@ -288,16 +288,24 @@ describe('typing does not re-render the scrollback', () => {
    * cap that was a few milliseconds a keystroke on a desktop and several times
    * that on a phone, and it is the reason a room could only show 30 posts.
    */
-  const source = readFileSync(join(__dirname, '..', '..', 'components', 'Terminal.tsx'), 'utf8')
-  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+  const strip = (name: string) =>
+    readFileSync(join(__dirname, '..', '..', 'components', name), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '')
 
-  it('is reading the file it thinks it is', () => {
-    expect(code).toContain('MAX_LINES')
+  const code = strip('Terminal.tsx')
+  // The renderer and the cap moved out when the landing page's demo needed the
+  // same ones — two scrollbacks that drew lines differently is what put a
+  // different-looking `say` on the marketing page.
+  const renderer = strip('Scrollback.tsx')
+
+  it('is reading the files it thinks it is', () => {
     expect(code).toContain('visualViewport')
+    expect(renderer).toContain('MAX_LINES')
   })
 
   it('renders the lines through a memo, not inline', () => {
-    expect(code).toMatch(/const Scrollback = memo\(/)
+    expect(renderer).toMatch(/const Scrollback = memo\(/)
     expect(code).toContain('<Scrollback lines={lines} onInsert={aim} />')
   })
 
@@ -323,7 +331,7 @@ describe('typing does not re-render the scrollback', () => {
   it('keeps enough scrollback for older to be worth having', () => {
     // A page is roughly 200 lines. At the old 600 the first `older` would trim
     // away the page you started on, so walking back lost what you had read.
-    const cap = Number(/const MAX_LINES = (\d+)/.exec(code)?.[1])
+    const cap = Number(/const MAX_LINES = (\d+)/.exec(renderer)?.[1])
     expect(cap).toBeGreaterThanOrEqual(ROOM_PAGE * 3 * 3)
   })
 })

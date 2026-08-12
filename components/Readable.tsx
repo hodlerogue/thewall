@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ogEnv } from '@/lib/brand/ogData'
 import { formatAgo } from '@/lib/shell/model'
+import { oldestFirst } from '@/lib/shell/render'
 import type { Location } from '@/lib/shell/types'
 
 /**
@@ -42,6 +43,22 @@ export async function Readable({ at }: { at: Location }) {
 type Env = NonNullable<ReturnType<typeof ogEnv>>
 
 /**
+ * The first line of something, short enough to be a heading.
+ *
+ * Paired with `rest` below, and the pair is the fix for a real defect: a
+ * heading built from the first 80 characters and a paragraph holding the whole
+ * body printed **the same words twice** whenever a post was shorter than that,
+ * which in commons is most of them. Reported as a flash of a broken-looking
+ * page — "hi all", "ryan, 2m ago", "hi all" — and it was duplicate content to a
+ * crawler for exactly the same reason.
+ */
+const HEADING = 80
+const excerpt = (body: string) => body.split('\n')[0].slice(0, HEADING)
+
+/** Whatever the heading did not already say. Empty when it said all of it. */
+const rest = (body: string) => (body === excerpt(body) ? null : body)
+
+/**
  * The lobby, which is the only page that can hand a crawler the whole site.
  *
  * There is no other link graph: navigation is a command prompt, so `go music`
@@ -65,10 +82,13 @@ async function Lobby({ env }: { env: Env }) {
             <h2>
               <Link href={`/${room.slug}`}>{room.slug}</Link>
             </h2>
-            <p>{room.gloss}</p>
+            <p className="readable-body">{room.gloss}</p>
             {room.latest && (
-              <p>
-                {room.latest.author}: {room.latest.body}
+              <p className="readable-body readable-said">
+                {room.latest.body} — {room.latest.author},{' '}
+                <time dateTime={room.latest.createdAt.toISOString()}>
+                  {formatAgo(room.latest.createdAt)}
+                </time>
               </p>
             )}
           </li>
@@ -78,6 +98,27 @@ async function Lobby({ env }: { env: Env }) {
   )
 }
 
+/**
+ * A room, in the shape the terminal is about to draw it in.
+ *
+ * Reported as a flash: "it flashes this in the top left for a brief moment and
+ * then loads the page." Some of that is unavoidable — this *is* the page until
+ * the shell boots, and the alternative is the spinner it replaced — but almost
+ * none of it needed to look like a different site. Three things did that:
+ *
+ * The body appeared twice, because the heading was an 80-character excerpt of
+ * it and the paragraph below was the whole thing.
+ *
+ * The posts ran newest-first while the terminal runs them oldest-first, so the
+ * order visibly flipped as it booted.
+ *
+ * And every post was a link, including in commons, which has no permanent
+ * addresses at all (§3.10) — so the flash offered doors that do not exist.
+ *
+ * What is left mirrors `renderPosts`: the address and who said it on one line,
+ * the body indented under it. A crawler still gets a heading, a link and a
+ * `<time>` per post; a person gets the same room twice in a row.
+ */
 async function Room({ slug, env }: { slug: string; env: Env }) {
   const room = await env.getRoom(slug)
   if (!room) return null
@@ -85,23 +126,38 @@ async function Room({ slug, env }: { slug: string; env: Env }) {
   return (
     <article className="readable">
       <h1>{room.slug}</h1>
-      <p>{room.gloss}</p>
-      {room.posts.length === 0 && <p>Nothing here yet.</p>}
-      {room.posts.map((post) => (
+      <p className="readable-gloss">{room.gloss}</p>
+      {room.ephemeral && (
+        <p className="readable-gloss">
+          commons keeps nothing. everything here is gone in 24 hours.
+        </p>
+      )}
+      {room.posts.length === 0 && <p>nothing here yet.</p>}
+      {oldestFirst(room.posts).map((post) => (
         <section key={post.id}>
           <h2>
-            <Link href={`/${room.slug}/${post.id}`}>
-              {post.body.split('\n')[0].slice(0, 80)}
-            </Link>
+            {/* No address in an ephemeral room, so nothing to link to and
+                nothing to print in front — the same branch renderPosts takes. */}
+            {!room.ephemeral && (
+              <>
+                <Link href={`/${room.slug}/${post.id}`}>{post.id}</Link>{' '}
+              </>
+            )}
+            <span className="readable-said">
+              {post.author},{' '}
+              <time dateTime={post.createdAt.toISOString()}>{formatAgo(post.createdAt)}</time>
+            </span>
           </h2>
-          <p>
-            {post.author}, <time dateTime={post.createdAt.toISOString()}>{formatAgo(post.createdAt)}</time>
-          </p>
-          <p>{post.body}</p>
+          <p className="readable-body">{post.body}</p>
+          {!room.ephemeral && post.replies.length > 0 && (
+            <p className="readable-count">
+              {post.replies.length} {post.replies.length === 1 ? 'reply' : 'replies'}
+            </p>
+          )}
         </section>
       ))}
-      <p>
-        <Link href="/lobby">Every room</Link>
+      <p className="readable-nav">
+        <Link href="/lobby">every room</Link>
       </p>
     </article>
   )
@@ -113,19 +169,20 @@ async function Thread({ at, env }: { at: Location; env: Env }) {
 
   return (
     <article className="readable">
-      <h1>{post.body.split('\n')[0].slice(0, 80)}</h1>
-      <p>
+      <h1>{excerpt(post.body)}</h1>
+      <p className="readable-said">
         {post.author}, <time dateTime={post.createdAt.toISOString()}>{formatAgo(post.createdAt)}</time>{' '}
         in <Link href={`/${at.room}`}>{at.room}</Link>
       </p>
-      <p>{post.body}</p>
+      {/* Only when the heading did not already say it. */}
+      {rest(post.body) && <p className="readable-body">{post.body}</p>}
       {post.replies.map((reply) => (
         <section key={reply.id}>
-          <p>
+          <p className="readable-said">
             {reply.author},{' '}
             <time dateTime={reply.createdAt.toISOString()}>{formatAgo(reply.createdAt)}</time>
           </p>
-          <p>{reply.body}</p>
+          <p className="readable-body">{reply.body}</p>
         </section>
       ))}
     </article>
@@ -139,17 +196,18 @@ async function Person({ name, env }: { name: string; env: Env }) {
   return (
     <article className="readable">
       <h1>{profile.name}</h1>
-      <p>
-        Arrived <time dateTime={profile.joinedAt.toISOString()}>{formatAgo(profile.joinedAt)}</time>.
+      <p className="readable-said">
+        arrived{' '}
+        <time dateTime={profile.joinedAt.toISOString()}>{formatAgo(profile.joinedAt)}</time>.
       </p>
       {profile.posts.map((post) => (
         <section key={`${post.room}/${post.id}`}>
           <h2>
             <Link href={`/${post.room}/${post.id}`}>
-              {post.body.split('\n')[0].slice(0, 80)}
+              {post.room}/{post.id}
             </Link>
           </h2>
-          <p>{post.body}</p>
+          <p className="readable-body">{post.body}</p>
         </section>
       ))}
     </article>

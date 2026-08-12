@@ -3,14 +3,17 @@ import { join } from 'node:path'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Demo } from '@/components/Demo'
+import { Scrollback } from '@/components/Scrollback'
 import {
   CARD_ALT,
   CARD_BODY,
   CARD_HEADING,
+  CARD_ROOM,
   CTA_PRIMARY,
   CTA_SECONDARY,
   DEMO_FOOTNOTE,
   HEADLINE,
+  POSTER_ALT,
   PROOFS,
   SUBHEAD,
   WORDMARK,
@@ -99,26 +102,17 @@ async function openingFrame(): Promise<Line[]> {
   ]
 }
 
-/** The site's own line markup, for the samples and the static first frame. */
+/**
+ * The site's own renderer, on the server.
+ *
+ * `components/Scrollback.tsx` and nothing else — this page had its own copy of
+ * the markup for about a day, and in that day it lost the dim prompt in front
+ * of a contribution, the height of a blank line, and the styling of an address.
+ * There is no handler to hand it here, which it allows: a tap token still looks
+ * like one, it simply is not a button until the demo is running.
+ */
 function Lines({ lines }: { lines: readonly Line[] }) {
-  return (
-    <>
-      {lines.map((line, i) => (
-        <p
-          key={i}
-          className={[
-            'line',
-            line.tone && line.tone !== 'default' ? `line-${line.tone}` : '',
-            line.depth ? `depth-${line.depth}` : '',
-          ]
-            .filter(Boolean)
-            .join(' ')}
-        >
-          {line.text}
-        </p>
-      ))}
-    </>
-  )
+  return <Scrollback lines={lines.map((line, key) => ({ ...line, key }))} />
 }
 
 export default async function Page() {
@@ -166,26 +160,46 @@ export default async function Page() {
           <h2>{CARD_HEADING}</h2>
           <p>{CARD_BODY}</p>
           {/*
-            * A plain img with its dimensions on it rather than next/image.
+            * The card route itself, not a copy of one.
             *
-            * One picture, one size, already the right size — the resizing
-            * service earns nothing here, and `width`/`height` are what stop the
-            * page reflowing when it lands. Lazy, because it is a screen below
-            * the fold and the hero is what has to be fast.
+            * `/{room}/opengraph-image` is what a crawler fetches when somebody
+            * pastes a link to that room, and it is drawn from `renderRoom` — the
+            * same function the screen uses. Pointing the img at it means the
+            * picture on this page cannot flatter the product, cannot go stale,
+            * and cannot be a mock-up, because there is nothing here to mock one
+            * up with. A plain img, since Next's optimiser has nothing to do with
+            * a route that renders its own PNG.
             */}
           <img
             className="landing-shot"
-            src="/thewallopengraph.png"
+            src={`/${CARD_ROOM}/opengraph-image`}
             alt={CARD_ALT}
-            width={1600}
-            height={840}
+            width={1200}
+            height={630}
             loading="lazy"
             decoding="async"
           />
         </section>
 
         <section className="landing-end">
-          <h2>{WORDMARK}</h2>
+          {/*
+            * The poster, where it is not claiming anything.
+            *
+            * Drawn rather than captured: the rooms and commands in it are the
+            * real ones, the layout is an illustrator's. That is fine for brand
+            * art and not fine as evidence, which is what it was being used as a
+            * section ago. Here it sits under the wordmark with nothing asserted
+            * about it, above the last way in.
+            */}
+          <img
+            className="landing-poster"
+            src="/thewallopengraph.png"
+            alt={POSTER_ALT}
+            width={1600}
+            height={840}
+            loading="lazy"
+            decoding="async"
+          />
           <p className="landing-actions">
             <Link className="landing-button" href={`/${FRONT_DOOR}`}>
               {CTA_PRIMARY} →
