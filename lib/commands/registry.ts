@@ -917,7 +917,8 @@ export const COMMANDS: readonly Command[] = [
     aliases: ['people', 'online', 'users'],
     contexts: ALL,
     gloss: () => 'who’s around',
-    detail: () => 'lists who’s around right now.',
+    detail: () =>
+      'lists who’s around right now. anybody reading without a name is counted rather than named — including you, until you say something.',
     insert: () => 'who',
     wrongContext: () => '',
     async run({ location, env, session }) {
@@ -936,10 +937,28 @@ export const COMMANDS: readonly Command[] = [
         })
       }
 
-      // §3.9 — guest state is ambient, never nagging, but `who` says why.
+      /*
+       * §3.9 — guest state is ambient, never nagging, but `who` says why.
+       *
+       * It used to say "you're one of them — say something and you'll be on the
+       * list", and both halves pointed at something that is not always there.
+       * Reported as: "say something and you'll be on the list? what list?"
+       *
+       * "The list" meant the comma-separated names two lines up, which is a
+       * long way to reach for a referent — and when nobody is signed in, that
+       * line reads "nobody signed in right now" and there is no list at all.
+       * "One of them" has the same problem against the guest count: presence
+       * answers `{ names: [], guests: 0 }` whenever the channel is not open, so
+       * it could be one of nobody.
+       *
+       * This says the thing itself instead. It repeats the words the count line
+       * uses, so the connection is the sentence rather than the layout, and it
+       * names what actually happens next — you are asked for a name — rather
+       * than a membership nothing on screen explains.
+       */
       if (session.name() === null) {
         lines.push({
-          text: 'you’re one of them — say something and you’ll be on the list.',
+          text: 'you’re reading without a name — say something and you’ll be asked what to call you.',
           hint: true,
           tone: 'faint',
         })

@@ -94,6 +94,21 @@ that suggests an address needs to know where it is being read: compare
 `location.room`, not the context, because a wall is a room and `~marisol/2`
 shortens to `2` on it for exactly the same reason.
 
+**A line may not point at something that is not always printed above it.**
+`who` closed with "you're one of them — say something and you'll be on the
+list", and both halves are references to other lines. "The list" meant the
+comma-separated names two rows up; "them" meant the guest count. Neither is
+always there — presence answers `{ names: [], guests: 0 }` whenever the channel
+is not open, and then the output reads "nobody signed in right now" followed by
+a claim to be one of them, on a list nothing is on. Reported as "say something
+and you'll be on the list? what list?"
+
+The fix is the general one: say the thing rather than referring to it, and reuse
+the words of the line you mean so the connection survives that line being
+absent. It now reads "you're reading without a name — say something and you'll
+be asked what to call you", which is true on its own and names what actually
+happens next.
+
 **An instruction printed under a list has to be true of the whole list.** A
 profile closed with "these live in rooms — go poker, then go 4", built from
 whichever post was newest and printed under posts spanning several rooms. It was
@@ -1016,6 +1031,35 @@ this page is what a reader with no JavaScript keeps, and colour alone is not a
 link affordance. `e2e/before-it-boots.spec.ts` runs with JavaScript switched off
 — the only way to hold the page still long enough to assert anything — and
 compares its order against the booted scrollback's.
+
+**The demo answers you, and the answers are written rather than generated.**
+Its last act used to be your own sentence landing in silence, which is the one
+thing a social site cannot demonstrate that way. So once you have a name,
+somebody from the fixtures replies a beat later, up to `DEMO_TURNS` times, and
+then says out loud that the quiet is the demo rather than the site.
+
+The lines live in `lib/marketing/landing.ts` and nothing reads what you typed —
+they are short and non-committal precisely because they have to follow anything.
+That is a constraint rather than a shortcut: sending a visitor's words to a
+model would falsify the footnote under the demo ("nothing you type here is
+saved or sent anywhere"), add a per-visitor cost to a public page with no
+ceiling, and contradict the sentence the product is built on — everything here
+is written by a person, to be read by a person. The footnote says the rooms and
+the people in them are examples, which is what makes an example person answering
+honest rather than a trick.
+
+It writes through `answerAs`, so the reply is really in the room and `look`
+shows it afterwards, and prints through `arrivalLines`, which is what the site
+itself prints when somebody speaks while you are standing there. **A reply
+printed at you rather than into the room would be an animation**, and the e2e
+runs `look` afterwards for exactly that reason.
+
+**A hairline marks where one command's answer stops.** Reported as "it can be
+tough sometimes to see exactly what's all the new text and what was already
+there." The obvious fix — scrolling your command to the top of the pane — is the
+wrong one: lists print oldest-first so the newest thing lands by the prompt, and
+anchoring to the echo would show the oldest end of a room and hide the part you
+asked for. So the boundary is marked where it is rather than moved.
 
 **One renderer for a line, and `components/Scrollback.tsx` is it.** The landing
 page's demo drew its own, and every detail the copy did not have became a way

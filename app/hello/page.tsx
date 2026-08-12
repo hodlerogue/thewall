@@ -9,12 +9,15 @@ import {
   CARD_BODY,
   CARD_HEADING,
   CARD_ROOM,
+  CLOSING,
   CTA_PRIMARY,
   CTA_SECONDARY,
   DEMO_FOOTNOTE,
+  DESCRIPTION,
   HEADLINE,
   POSTER_ALT,
   PROOFS,
+  STATEMENT,
   SUBHEAD,
   WORDMARK,
 } from '@/lib/marketing/landing'
@@ -74,13 +77,13 @@ const CARD = {
 
 export const metadata: Metadata = {
   title: `${HEADLINE.replace(/\.$/, '')} — ${WORDMARK}`,
-  description: describe(SUBHEAD),
+  description: describe(DESCRIPTION),
   alternates: { canonical: '/hello' },
   openGraph: {
     type: 'website',
     siteName: WORDMARK,
     title: `${WORDMARK} — ${HEADLINE}`,
-    description: describe(SUBHEAD),
+    description: describe(DESCRIPTION),
     images: [CARD],
   },
 }
@@ -121,13 +124,28 @@ export default async function Page() {
   return (
     <main className="landing">
       <div className="landing-inner">
+        {/*
+          * The demo is the argument, so it is the first screen.
+          *
+          * It used to be the eighth thing you saw: wordmark, headline, rule,
+          * five lines of subhead, and two buttons — one of them a way out —
+          * before the working copy of the product appeared, below the fold on a
+          * phone. A page that offers you the exit before the reason to stay has
+          * its order backwards. Everything above the frame is now four lines,
+          * and the call to action sits underneath it, where it reads as "the
+          * real one is over here" rather than "leave now".
+          */}
         <header className="landing-hero">
           <p className="landing-mark">
             <span className="landing-chevron">&gt;_</span> {WORDMARK}
           </p>
           <h1 className="landing-headline">{HEADLINE}</h1>
-          <hr className="landing-rule" />
           <p className="landing-sub">{SUBHEAD}</p>
+
+          <Demo>
+            <Lines lines={frame} />
+          </Demo>
+          <p className="landing-footnote">{DEMO_FOOTNOTE}</p>
 
           <p className="landing-actions">
             <Link className="landing-button" href={`/${FRONT_DOOR}`}>
@@ -137,12 +155,14 @@ export default async function Page() {
               {CTA_SECONDARY}
             </Link>
           </p>
-
-          <Demo>
-            <Lines lines={frame} />
-          </Demo>
-          <p className="landing-footnote">{DEMO_FOOTNOTE}</p>
         </header>
+
+        {/* The one place the page raises its voice. Without a break in scale
+            every section reads at the same volume, which is a list rather than
+            an argument. */}
+        <section className="landing-statement">
+          <p>{STATEMENT}</p>
+        </section>
 
         <section className="landing-proofs" aria-label="what it is like">
           {PROOFS.map((proof) => (
@@ -182,6 +202,7 @@ export default async function Page() {
         </section>
 
         <section className="landing-end">
+          <p className="landing-closing">{CLOSING}</p>
           {/*
             * The poster, where it is not claiming anything.
             *

@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createChipsFor, createRunner } from '@/lib/commands/run'
 import { findCommand } from '@/lib/commands/registry'
+import { ABOUT } from '@/lib/guide/about'
 import {
   CARD_ALT,
   CARD_BODY,
@@ -10,13 +11,19 @@ import {
   CARD_ROOM,
   CTA_PRIMARY,
   DEMO_FOOTNOTE,
+  DEMO_QUIET,
+  DEMO_REPLIES,
+  DEMO_REPLIES_ELSEWHERE,
   DEMO_SCRIPT,
+  DEMO_TURNS,
+  DESCRIPTION,
   HEADLINE,
   POSTER_ALT,
   PROOFS,
+  STATEMENT,
   SUBHEAD,
 } from '@/lib/marketing/landing'
-import { demoWorld, fixtureSignup, fixtureWriter } from '@/lib/shell/demo'
+import { answerAs, demoWorld, fixtureSignup, fixtureWriter, newestBy } from '@/lib/shell/demo'
 import { fixtureEnv } from '@/lib/shell/env'
 import { Session } from '@/lib/shell/session'
 import type { Location } from '@/lib/shell/types'
@@ -53,11 +60,33 @@ function demo() {
 }
 
 describe('the landing copy', () => {
-  it('leads with what it is, in a sentence somebody could repeat', () => {
-    expect(HEADLINE).toMatch(/command prompt/)
-    // Long enough to say something, short enough to be a headline rather than
-    // the first paragraph of one.
-    expect(HEADLINE.split(/\s+/).length).toBeLessThan(12)
+  it('leads with a line somebody could repeat, and lets the demo explain it', () => {
+    /*
+     * The headline is short because a working copy of the product is directly
+     * underneath it, and a headline competing with that loses. It used to carry
+     * "command prompt" and forty words of subhead saying the same thing again.
+     */
+    expect(HEADLINE.split(/\s+/).length).toBeLessThan(8)
+    expect(SUBHEAD.split(/\s+/).length).toBeLessThan(24)
+  })
+
+  it('still says "command prompt" where a search result will read it', () => {
+    /*
+     * The half the headline gave up. A search result has no demo under it and
+     * about 155 characters, so it spends them on the words somebody would type
+     * into a search box — and the page still says it out loud in the section
+     * about links, which is where a reader who scrolled will meet it.
+     */
+    expect(DESCRIPTION).toMatch(/command prompt/)
+    expect(DESCRIPTION.length).toBeLessThanOrEqual(155)
+  })
+
+  it('raises its voice exactly once', () => {
+    // A page with no scale contrast reads as a list. This is the sentence worth
+    // stopping on, and it is the one /about opens with — the argument every
+    // other line here is in service of.
+    expect(STATEMENT).toMatch(/written by a person/)
+    expect(ABOUT.flatMap((section) => section.body).join(' ')).toContain(STATEMENT)
   })
 
   it('names only commands that exist', () => {
@@ -87,6 +116,42 @@ describe('the landing copy', () => {
     // it. The fixture build makes the same promise for the same reason.
     expect(DEMO_FOOTNOTE).toMatch(/not saved|nothing|isn’t kept/i)
     expect(DEMO_FOOTNOTE.toLowerCase()).toContain('saved')
+  })
+
+  it('has somebody to answer you for every turn it promises', () => {
+    // A pool shorter than the turn count would repeat a line inside one demo,
+    // which is the exact moment a scripted reply stops passing for one.
+    for (const [room, pool] of Object.entries(DEMO_REPLIES)) {
+      expect(pool.length, room).toBeGreaterThanOrEqual(DEMO_TURNS)
+      expect(new Set(pool).size, `${room} repeats itself`).toBe(pool.length)
+    }
+    expect(DEMO_REPLIES_ELSEWHERE.length).toBeGreaterThanOrEqual(DEMO_TURNS)
+  })
+
+  it('answers without pretending to have read you', () => {
+    /*
+     * These are written lines, rotated. Nothing reads what you typed and
+     * nothing leaves the browser — so nothing in them may claim otherwise, and
+     * they have to stay short enough to follow anything.
+     *
+     * The demo says out loud that the rooms and the people in them are
+     * examples, which is what makes an example person answering honest rather
+     * than a trick.
+     */
+    expect(DEMO_FOOTNOTE).toMatch(/example people/i)
+    for (const pool of [...Object.values(DEMO_REPLIES), DEMO_REPLIES_ELSEWHERE]) {
+      for (const line of pool) {
+        expect(line.length, line).toBeLessThan(70)
+        // A canned line that echoed your words back would be claiming to have
+        // understood them.
+        expect(line, line).not.toMatch(/you said|you wrote|you mentioned/i)
+      }
+    }
+  })
+
+  it('says the quiet is the demo rather than the room', () => {
+    // Running out of people looks like the site dying if it is not said.
+    expect(DEMO_QUIET).toMatch(/demo/i)
   })
 
   it('sends people to the prompt, not to a signup', () => {
@@ -171,6 +236,66 @@ describe('the hero plays a session the site would actually produce', () => {
     }
     expect(at.room).toBeDefined()
     expect(at.postId).toBeDefined()
+  })
+
+  it('lets somebody else say something, which is the whole point of a room', async () => {
+    /*
+     * The demo's last act used to be your own sentence landing in silence.
+     * `answerAs` is the write that fixes it — the same world the fixture writer
+     * writes to, with the name supplied rather than looked up.
+     */
+    const { rooms, people } = demoWorld()
+    const env = fixtureEnv(rooms, people)
+
+    const landed = answerAs(rooms, 'music', 'marisol', 'a written line', 12)
+    expect(landed).toEqual({ depth: 1, address: 12 })
+
+    const room = await env.getRoom('music')
+    const post = room!.posts.find((p) => p.id === 12)
+    expect(post!.replies.at(-1)).toMatchObject({ author: 'marisol', body: 'a written line' })
+  })
+
+  it('posts rather than replies in commons, which refuses replies', async () => {
+    // §3.10 — no permanent addresses, and the schema's trigger refuses a reply
+    // there. A fixture that allowed one would teach the demo a shape the site
+    // would turn down.
+    const { rooms, people } = demoWorld()
+    const landed = answerAs(rooms, 'commons', 'tuck', 'ha, same', 2)
+
+    expect(landed?.depth).toBe(0)
+    expect(landed?.address).toBeUndefined()
+    const room = await fixtureEnv(rooms, people).getRoom('commons')
+    expect(room!.posts[0]).toMatchObject({ author: 'tuck', body: 'ha, same' })
+  })
+
+  it('finds the newest thing you said, which is how it knows to answer', () => {
+    const { rooms } = demoWorld()
+    expect(newestBy(rooms, 'music', 'nobody')).toBeUndefined()
+
+    answerAs(rooms, 'music', 'ryan', 'mine, as a post')
+    expect(newestBy(rooms, 'music', 'ryan')?.body).toBe('mine, as a post')
+
+    /*
+     * A reply counts as much as a post, and this is the case that made the
+     * first version wrong: it walked the posts, which come newest-first, and
+     * took the first one of yours it found — so answering somebody on an old
+     * post left the newest thing you had said buried under it while a post from
+     * an hour ago won. By time, the reply is what you just wrote.
+     *
+     * Stamped a minute on rather than written back-to-back, because two writes
+     * in the same millisecond is a tie no clock can break, and is unreachable
+     * from a prompt that runs one command at a time.
+     */
+    answerAs(rooms, 'music', 'ryan', 'mine, as a reply', 12)
+    const reply = rooms
+      .find((room) => room.slug === 'music')!
+      .posts.find((post) => post.id === 12)!
+      .replies.at(-1)!
+    reply.createdAt = new Date(reply.createdAt.getTime() + 60_000)
+
+    expect(newestBy(rooms, 'music', 'ryan')?.body).toBe('mine, as a reply')
+    // And the thread to answer in is the post it sits under, not the reply.
+    expect(newestBy(rooms, 'music', 'ryan')?.postId).toBe(12)
   })
 
   it('leaves chips to tap wherever it stops', () => {
