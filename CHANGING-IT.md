@@ -993,6 +993,30 @@ including `images`, and `e2e/landing.spec.ts` follows the URL and checks it is a
 real image rather than a string that parses. This is the second time this tag
 has disappeared silently — the first was a trailing newline in the `.alt.txt`.
 
+**The page before the shell boots is the same room, or it reads as a glitch.**
+Everything is fetched in the browser, so the server sends the room as markup and
+`components/Shell.tsx` swaps it out once it has booted. Reported as a flash:
+"it flashes this in the top left for a brief moment and then loads the page",
+with a screenshot of a post whose body appeared twice.
+
+Three things made it look like a different site, and all three were in
+`components/Readable.tsx`. The heading was an 80-character excerpt of the body
+and the paragraph under it was the whole body, so any post shorter than that
+**printed twice** — most of commons, and duplicate content to a crawler for the
+same reason. The posts ran newest-first while a room prints oldest-first, so the
+order visibly flipped on boot. And every post was a link, including in commons,
+which has no permanent addresses at all (§3.10) — the flash was handing out
+doors that do not exist.
+
+It mirrors `renderPosts` now: address and author on one line, body indented
+under it, blank line between. The CSS is the scrollback's own values rather than
+its own set, down to the two characters after an address. Underlines are the one
+deliberate difference and are toned to `--rule`: the terminal has no links, but
+this page is what a reader with no JavaScript keeps, and colour alone is not a
+link affordance. `e2e/before-it-boots.spec.ts` runs with JavaScript switched off
+— the only way to hold the page still long enough to assert anything — and
+compares its order against the booted scrollback's.
+
 **One renderer for a line, and `components/Scrollback.tsx` is it.** The landing
 page's demo drew its own, and every detail the copy did not have became a way
 the demo was not the site: `Line.prefix` was ignored, so the echo of a

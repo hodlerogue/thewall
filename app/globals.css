@@ -145,8 +145,18 @@ body {
  * only robots read is cloaking; this is what the site is without its script,
  * and anybody can see it by turning one off.
  */
+/*
+ * Measured against the thing that replaces it, rather than styled on its own.
+ *
+ * Every value below is a scrollback value: `.line` has `margin: 0 0 2px`, a
+ * blank line between posts is one line-height, and a body is indented by
+ * `--step`. Written independently they drifted — looser margins, a different
+ * order, underlines the terminal has nowhere — and the boot read as one page
+ * being swapped for another rather than as the prompt arriving underneath the
+ * room you were already looking at.
+ */
 .readable {
-  color: var(--fg-dim);
+  color: var(--fg);
   max-width: 100%;
 }
 
@@ -154,17 +164,25 @@ body {
   color: var(--accent);
   font-size: 15px;
   font-weight: 400;
-  margin: 0 0 8px;
+  margin: 0 0 2px;
 }
 
 .readable h2 {
   font-size: 15px;
   font-weight: 400;
-  margin: 0;
+  color: var(--fg-dim);
+  margin: 0 0 2px;
+}
+
+/* Two characters between an address and the name after it, everywhere, so a
+   column of these can be read down. `saidBy` does it with spaces; here the
+   markup supplies one and this supplies the other. */
+.readable h2 a {
+  margin-right: 1ch;
 }
 
 .readable p {
-  margin: 0 0 8px;
+  margin: 0 0 2px;
   word-break: break-word;
 }
 
@@ -174,17 +192,59 @@ body {
   padding: 0;
 }
 
+/* One blank line between posts, which is what the scrollback prints. */
 .readable li,
 .readable section {
-  margin: 0 0 16px;
+  margin: 0 0 22px;
 }
 
+/* The gloss under a room name, and the note commons carries. */
+.readable-gloss {
+  color: var(--fg-faint);
+}
+
+/* Who said it and when — `dim`, as in every listing. */
+.readable-said {
+  color: var(--fg-dim);
+}
+
+/* §3.2 — a body sits one step in from its header, here as there. */
+.readable-body {
+  padding-left: var(--step);
+}
+
+.readable-count,
+.readable-nav {
+  color: var(--fg-faint);
+}
+
+.readable-count {
+  padding-left: var(--step);
+}
+
+.readable-nav {
+  margin-top: 22px;
+}
+
+/*
+ * Links keep their underline, and it is the one place this deliberately does
+ * not match the terminal.
+ *
+ * The terminal has no links at all — `accent` alone means "a thing you can
+ * type", and typing is how you go anywhere. This page is what somebody with no
+ * JavaScript gets and keeps, and for them colour alone is not a link
+ * affordance. So the underline stays and is toned down to the rule colour
+ * instead, which keeps it from being the loudest thing in a flash that lasts
+ * half a second.
+ */
 .readable a {
   color: var(--accent);
+  text-decoration-color: var(--rule);
+  text-underline-offset: 3px;
 }
 
 .readable time {
-  color: var(--fg-faint);
+  color: inherit;
 }
 
 .line-prefix {

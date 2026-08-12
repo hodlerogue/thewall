@@ -37,7 +37,7 @@ import type { Line } from '@/lib/shell/types'
  * above the prompt, which is both where you are looking and what you are most
  * likely to answer.
  */
-function oldestFirst<T>(items: readonly T[]): T[] {
+export function oldestFirst<T>(items: readonly T[]): T[] {
   return [...items].reverse()
 }
 
