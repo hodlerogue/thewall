@@ -1,14 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import { createRunner } from '@/lib/commands/run'
 import { suggestAlternates, validateName } from '@/lib/auth/names'
-import { fixtureEnv } from '@/lib/shell/env'
+import { fixtureEnv, type Env } from '@/lib/shell/env'
 import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
 import type { Line, Location } from '@/lib/shell/types'
 
 const text = (lines: Line[]) => lines.map((l) => l.text).join('\n')
 
 function harness(
-  options: { taken?: string[]; failCreate?: string; recycled?: Date; me?: string } = {},
+  options: {
+    taken?: string[]
+    failCreate?: string
+    recycled?: Date
+    me?: string
+    /** What presence answers, for the states the fixture cannot reach. */
+    present?: { names: string[]; guests: number }
+  } = {},
 ) {
   const taken = new Set(options.taken ?? ['jameson'])
   const posted: { room: string; body: string }[] = []
@@ -61,7 +68,12 @@ function harness(
   // `me` skips the signup ask, for the assertions that are about what a
   // named person sees rather than about §3.9's flow.
   const session = new Session(api, writer, options.me)
-  const run = createRunner(fixtureEnv(), ['commons'], session)
+  const base = fixtureEnv()
+  // The fixture always has somebody in the room. `live.present()` answers
+  // `{ names: [], guests: 0 }` whenever the channel is not open, and that is a
+  // state `who` has to read properly rather than one to hope for.
+  const env: Env = options.present ? { ...base, who: async () => options.present! } : base
+  const run = createRunner(env, ['commons'], session)
 
   return { session, run, posted, replied, renamed, resendCount: () => resends }
 }
@@ -223,10 +235,34 @@ describe('§3.9 — signup is deferred to first contribution', () => {
     expect(session.isAsking()).toBe(false)
   })
 
-  it('says a guest is not on the list, and why', async () => {
+  it('tells a guest why they are not named, and what changes it', async () => {
     const { run } = harness()
     const out = text((await run('who', { room: 'music' })).lines)
-    expect(out).toMatch(/say something and you’ll be on the list/)
+
+    /*
+     * "say something and you'll be on the list? what list?" — the old wording
+     * pointed two lines up at a comma-separated row of names, which is not
+     * there at all when nobody is signed in.
+     *
+     * So: no bare referents. It may not lean on a "list" or a "them" that the
+     * output does not always contain, and it has to name what happens next.
+     */
+    expect(out).not.toMatch(/the list|one of them/)
+    expect(out).toMatch(/reading without a name/)
+    expect(out).toMatch(/asked what to call you/)
+  })
+
+  it('says it whether or not there is anybody else here to point at', async () => {
+    // `live.present()` answers `{ names: [], guests: 0 }` whenever the channel
+    // is not open, which is the state the old wording could not survive: the
+    // line above it read "nobody signed in right now", and the hint claimed to
+    // be one of them.
+    const { run } = harness({ present: { names: [], guests: 0 } })
+    const out = text((await run('who', { room: 'music' })).lines)
+
+    expect(out).toMatch(/nobody signed in right now/)
+    expect(out).toMatch(/reading without a name/)
+    expect(out).not.toMatch(/one of them/)
   })
 })
 

@@ -94,6 +94,21 @@ that suggests an address needs to know where it is being read: compare
 `location.room`, not the context, because a wall is a room and `~marisol/2`
 shortens to `2` on it for exactly the same reason.
 
+**A line may not point at something that is not always printed above it.**
+`who` closed with "you're one of them — say something and you'll be on the
+list", and both halves are references to other lines. "The list" meant the
+comma-separated names two rows up; "them" meant the guest count. Neither is
+always there — presence answers `{ names: [], guests: 0 }` whenever the channel
+is not open, and then the output reads "nobody signed in right now" followed by
+a claim to be one of them, on a list nothing is on. Reported as "say something
+and you'll be on the list? what list?"
+
+The fix is the general one: say the thing rather than referring to it, and reuse
+the words of the line you mean so the connection survives that line being
+absent. It now reads "you're reading without a name — say something and you'll
+be asked what to call you", which is true on its own and names what actually
+happens next.
+
 **An instruction printed under a list has to be true of the whole list.** A
 profile closed with "these live in rooms — go poker, then go 4", built from
 whichever post was newest and printed under posts spanning several rooms. It was
