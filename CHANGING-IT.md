@@ -1075,6 +1075,16 @@ in and a second copy of that is a second place to forget it. `e2e/landing.spec.t
 runs the same command in both and compares the HTML, so a new renderer fails
 rather than merely looking slightly wrong.
 
+**The artwork has three copies, and only one of them is edited.** The master
+lives in `assets/`, and `node scripts/cut-artwork.mjs` writes the other two —
+the 1200×630 share card and the 1600×840 landing poster. A new export went
+straight into `public/` once, which is the served slot rather than the master,
+and left the share card showing the previous picture to everybody who pasted a
+link. `lib/brand/artwork.test.ts` re-cuts both and compares the bytes; `sharp`
+is deterministic for a given version, so this is an equality rather than a
+threshold. If it fails after a `sharp` upgrade the encoder changed, not the
+artwork, and the fix is the same: run the script, commit what it writes.
+
 **A drawn picture may not stand in for a generated one.** The landing page put
 the poster under a heading saying "links look like the thing they point at",
 which is a claim about the cards `lib/brand/og.tsx` makes out of `renderRoom` —
