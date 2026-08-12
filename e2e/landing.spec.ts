@@ -192,6 +192,39 @@ test('somebody answers you once you have a name, and it is really in the room', 
   await expect(pane(page)).toContainText('1 reply')
 })
 
+test('answers everything you say, even said one after another', async ({ page }) => {
+  /*
+   * The answers used to cancel each other. Each one was a single timer that
+   * the next reply cleared, so saying two things inside the delay dropped the
+   * first person entirely — while the turn it cost was already spent. Measured
+   * at four sentences and two answers, with the closing line never printed:
+   * the exact silence the feature exists to prevent, reintroduced by it.
+   */
+  await page.goto('/hello')
+  await expect(label(page)).toHaveText('guest:music/12$', { timeout: 20_000 })
+
+  const type = async (text: string) => {
+    await input(page).fill(text)
+    await input(page).press('Enter')
+  }
+
+  await type('leave')
+  await type('say one')
+  await type('ryan')
+  await type('ryan@example.com')
+  await expect(label(page)).toHaveText('ryan:music$')
+
+  // Three more with no pause between them — well inside the answer delay.
+  await type('say two')
+  await type('say three')
+  await type('say four')
+
+  // Every one of them gets an answer, not just the last.
+  for (const reply of DEMO_REPLIES.music.slice(0, 4)) {
+    await expect(pane(page)).toContainText(reply, { timeout: 15_000 })
+  }
+})
+
 test('it runs out of people, and says that is the demo rather than the room', async ({ page }) => {
   await page.goto('/hello')
   await expect(label(page)).toHaveText('guest:music/12$', { timeout: 20_000 })

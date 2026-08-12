@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { EmailOtpType } from '@supabase/supabase-js'
+import { landingPath } from '@/lib/auth/links'
 import { createRouteClient } from '@/lib/supabase/server'
 
 /**
@@ -100,21 +101,12 @@ type KeyOutcome = 'ok' | 'failed' | 'expired'
  */
 function backTo(next: string, outcome: KeyOutcome): NextResponse {
   /*
-   * `next` arrives from the query string, so it is somebody else's input.
-   * `new URL(next, origin)` happily returns `https://evil.example` for
-   * `?next=https://evil.example` — an open redirect on the one route people
-   * reach by clicking a link in an email, which is the worst place to have one.
-   * Only a path is allowed, and `//host` is a URL wearing a path's clothes.
+   * `next` arrives from the query string, so it is somebody else's input, and
+   * the sanitising lives in `landingPath` — with the reason it is written the
+   * way it is, which is that the obvious version of this guard had a hole.
    */
-  const safe = next.startsWith('/') && !next.startsWith('//') ? next : '/'
-
-  // Parsed against a base that is thrown away, purely to merge the parameter
-  // into whatever `next` already carried.
-  const target = new URL(safe, 'http://parse.invalid')
-  target.searchParams.set('key', outcome)
-
   return new NextResponse(null, {
     status: 303,
-    headers: { Location: `${target.pathname}${target.search}` },
+    headers: { Location: landingPath(next, { key: outcome }) },
   })
 }

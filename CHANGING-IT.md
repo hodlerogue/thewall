@@ -1075,6 +1075,30 @@ in and a second copy of that is a second place to forget it. `e2e/landing.spec.t
 runs the same command in both and compares the HTML, so a new renderer fails
 rather than merely looking slightly wrong.
 
+**Sanitise the result, not the input.** `/auth/callback` took a `next` from the
+query string and allowed it if it started with `/` and not with `//`.
+`?next=/..//evil.example` passes both — and the URL parser then resolves the
+`..` away and leaves a *pathname* of `//evil.example`, which a browser reads as
+protocol-relative and follows off-site. Every failure path in that route
+redirects too, so no valid token was needed: a crafted link was the whole
+exploit, on the one route people reach by clicking something in an email.
+
+`landingPath` in `lib/auth/links.ts` parses first and then asks what came out —
+a different origin, or a pathname starting `//`, is not ours. **The test had a
+copy of the guard** and tried four hostile inputs, all of them the ones somebody
+writing that guard would think of, so the copy and the code agreed with each
+other about a rule that was wrong. Both import the function now.
+
+**A matcher is a claim, and this one was not doing what its comment said.** The
+proxy's exclusions were written as prefixes matched at the start of a path, so
+`opengraph-image` excluded `/opengraph-image.png` and *not*
+`/commons/opengraph-image` — the card a crawler actually fetches for the front
+door, and the exact case the comment named. Anchor exclusions with `$` while
+you are there: written bare, `about` also excludes a room called `aboutish`, and
+somebody standing in a room has a session that then quietly stops being
+refreshed an hour later. `lib/auth/proxy.test.ts` compiles the real matcher and
+checks a table of paths both ways.
+
 **The artwork has three copies, and only one of them is edited.** The master
 lives in `assets/`, and `node scripts/cut-artwork.mjs` writes the other two —
 the 1200×630 share card and the 1600×840 landing poster. A new export went

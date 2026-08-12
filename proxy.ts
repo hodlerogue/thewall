@@ -59,11 +59,29 @@ export default async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Everything except the things that never carry a session: Next's own
-     * assets, and the generated images. The share cards especially — they are
-     * fetched by crawlers, they have no cookies, and putting an auth round trip
-     * in front of one only makes a preview slower.
+     * Everything except the things that never carry a session.
+     *
+     * Three groups, and the middle one was claimed rather than implemented.
+     *
+     * Next's own assets and any image, which is the easy half.
+     *
+     * **The generated cards.** The comment here already said "the share cards
+     * especially — they are fetched by crawlers, they have no cookies, and
+     * putting an auth round trip in front of one only makes a preview slower",
+     * and the pattern did not do it: `opengraph-image` was matched at the start
+     * of a path, so `/opengraph-image.png` was excluded and
+     * `/commons/opengraph-image` — the one a crawler actually fetches for the
+     * front door — was not. `.*opengraph-image` is the fix.
+     *
+     * **The pages nobody is signed in to.** `/hello` is built to be hit cold by
+     * strangers at volume, and the documents and the crawler files are read by
+     * robots. A Supabase round trip in front of a static page is latency and
+     * quota spent on a session that is not there.
+     *
+     * Each of those is anchored with `$`. Written as a prefix, `about` also
+     * excludes a room called `aboutish` — and a room is somewhere a person
+     * stands with a session that then quietly stops being refreshed.
      */
-    '/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon|opengraph-image|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon\\.ico|icon\\.svg|apple-icon|hello$|about$|terms$|privacy$|sitemap\\.xml$|robots\\.txt$|manifest\\.webmanifest$|sw\\.js$|.*opengraph-image|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
