@@ -107,7 +107,21 @@ export function Demo({ children }: { children?: React.ReactNode }) {
    */
   const turns = useRef(0)
   const answered = useRef<string | null>(null)
-  const answering = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /*
+   * Every answer in flight, not the latest one.
+   *
+   * This was a single timer that each new answer cleared, and it dropped
+   * replies: say two things inside the delay and the first person never
+   * speaks — while the turn it cost was already spent. Measured at four
+   * sentences and two answers, with the closing line never printed at all,
+   * which is the exact silence this whole thing exists to prevent.
+   *
+   * A set, cleared as a set on unmount. Two people answering at once is not a
+   * conflict; it is a busy room, which is what the site does anyway.
+   */
+  const answering = useRef(new Set<ReturnType<typeof setTimeout>>())
+  /** Answers that have actually landed — what decides the closing line. */
+  const delivered = useRef(0)
   const paneRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -167,8 +181,8 @@ export function Demo({ children }: { children?: React.ReactNode }) {
 
       turns.current -= 1
 
-      if (answering.current) clearTimeout(answering.current)
-      answering.current = setTimeout(() => {
+      const timer = setTimeout(() => {
+        answering.current.delete(timer)
         const landed = answerAs(world.rooms, room, author, body, mine.postId)
         if (!landed) return
         print([
@@ -182,21 +196,31 @@ export function Demo({ children }: { children?: React.ReactNode }) {
             address: landed.address,
           }),
         ])
-        // Said once, when the last of them has spoken, so the demo does not
-        // quietly stop and read as broken.
-        if (turns.current === 0) print([{ text: DEMO_QUIET, tone: 'faint', hint: true }])
+        /*
+         * Counted on delivery rather than on scheduling, so the closing line
+         * follows the last person who actually spoke. Reading `turns` here was
+         * the other half of the dropped-answer bug: a cancelled reply left the
+         * counter at zero with nobody having said anything, so the line either
+         * fired early or never.
+         */
+        delivered.current += 1
+        if (delivered.current === DEMO_TURNS) {
+          print([{ text: DEMO_QUIET, tone: 'faint', hint: true }])
+        }
       }, ANSWER_AFTER)
+      answering.current.add(timer)
     },
     [print, world],
   )
 
   // Nothing may fire into a component that is gone.
-  useEffect(
-    () => () => {
-      if (answering.current) clearTimeout(answering.current)
-    },
-    [],
-  )
+  useEffect(() => {
+    const timers = answering.current
+    return () => {
+      for (const timer of timers) clearTimeout(timer)
+      timers.clear()
+    }
+  }, [])
 
   const perform = useCallback(
     async (text: string) => {

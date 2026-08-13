@@ -94,7 +94,17 @@ export const PROOFS: readonly Proof[] = [
   },
   {
     heading: 'Reading asks nothing of you',
-    body: 'No account to look around. The first time you say something you are asked what to call you, and that is the whole of signing up.',
+    /*
+     * "The text says 'that is the whole of signing up' — but signing up also
+     * includes sending a link to your email."
+     *
+     * It does. `say` asks for a name, then for an address, and mails a key to
+     * it. Leaving the second half out was not shortening the truth, it was
+     * telling a different one — and the part left out is the first thing
+     * somebody meets after clicking through, which is the worst possible place
+     * to be surprised. `/about` had it right the whole time.
+     */
+    body: 'No account to look around. Say something and you are asked for a name and where to send a sign-in link — no password — and the sentence you already typed goes up with it.',
     sample: [
       { text: 'guest:kitchen$ say the trick is roasting them all at once', tone: 'echo' },
       { text: '' },

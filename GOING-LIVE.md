@@ -12,18 +12,35 @@ these fail silently — the site keeps loading and one feature is quietly dead.
 ## 1. The database
 
 Your project was set up when there were three migrations. There are now
-twenty-four. What the rest add: the column-scoped grants that close two console
+twenty-five. What the rest add: the column-scoped grants that close two console
 bypasses, mail, the kill switch, rename, erasure, walls, rooms people make, the
 feed, three more rooms, the daily email, rooms that grew out of a room, that
 email being on by default, never mailing an address that cannot receive, a
 lobby that uses its index, replies you can answer, posts with paragraphs in
-them, and `hello` reserved so the landing page cannot shadow a room. **None of
-their features work until they are applied**, and none of them fail at build
-time — they fail in somebody's browser.
+them, `hello` reserved so the landing page cannot shadow a room, and the grant
+sweep below. **None of their features work until they are applied**, and none of
+them fail at build time — they fail in somebody's browser.
 
-The one to apply first if you apply nothing else is
-`20260805050000_insert_grants.sql`. It is the security fix: without it a browser
-can insert rows into `profiles` directly.
+**The two to apply first, if you apply nothing else.** Both are security fixes,
+and both are invisible until somebody goes looking.
+
+`20260805050000_insert_grants.sql` — without it a browser can insert rows into
+`profiles` directly, verified column and all.
+
+`20260812020000_grants_are_a_denylist.sql` — two things. It stops any signed-in
+account marking *itself* verified with one line from the browser console, which
+was the whole of the §4.7 gate; and it takes back the privileges a Supabase
+project grants to `anon` and `authenticated` on every new table before a
+migration ever runs. Those included TRUNCATE, which row-level security does not
+filter — so `truncate posts cascade` from the publishable key emptied the site.
+Nothing in the app used the verb and PostgREST does not speak it, which is why
+this was survivable, but it was one grant away from not being.
+
+> Applying it changes what the browser may do, so it is worth checking after.
+> Load the site signed out and read a room: if posts render, the column grants
+> landed. Then follow a magic link and confirm the §4.7 gate opens — that path
+> now runs `mark_verified(uuid)` under the service role, so it needs
+> `SUPABASE_SERVICE_ROLE_KEY` set on the deploy, which §2 covers.
 
 Find out what you actually have:
 

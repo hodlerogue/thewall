@@ -382,8 +382,17 @@ still there after the next `db-deploy.sh` on a fresh project.
    the normal state and the probe is how anything knows.
 3. **Add a probe to `diagnose()` in `lib/data/supabaseEnv.ts`**, so `doctor`
    names your migration when it is missing. Probe a *column*, never a function —
-   calling `mark_verified` to ask whether it exists would mark you verified.
-4. Write assertions in `supabase/tests/schema.test.sql`, then `npm run test:db`.
+   `mark_verified` used to be callable from the browser, and asking whether it
+   existed would have marked you verified. It is service-role-only now, so that
+   particular gun is unloaded, but the rule is about the next function.
+4. **Grant what your new object needs, explicitly.** Nothing in `public` is
+   readable by the browser unless a migration says so:
+   `20260812020000_grants_are_a_denylist.sql` turns off the default privileges a
+   Supabase project ships with, so a new table arrives with no grants at all.
+   This is the safe direction — forgetting to grant gives you a visibly broken
+   feature, where forgetting to revoke used to give you a silently open table —
+   but it does mean a `create table` alone will not work.
+5. Write assertions in `supabase/tests/schema.test.sql`, then `npm run test:db`.
 
 Deploy with `./scripts/db-deploy.sh`, never `supabase db push` — the latter
 applies migrations and stops, leaving a schema with no rooms in it.
@@ -849,6 +858,29 @@ for *what* it printed and none for the order.
 is no desktop project. Measure what a thumb can reach — `.tap()` scrolls an
 element into view first, which is how an off-screen chip passed a green suite.
 
+**The live channel has no replay, so reconnecting is not catching up.**
+`postgres_changes` is a feed, not a queue: nothing said while the socket was
+down is held anywhere for later. That matters most on a phone, where the system
+suspends a backgrounded page and kills the socket every single time the app
+leaves the screen — reported as a room that stopped moving until "i had to
+leave and go back in", which worked because walking out and back re-reads the
+room. So `lib/data/live.ts` keeps a watermark and asks the database directly
+for anything newer whenever it comes back. Three things about it are
+load-bearing:
+
+- **The watermark is a database timestamp, never `Date.now()`.** A phone clock
+  a few seconds off would otherwise reprint what you have already read, or skip
+  what you have not.
+- **Returning to the screen is two cases, not one.** A computer tab switch
+  usually leaves the socket joined and needs only the missed messages; a phone
+  return finds it closed and needs the channel rebuilt *and* the messages.
+  Doing only the second is churn; doing only the first leaves you deaf from
+  then on, and both versions look identical in a test that checks the missed
+  message arrived.
+- **Every status other than `SUBSCRIBED` is a retry.** They were all ignored,
+  so a channel that errored stayed dead for as long as the room stayed open,
+  with a prompt that kept working and a room that never moved again.
+
 **Never send to an address that cannot receive.** RFC 2606 and RFC 6761 reserve
 `.test`, `.example`, `.invalid`, `.localhost` and `example.com/net/org` so they
 can never resolve, which is why `seed.sql` uses `@seed.invalid` — and why the
@@ -1074,6 +1106,40 @@ The cap and `append` live there too, because `hints off` is applied on the way
 in and a second copy of that is a second place to forget it. `e2e/landing.spec.ts`
 runs the same command in both and compares the HTML, so a new renderer fails
 rather than merely looking slightly wrong.
+
+**Sanitise the result, not the input.** `/auth/callback` took a `next` from the
+query string and allowed it if it started with `/` and not with `//`.
+`?next=/..//evil.example` passes both — and the URL parser then resolves the
+`..` away and leaves a *pathname* of `//evil.example`, which a browser reads as
+protocol-relative and follows off-site. Every failure path in that route
+redirects too, so no valid token was needed: a crafted link was the whole
+exploit, on the one route people reach by clicking something in an email.
+
+`landingPath` in `lib/auth/links.ts` parses first and then asks what came out —
+a different origin, or a pathname starting `//`, is not ours. **The test had a
+copy of the guard** and tried four hostile inputs, all of them the ones somebody
+writing that guard would think of, so the copy and the code agreed with each
+other about a rule that was wrong. Both import the function now.
+
+**A matcher is a claim, and this one was not doing what its comment said.** The
+proxy's exclusions were written as prefixes matched at the start of a path, so
+`opengraph-image` excluded `/opengraph-image.png` and *not*
+`/commons/opengraph-image` — the card a crawler actually fetches for the front
+door, and the exact case the comment named. Anchor exclusions with `$` while
+you are there: written bare, `about` also excludes a room called `aboutish`, and
+somebody standing in a room has a session that then quietly stops being
+refreshed an hour later. `lib/auth/proxy.test.ts` compiles the real matcher and
+checks a table of paths both ways.
+
+**The artwork has three copies, and only one of them is edited.** The master
+lives in `assets/`, and `node scripts/cut-artwork.mjs` writes the other two —
+the 1200×630 share card and the 1600×840 landing poster. A new export went
+straight into `public/` once, which is the served slot rather than the master,
+and left the share card showing the previous picture to everybody who pasted a
+link. `lib/brand/artwork.test.ts` re-cuts both and compares the bytes; `sharp`
+is deterministic for a given version, so this is an equality rather than a
+threshold. If it fails after a `sharp` upgrade the encoder changed, not the
+artwork, and the fix is the same: run the script, commit what it writes.
 
 **A drawn picture may not stand in for a generated one.** The landing page put
 the poster under a heading saying "links look like the thing they point at",

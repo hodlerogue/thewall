@@ -241,12 +241,14 @@ test('commons never mentions a post number, because it has none to mention', asy
   await type(page, 'ryan@example.com')
 
   /*
-   * The held sentence landed, and the line that says so has to be complete on
-   * its own — because in commons there is no address, so nothing follows it.
-   * It used to read "now — the thing you were trying to say." with a receipt
-   * underneath; once the receipt went, that was a promise followed by blank.
+   * The held sentence landed, and what proves it is the sentence rather than a
+   * word about it. Commons has no address, so this used to be the one place
+   * where the entire result was `said.` — a receipt, printed under a signup
+   * exchange, for something four lines above the top of the screen.
    */
-  await expect(scrollback(page)).toContainText('the thing you were trying to say is up')
+  await expect(scrollback(page)).toContainText('and here it is:')
+  await expect(scrollback(page)).toContainText('good to be here')
+  await expect(scrollback(page)).toContainText('ryan, just now')
   await expect(scrollback(page)).not.toContainText('commons/')
 
   // And the listing agrees: no numbers anywhere in commons.

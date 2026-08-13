@@ -59,3 +59,27 @@ end
 $$;
 
 grant usage on schema public, auth to anon, authenticated, service_role;
+
+-- The part that is easy to leave out, and that made every grant assertion in
+-- this suite optimistic.
+--
+-- A Supabase project ships with these default privileges already set, so every
+-- table, function and sequence a migration creates in `public` is born with
+-- ALL granted to anon and authenticated. A plain Postgres cluster has no such
+-- thing: there, a table is born with no grants at all, and a migration that
+-- forgets to revoke looks identical to one that had nothing to revoke.
+--
+-- So the suite was measuring a permission matrix that will never exist on the
+-- real project. It certified the grants were tight while production would have
+-- handed `anon` INSERT, UPDATE, DELETE and TRUNCATE on every table — and
+-- TRUNCATE is not filtered by row-level security, so `truncate posts cascade`
+-- from the anon key emptied the site.
+--
+-- Setting them here means the migrations have to actually take the privileges
+-- away, and the assertions below can tell whether they did.
+alter default privileges in schema public
+  grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public
+  grant all on functions to anon, authenticated, service_role;
+alter default privileges in schema public
+  grant all on sequences to anon, authenticated, service_role;

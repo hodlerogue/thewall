@@ -103,9 +103,9 @@ looking at.
 ## Testing
 
 ```bash
-npm test           # 375 unit tests: parser, aliases, errors, signup, search, themes, names, walls
-npm run test:e2e   # 116 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
-npm run test:db    # 195 assertions against the real migrations, on a throwaway database
+npm test           # 761 unit tests: parser, aliases, errors, signup, search, themes, names, walls
+npm run test:e2e   # 199 tests, all at 380x740 — mobile is the kill condition (§4.4, §8)
+npm run test:db    # 293 assertions against the real migrations, on a throwaway database
 ```
 
 To see what is actually in a deployed project — read-only, and it tells apart
@@ -732,9 +732,19 @@ the vendored typeface, served to nobody and kept so the other two can be made
 again. `app/opengraph-image.png` is the 1200×630 crop Next attaches as the share
 card, at about 130 KB because that is the size a chat app will wait for.
 `public/thewallopengraph.png` is 1600×840 and is the poster at the foot of the
-landing page. Re-export the master and the other two are `sharp(...).resize(...)`
-away; edit one of the derived files alone and the three quietly stop being the
-same picture.
+landing page.
+
+**Re-export to the master, then run `node scripts/cut-artwork.mjs`.** That is
+the whole procedure, and it exists because the alternative already happened: a
+new export landed in `public/` alone — same filename, straight into the served
+slot — and the other two went on being the previous artwork. The card is the
+one that matters most and the one nobody looks at, so every link anybody pasted
+would have previewed a picture that had been replaced. Nothing failed; the page
+looked right, because the page shows the copy that was updated.
+
+`lib/brand/artwork.test.ts` re-cuts both derived files and compares the bytes,
+so they cannot drift from the master again without a red test naming the
+command that fixes it.
 
 All three are **drawn, not captured**, and that is the whole reason the poster
 sits where it does. The rooms and commands in it are real and the layout is an

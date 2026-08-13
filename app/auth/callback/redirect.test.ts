@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { landingPath } from '@/lib/auth/links'
 
 /**
  * Where the callback sends somebody, checked by reading the route.
@@ -53,35 +54,37 @@ describe('the callback redirect', () => {
   })
 
   it('sends a relative Location, which cannot name the wrong host', () => {
-    expect(source).toMatch(/Location:\s*`\$\{target\.pathname\}\$\{target\.search\}`/)
+    expect(source).toMatch(/Location:\s*landingPath\(/)
     // A relative Location is only safe if nothing else redirects absolutely.
     expect(source).not.toContain('NextResponse.redirect(')
   })
 
-  it('refuses a next that is not a path', () => {
-    // Both spellings: an absolute URL, and `//host`, which is a URL wearing a
-    // path's clothes and is the one people forget.
-    expect(source).toMatch(/startsWith\('\/'\)/)
-    expect(source).toMatch(/!\s*\w+\.startsWith\('\/\/'\)/)
+  it('does not sanitise the next itself', () => {
+    /*
+     * It used to, inline, and the guard had a hole — see `landingPath`. The
+     * rule now lives in one place with its reasoning beside it, and this
+     * refuses a second copy growing back in the route.
+     */
+    expect(source).toMatch(/landingPath\(/)
+    expect(source, 'the guard is back in the route').not.toMatch(/startsWith\('\/\/'\)/)
   })
 })
 
 /**
- * The same rules as behaviour rather than as source text, run against a copy of
- * the function. Reading the file catches a regression in shape; this catches one
- * in logic, and the two fail for different reasons.
+ * The same rules as behaviour rather than as source text.
+ *
+ * This used to hold a *copy* of the guard and try four hostile inputs — all of
+ * them ones somebody writing the guard would think of first. So the copy and
+ * the code agreed with each other about a rule that was wrong, which is the
+ * failure mode of testing a duplicate: it does not catch a bug, it seconds it.
+ * The function is imported now.
  */
-function backTo(next: string, outcome: string): { status: number; location: string } {
-  const safe = next.startsWith('/') && !next.startsWith('//') ? next : '/'
-  const target = new URL(safe, 'http://parse.invalid')
-  target.searchParams.set('key', outcome)
-  return { status: 303, location: `${target.pathname}${target.search}` }
-}
-
 describe('where a followed key actually lands', () => {
+  const backTo = (next: string, outcome: string) => landingPath(next, { key: outcome })
+
   it('is a path and never an origin', () => {
     for (const next of ['/', '/commons', '/music/12']) {
-      const { location } = backTo(next, 'ok')
+      const location = backTo(next, 'ok')
       expect(location.startsWith('/'), next).toBe(true)
       expect(location, next).not.toMatch(/^https?:/)
       expect(location, next).not.toContain('netlify')
@@ -89,25 +92,47 @@ describe('where a followed key actually lands', () => {
   })
 
   it('carries the outcome, which is the only reason it redirects at all', () => {
-    expect(backTo('/commons', 'ok').location).toBe('/commons?key=ok')
-    expect(backTo('/commons', 'expired').location).toBe('/commons?key=expired')
-    expect(backTo('/commons', 'failed').location).toBe('/commons?key=failed')
+    expect(backTo('/commons', 'ok')).toBe('/commons?key=ok')
+    expect(backTo('/commons', 'expired')).toBe('/commons?key=expired')
+    expect(backTo('/commons', 'failed')).toBe('/commons?key=failed')
   })
 
   it('keeps what next already carried', () => {
-    expect(backTo('/music?theme=black', 'ok').location).toBe('/music?theme=black&key=ok')
+    expect(backTo('/music?theme=black', 'ok')).toBe('/music?theme=black&key=ok')
   })
 
   it('will not be talked into leaving the site', () => {
+    /*
+     * The last four are the ones the previous guard let through, and the reason
+     * it did is worth keeping written down: it tested the string as it arrived.
+     * `/..//evil.example` starts with a single slash and passes — and then the
+     * URL parser resolves the `..` away and leaves a pathname of
+     * `//evil.example`, which a browser follows off-site. Every failure path in
+     * the callback redirects too, so no valid token was ever needed.
+     */
     for (const hostile of [
       'https://evil.example',
       '//evil.example',
       'http://evil.example/path',
       '//evil.example/commons',
+      '/..//evil.example',
+      '/./..//evil.example',
+      '/a/b/../../..//evil.example',
+      'javascript:alert(1)',
     ]) {
-      const { location } = backTo(hostile, 'ok')
-      expect(location, hostile).toBe('/?key=ok')
+      const location = backTo(hostile, 'ok')
       expect(location, hostile).not.toContain('evil')
+      expect(location, hostile).not.toMatch(/^\/\//)
+      expect(location, hostile).not.toMatch(/^[a-z][a-z0-9+.-]*:/i)
+      expect(location.startsWith('/'), hostile).toBe(true)
+    }
+  })
+
+  it('answers with a path for anything at all, rather than throwing', () => {
+    // Somebody following a link from their inbox must not meet a 500 because
+    // the query string was rubbish.
+    for (const junk of ['', 'http://[', '%%%', '/\\evil.example']) {
+      expect(backTo(junk, 'ok').startsWith('/'), junk).toBe(true)
     }
   })
 })

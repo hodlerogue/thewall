@@ -154,6 +154,23 @@ describe('the landing copy', () => {
     expect(DEMO_QUIET).toMatch(/demo/i)
   })
 
+  it('never describes signing up without the half that involves an inbox', () => {
+    /*
+     * Reported as: "the text says 'that is the whole of signing up' but signing
+     * up also includes sending a link to your email."
+     *
+     * A page that undersells the ask is not being concise, it is setting up the
+     * surprise — and the surprise lands one click later, at the prompt, which is
+     * the worst place for it. Anything here that talks about accounts has to
+     * name the address step too.
+     */
+    for (const proof of PROOFS) {
+      if (!/sign ?up|signing up|account/i.test(proof.body)) continue
+      expect(proof.body, proof.heading).toMatch(/sign-in link|address|email|key/i)
+      expect(proof.body, proof.heading).not.toMatch(/whole of signing up/i)
+    }
+  })
+
   it('sends people to the prompt, not to a signup', () => {
     expect(CTA_PRIMARY).not.toMatch(/sign ?up|register|join|create an account/i)
   })

@@ -57,9 +57,12 @@ test('the first say collects a name and an email, then sends what you typed', as
 
   await type(page, 'newcomer@example.com')
 
-  // The sentence posts itself. The user never retyped it.
-  await expect(scrollback(page)).toContainText('the thing you were trying to say is up')
-  // Success prints an address and nothing else — no status word.
+  // The sentence posts itself, and is shown. The user never retyped it, and —
+  // the complaint that changed this — never has to type `look` to find out what
+  // they said: signing up puts four or five lines between the words and here.
+  await expect(scrollback(page)).toContainText('and here it is:')
+  await expect(scrollback(page)).toContainText(sentence)
+  // With its address, which is the one thing about it not otherwise knowable.
   await expect(scrollback(page)).toContainText('music/')
 
   // And the prompt stops calling them a guest.
@@ -257,8 +260,9 @@ test('the terms are readable before you agree, without losing the signup', async
   await expect(scrollback(page)).toContainText('reading thewall is anonymous')
 
   // Still mid-signup: the next thing typed is still the email, and the held
-  // sentence is still held.
+  // sentence is still held — which two whole documents later is proved by the
+  // sentence coming back, not by a line claiming it did.
   await type(page, 'reader@example.com')
-  await expect(scrollback(page)).toContainText('the thing you were trying to say')
+  await expect(scrollback(page)).toContainText('a thing worth keeping')
   await expect(page.getByTestId('prompt-label')).toHaveText('reader:music$')
 })

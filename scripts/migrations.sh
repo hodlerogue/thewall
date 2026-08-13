@@ -47,6 +47,9 @@ MIGRATION_PROBES=(
   # Probed by the number, not by the constraint existing — it existed before.
   "20260812000000_four_thousand.sql|select pg_get_constraintdef(oid) like '%4000%' from pg_constraint where conname = 'posts_body_length'"
   "20260812010000_hello_is_a_route.sql|select exists (select 1 from public.reserved_slugs where slug = 'hello')"
+  # The re-signature, not the revokes: a project could have had the grants
+  # tightened by hand, but nothing else creates mark_verified(uuid).
+  "20260812020000_grants_are_a_denylist.sql|select to_regprocedure('public.mark_verified(uuid)') is not null"
 )
 
 probe_for() {

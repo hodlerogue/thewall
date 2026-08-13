@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ogEnv } from '@/lib/brand/ogData'
+import { readLobby, readPost, readProfile, readRoom } from '@/lib/brand/ogData'
 import { formatAgo } from '@/lib/shell/model'
 import { oldestFirst } from '@/lib/shell/render'
 import type { Location } from '@/lib/shell/types'
@@ -25,22 +25,23 @@ import type { Location } from '@/lib/shell/types'
 
 /** Everything a reader can be handed, or nothing when there is no database. */
 export async function Readable({ at }: { at: Location }) {
-  const env = ogEnv()
-  if (!env) return null
-
-  try {
-    if (at.person !== undefined) return <Person name={at.person} env={env} />
-    if (at.room === undefined) return <Lobby env={env} />
-    if (at.postId !== undefined) return <Thread at={at} env={env} />
-    return <Room slug={at.room} env={env} />
-  } catch {
-    // A page that throws is worse than a page with a prompt on it. The shell
-    // boots either way and says what went wrong in its own words.
-    return null
-  }
+  /*
+   * A page that throws is worse than a page with a prompt on it — the shell
+   * boots either way and says what went wrong in its own words — and that is
+   * now handled where it can be. The reads swallow their own failures (see
+   * `ogData`) and each part below returns null when nothing came back.
+   *
+   * There used to be a try/catch here instead, and it is worth saying that it
+   * never did this job: the parts below are async components, so calling one
+   * returns a promise and the throw happens when React awaits it, long after
+   * this frame is gone. It caught nothing it was written to catch. Handling a
+   * failed read at the read is the version that works.
+   */
+  if (at.person !== undefined) return <Person name={at.person} />
+  if (at.room === undefined) return <Lobby />
+  if (at.postId !== undefined) return <Thread at={at} />
+  return <Room slug={at.room} />
 }
-
-type Env = NonNullable<ReturnType<typeof ogEnv>>
 
 /**
  * The first line of something, short enough to be a heading.
@@ -66,8 +67,10 @@ const rest = (body: string) => (body === excerpt(body) ? null : body)
  * the six the terminal shows, because this list exists to be followed rather
  * than read at a glance.
  */
-async function Lobby({ env }: { env: Env }) {
-  const { rooms } = await env.listRooms()
+async function Lobby() {
+  const lobby = await readLobby()
+  if (!lobby) return null
+  const { rooms } = lobby
 
   return (
     <article className="readable">
@@ -119,8 +122,8 @@ async function Lobby({ env }: { env: Env }) {
  * the body indented under it. A crawler still gets a heading, a link and a
  * `<time>` per post; a person gets the same room twice in a row.
  */
-async function Room({ slug, env }: { slug: string; env: Env }) {
-  const room = await env.getRoom(slug)
+async function Room({ slug }: { slug: string }) {
+  const room = await readRoom(slug)
   if (!room) return null
 
   return (
@@ -163,8 +166,8 @@ async function Room({ slug, env }: { slug: string; env: Env }) {
   )
 }
 
-async function Thread({ at, env }: { at: Location; env: Env }) {
-  const post = await env.getPost(at.room!, at.postId!)
+async function Thread({ at }: { at: Location }) {
+  const post = await readPost(at.room!, at.postId!)
   if (!post) return null
 
   return (
@@ -189,8 +192,8 @@ async function Thread({ at, env }: { at: Location; env: Env }) {
   )
 }
 
-async function Person({ name, env }: { name: string; env: Env }) {
-  const profile = await env.getProfile(name)
+async function Person({ name }: { name: string }) {
+  const profile = await readProfile(name)
   if (!profile) return null
 
   return (

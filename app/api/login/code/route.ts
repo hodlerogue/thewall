@@ -171,12 +171,16 @@ export async function POST(request: Request) {
    * which left people in a loop: follow the key, come back, still be told to
    * follow the key. It is also the exact shape of an unapplied migration.
    */
-  const { error: markError } = await supabase.rpc('mark_verified')
+  //
+  // Under the service role and naming the user, for the reason spelled out in
+  // `/auth/callback`: the session-callable version was the §4.7 gate handing
+  // itself out to anyone with a session, which is everyone.
+  const { error: markError } = await admin.rpc('mark_verified', { p_user: data.user.id })
   if (markError) {
     console.error(
       `could not mark verified — ${markError.code ?? 'no code'}: ${markError.message}` +
         (markError.code === 'PGRST202'
-          ? '\n  mark_verified() does not exist on this project. Apply the migrations: ./scripts/db-deploy.sh'
+          ? '\n  mark_verified(p_user uuid) does not exist on this project. Apply the migrations: ./scripts/db-deploy.sh'
           : ''),
     )
     return NextResponse.json(

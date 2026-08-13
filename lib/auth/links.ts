@@ -100,3 +100,50 @@ export function verifyUrl(
   url.searchParams.set('type', type)
   return url.toString()
 }
+
+/**
+ * A base nobody can reach, so anything that resolves onto it is a path.
+ *
+ * Thrown away after parsing. It exists to give `new URL` something to resolve
+ * against, and to be recognisable afterwards — see `landingPath`.
+ */
+const NOWHERE = 'http://parse.invalid'
+
+/**
+ * Where a followed key lands, from a `next` somebody else supplied.
+ *
+ * **The check happens after parsing, and that is the whole of it.** The version
+ * before this tested the string as it arrived — starts with `/`, does not start
+ * with `//` — and `?next=/..//evil.example` passes both. The URL parser then
+ * resolves the `..` away and leaves a *pathname* of `//evil.example`, which a
+ * browser reads as protocol-relative and follows off-site. Every failure path
+ * in the callback redirects too, so no valid token was needed: a crafted link
+ * to `/auth/callback` was the whole exploit, on the one route people reach by
+ * clicking something in an email.
+ *
+ * There was a test. It had its own copy of the guard and tried four hostile
+ * inputs, all of them the ones somebody writing the guard would think of — so
+ * it agreed with the code about a rule that was wrong. The function lives here
+ * now and both the route and the test import it, because a copy is free to be
+ * correct on its own.
+ *
+ * So: parse first, then ask what came out. A `next` that names a host of its
+ * own lands on a different origin; one that resolves into a host afterwards
+ * shows up as a pathname beginning `//`. Anything else is ours.
+ */
+export function landingPath(next: string, params: Record<string, string> = {}): string {
+  let target: URL
+  try {
+    target = new URL(next, NOWHERE)
+    if (target.origin !== NOWHERE || target.pathname.startsWith('//')) {
+      target = new URL('/', NOWHERE)
+    }
+  } catch {
+    // Not a URL at all. `new URL` throws on some inputs and a thrown parse is
+    // not a reason to 500 on somebody following a link from their inbox.
+    target = new URL('/', NOWHERE)
+  }
+
+  for (const [key, value] of Object.entries(params)) target.searchParams.set(key, value)
+  return `${target.pathname}${target.search}`
+}

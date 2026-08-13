@@ -39,6 +39,12 @@ const nextConfig: NextConfig = {
     '/[room]/opengraph-image': ['./assets/**', './app/opengraph-image.png'],
     '/[room]/[postId]/opengraph-image': ['./assets/**'],
     '/apple-icon': ['./assets/**'],
+    // `/hello` reads the card's alt text off disk so the two cannot drift. It
+    // is statically prerendered today, so that read happens at build time and
+    // this line changes nothing — it is here for the day somebody adds
+    // something dynamic to that page and turns a build-time read into a
+    // request-time one, which fails only in production.
+    '/hello': ['./app/opengraph-image.alt.txt'],
   },
 }
 

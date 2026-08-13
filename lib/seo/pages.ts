@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { ogEnv } from '@/lib/brand/ogData'
+import { readPost, readProfile, readRoom } from '@/lib/brand/ogData'
 import type { Post, Room } from '@/lib/shell/model'
 import type { Location } from '@/lib/shell/types'
 
@@ -13,9 +13,11 @@ import type { Location } from '@/lib/shell/types'
  * two words of body text. Three hundred rooms indistinguishable to a crawler is
  * not a ranking problem, it is a deduplication one.
  *
- * Read through `ogEnv`, which is the same server-side, session-less, anonymous
- * reader the share cards use — so a demo deploy describes its fixtures and a
- * project that cannot answer describes nothing rather than inventing a room.
+ * Read through `lib/brand/ogData`, the same server-side, session-less,
+ * anonymous reader the share cards use — so a demo deploy describes its
+ * fixtures and a project that cannot answer describes nothing rather than
+ * inventing a room. Its readers are memoised per request, which is what stops
+ * the title and the page below it being two trips for the same room.
  *
  * **Every path here has to produce a page.** A title that throws is a 500 for a
  * crawler, and a crawler that gets a 500 tries less often. The share cards
@@ -53,18 +55,9 @@ function canonical(path: string): Metadata['alternates'] {
   return { canonical: path }
 }
 
-async function read<T>(fetch: (env: NonNullable<ReturnType<typeof ogEnv>>) => Promise<T>) {
-  try {
-    const env = ogEnv()
-    return env ? await fetch(env) : undefined
-  } catch {
-    return undefined
-  }
-}
-
 /** A room, or somebody's wall, or the feed. */
 export async function roomMetadata(slug: string): Promise<Metadata> {
-  const room = await read((env) => env.getRoom(slug))
+  const room = await readRoom(slug)
 
   if (!room) {
     // Still a real page with a real title: the room may exist and the read may
@@ -90,7 +83,7 @@ function roomDescription(room: Room): string {
 /** One post and its replies. */
 export async function postMetadata(location: Location): Promise<Metadata> {
   const path = `/${location.room}/${location.postId}`
-  const post = await read((env) => env.getPost(location.room!, location.postId!))
+  const post = await readPost(location.room!, location.postId!)
 
   if (!post) return { title: `${SITE}${path}`, alternates: canonical(path) }
 
@@ -112,7 +105,7 @@ export async function postMetadata(location: Location): Promise<Metadata> {
 
 /** Somebody's page. */
 export async function personMetadata(name: string): Promise<Metadata> {
-  const profile = await read((env) => env.getProfile(name))
+  const profile = await readProfile(name)
   const path = `/~${name}`
 
   if (!profile) return { title: `~${name} — ${SITE}`, alternates: canonical(path) }

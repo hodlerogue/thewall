@@ -183,7 +183,8 @@ test('saying something on the feed puts it on your own wall', async ({ page }) =
   // §3.9 — the held sentence lands, and the wall it lands on is the one the
   // name it was just given owns. There was no `~name` to write down when the
   // sentence was captured.
-  await expect(scrollback(page)).toContainText('the thing you were trying to say is up')
+  await expect(scrollback(page)).toContainText('and here it is:')
+  await expect(scrollback(page)).toContainText('a thing for my own wall')
   await expect(scrollback(page)).toContainText('~wallposter/')
 })
 
