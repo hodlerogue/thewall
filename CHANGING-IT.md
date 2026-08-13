@@ -858,6 +858,30 @@ for *what* it printed and none for the order.
 is no desktop project. Measure what a thumb can reach — `.tap()` scrolls an
 element into view first, which is how an off-screen chip passed a green suite.
 
+**Lineage is written once and there is no undo, which is why `make` asks.**
+`create_room` sets `from_room` at insert and nothing anywhere can change it
+afterwards — no update grant on the column, no function, no command. So a room
+made while somebody had forgotten which room they were standing in puts a line
+at the bottom of a room that is not theirs, for good, where everyone who visits
+sees it. Reported exactly that way: "imagine being in kitchen and making a room
+for a board game and now you go into kitchen and that's one of the rooms you
+see. and there's no way to move or undo it."
+
+`make` therefore asks before attaching, and only when there is something to
+attach to — from the lobby, a wall or the feed there is no parent and no
+question. Two things about the question are load-bearing:
+
+- **`n` makes the room anyway, without the line.** Cancelling looks like the
+  obvious answer and is the wrong one: the room is wanted, the attachment is
+  the accident, and a confirm that throws the typing away trains people to hit
+  `y` to get past it.
+- **Anything that is not yes or no asks again.** Both answers are permanent, so
+  there is no safe side to guess toward.
+
+If an undo ever lands, this question can go — but note it needs an answer to
+"who may detach", and §4.2's "a room has no owner" means that answer is not
+obvious.
+
 **The live channel has no replay, so reconnecting is not catching up.**
 `postgres_changes` is a feed, not a queue: nothing said while the socket was
 down is held anywhere for later. That matters most on a phone, where the system
