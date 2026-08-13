@@ -714,19 +714,21 @@ export class Session {
     }
 
     /*
-     * Past tense, and it has to be.
+     * A heading, and now it has something to head.
      *
-     * This said "now — the thing you were trying to say.", which was a heading
-     * for the confirmation underneath it. Once success stopped printing a
-     * status line, there was nothing underneath it in commons or in a post —
-     * so the last thing on screen was a sentence promising something, followed
-     * by blank. A promise with no payoff reads worse than the receipt it
-     * replaced, and it is not something a fixture test would have shown.
+     * It said "now — the thing you were trying to say." once, and was rewritten
+     * into the past tense because nothing followed it: in commons and in a post
+     * the write printed no line at all, so the last thing on screen was a
+     * sentence promising something and then blank.
      *
-     * Said this way it is complete on its own, and still reads correctly in a
-     * room, where the address does follow it.
+     * Rewriting the promise was treating the symptom. What was actually missing
+     * is the post — "nowhere do i see the thing i was trying to say. I have to
+     * type look to see it." Signing up takes four or five lines, and the words
+     * scroll out of reach behind them; every other time you say something they
+     * are on the line directly above, which is the whole reason this function
+     * prints an address rather than a transcript. So `echoed: false` below, and
+     * this can be a heading again.
      */
-    lines.push({ text: 'and the thing you were trying to say is up.', tone: 'accent' })
     // The wall is named here, because here is the first moment there is a name.
     const target = held.toOwnWall ? { room: `~${this.who}` } : held.location
     const written = await this.write(target, held.body, {
@@ -735,7 +737,13 @@ export class Session {
       // somebody without an account would quietly become an answer to the post.
       toReply: held.toReply,
       elsewhere: held.elsewhere,
+      // The sentence is four or five lines up, behind the signup questions.
+      echoed: false,
     })
+
+    // The heading is written after the write and not before it, or a send that
+    // failed prints "and here it is:" above the reason it is not.
+    if (!written.failed) lines.push({ text: 'and here it is:', tone: 'accent' }, { text: '' })
     lines.push(...written.lines)
 
     /*
@@ -961,7 +969,26 @@ export class Session {
      * already knows — `commons` is its own context precisely because §3.10
      * makes it a different kind of place.
      */
-    options: { addressed?: boolean; toReply?: number; elsewhere?: boolean } = {},
+    options: {
+      addressed?: boolean
+      toReply?: number
+      elsewhere?: boolean
+      /**
+       * Whether the sentence is still on the screen above this.
+       *
+       * Everything below prints the address and not the words, because the
+       * words are on the echo line one row up. After signup they are not: the
+       * name question, the terms line, the email question and the key note sit
+       * between, so "and the thing you were trying to say is up" pointed at
+       * something four or five lines gone — reported as "nowhere do i see the
+       * thing i was trying to say. I have to type look to see it."
+       *
+       * So the rule this function follows does not change, it just gets told
+       * the truth. When the echo is out of sight the post prints its body too,
+       * in the room's own grammar, which is what `look` would have shown.
+       */
+      echoed?: boolean
+    } = {},
   ): Promise<WriteResult> {
     if (!location.room) {
       return {
@@ -1025,16 +1052,18 @@ export class Session {
          * what is not otherwise on the screen.
          */
         const at = options.elsewhere ? `${location.room}/${location.postId}  ` : ''
+        const lines: Line[] = [
+          {
+            text: `${at}${replyNo}  ${this.who ?? 'you'}, ${formatAgo(new Date())}${
+              options.toReply === undefined ? '' : `  → ${options.toReply}`
+            }`,
+            tone: 'dim',
+          },
+        ]
+        if (options.echoed === false) lines.push({ text: body, depth: 1 })
         return {
           answered: { room: location.room, postId: location.postId },
-          lines: [
-            {
-              text: `${at}${replyNo}  ${this.who ?? 'you'}, ${formatAgo(new Date())}${
-                options.toReply === undefined ? '' : `  → ${options.toReply}`
-              }`,
-              tone: 'dim',
-            },
-          ],
+          lines,
           failed: false,
         }
       }
@@ -1047,6 +1076,22 @@ export class Session {
        * no address, so there is no output.
        */
       if (options.addressed === false) {
+        /*
+         * Commons has no address, so with the echo above it there is nothing
+         * left to print but a word — and with the echo gone there is nothing on
+         * the screen at all. The two cases are genuinely different and this is
+         * the one place that shows it most starkly: `said.` under a signup
+         * exchange is a receipt for something the person cannot see.
+         */
+        if (options.echoed === false) {
+          return {
+            lines: [
+              { text: `${this.who ?? 'you'}, ${formatAgo(new Date())}`, tone: 'dim' },
+              { text: body, depth: 1 },
+            ],
+            failed: false,
+          }
+        }
         /*
          * The one place a word survives, because it is the one place with no
          * address to give instead. Accent, like every other confirmation — the
@@ -1112,6 +1157,9 @@ export class Session {
           tone: 'dim',
         },
       ]
+      // Under the header, indented, exactly where the room puts it — so the
+      // first post somebody ever makes looks like a post rather than a receipt.
+      if (options.echoed === false) lines.push({ text: body, depth: 1 })
       if (!this.explainedAddresses) {
         this.explainedAddresses = true
         lines.push({

@@ -108,7 +108,14 @@ describe('§3.9 — signup is deferred to first contribution', () => {
     const done = await run('newcomer@example.com', at)
 
     expect(posted).toEqual([{ room: 'music', body: sentence }])
-    expect(text(done.lines)).toMatch(/the thing you were trying to say is up/)
+    /*
+     * The sentence itself, not a claim that it went. Signing up puts four or
+     * five lines between the words and the confirmation, so "the thing you were
+     * trying to say is up" pointed off the top of the screen — reported as
+     * having to type `look` to find out what you had said.
+     */
+    expect(text(done.lines)).toMatch(/and here it is:/)
+    expect(text(done.lines)).toContain(sentence)
     // The prompt stops saying `guest` in the same breath.
     expect(done.identity).toBe('newcomer')
     expect(session.name()).toBe('newcomer')
@@ -716,10 +723,17 @@ describe('what a post number is for, and where there isn’t one', () => {
     await run('ryan', { room: 'commons' })
     const out = text((await run('ryan@example.com', { room: 'commons' })).lines)
 
-    // The held sentence landed in commons, so there is no address to print —
-    // and the line above it has to still read as finished on its own.
-    expect(out).toMatch(/the thing you were trying to say is up/)
+    /*
+     * Commons has no address to print, which used to leave the word `said.` as
+     * the entire result — a receipt, under a signup exchange, for something the
+     * person could no longer see. The words come back instead, headed the way
+     * commons heads everything: who, and when.
+     */
+    expect(out).toMatch(/and here it is:/)
+    expect(out).toContain('good to be here')
+    expect(out).toMatch(/ryan, just now/)
     expect(out).not.toMatch(/commons\/\d+/)
+    expect(out).not.toMatch(/said\./)
   })
 
   it('still gives the address when the held sentence lands in a keeping room', async () => {
