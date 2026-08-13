@@ -111,6 +111,50 @@ describe('a room remembers where it was made', () => {
   })
 })
 
+describe('and says so, in the room it just opened', () => {
+  /*
+   * Reported as a worry that a room made inside a room "will only show up from
+   * within that specific room", with a request to have to confirm first. The
+   * fact is the opposite — the room is ordinary and the parent link only adds
+   * a line to the parent — but the belief was earned: this printed exactly what
+   * it prints in the lobby, so the one difference was invisible from inside the
+   * room that had just been made.
+   */
+  it('names the room it grew out of', async () => {
+    const { run } = harness([room('music')])
+    const out = text((await run('make bebop the fast stuff', { room: 'music' } as Location)).lines)
+
+    expect(out).toContain('it grew out of music')
+    // And the correction to the thing somebody feared, in the same breath.
+    expect(out).toMatch(/ordinary room either way/)
+    expect(out).toMatch(/in the lobby/)
+  })
+
+  it('says how to have it otherwise, which is the only actionable part', async () => {
+    const { run } = harness([room('music')])
+    const out = text((await run('make bebop the fast stuff', { room: 'music' } as Location)).lines)
+    expect(out).toMatch(/make it from the lobby/)
+  })
+
+  it('says none of it when there is no parent to name', async () => {
+    // From the lobby nothing grew out of anything, and a line explaining that
+    // would be a paragraph about a thing that did not happen.
+    const { run } = harness(seed())
+    const out = text((await run('make bebop the fast stuff', {} as Location)).lines)
+
+    expect(out).not.toContain('grew out of')
+    expect(out).not.toMatch(/from the lobby/)
+  })
+
+  it('says it for a room made from inside a post, naming the room', async () => {
+    const { run } = harness([room('music', { posts: [
+      { id: 12, author: 'marisol', body: 'have you heard this', createdAt: new Date(), replies: [] },
+    ] })])
+    const out = text((await run('make bebop the fast stuff', { room: 'music', post: 12 } as Location)).lines)
+    expect(out).toContain('it grew out of music')
+  })
+})
+
 describe('the parent room says what grew out of it', () => {
   it('lists it, at the bottom, after the posts', async () => {
     const { run } = harness([room('music', { posts: [

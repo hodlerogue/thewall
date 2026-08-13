@@ -512,9 +512,46 @@ export const COMMANDS: readonly Command[] = [
         if (!made.ok) return error(made.reason)
 
         const room = await env.getRoom(made.slug)
+
+        /*
+         * What just happened to the room you were standing in, said at the one
+         * moment somebody can act on it.
+         *
+         * Reported as a worry that a room made inside a room "will only show up
+         * from within that specific room", and asking to have to press `y`
+         * first. The worry is the right instinct about the wrong fact: the room
+         * is ordinary, it is in the lobby, and it is reachable by name — the
+         * parent link is one *extra* line in the parent, and nothing anywhere
+         * is narrowed by it. There is no confinement to warn about.
+         *
+         * But the reason that could be believed is this handler: it recorded
+         * the parent and then printed the same three lines it prints in the
+         * lobby, so the only difference between making a room from a room and
+         * making one from the lobby was invisible from inside the thing that
+         * made it. Somebody who wanted a tangent got no confirmation it worked,
+         * and somebody who did not want one had no idea it had happened.
+         *
+         * So: say it, name the parent, say plainly that it is an ordinary room
+         * anyway — and say where to go to have it otherwise, because that is
+         * the only actionable part and it is a `go` away.
+         */
+        const grew = room?.fromRoom
         return {
           lines: [
             { text: `${made.slug} is open. you are in it.`, tone: 'accent' },
+            ...(grew
+              ? [
+                  {
+                    text: `it grew out of ${grew}, which now lists it at the bottom. it is an ordinary room either way — in the lobby, and reachable by name.`,
+                    tone: 'faint' as const,
+                  },
+                  {
+                    text: `if you wanted one with no such line, make it from the lobby: go, then make.`,
+                    tone: 'faint' as const,
+                    hint: true as const,
+                  },
+                ]
+              : []),
             { text: '' },
             ...(room
               ? renderRoom(room)
