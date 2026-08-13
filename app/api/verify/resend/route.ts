@@ -87,10 +87,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'couldn’t make a new key just now.' }, { status: 500 })
   }
 
-  // Our own URL, not `action_link` — see lib/auth/links.ts.
+  // Our own URL, not `action_link` — see lib/auth/links.ts. With the code, and
+  // this is the call site where leaving it out was hardest to defend: `resend`
+  // is what somebody types when the first key did not work, so it is the last
+  // email that should offer only the thing that already failed them.
   const delivery = await sendMagicLink(
     user.email,
     verifyUrl(link.properties.hashed_token, 'magiclink', request),
+    link.properties.email_otp ?? null,
   )
   return NextResponse.json({ note: delivery.note })
 }

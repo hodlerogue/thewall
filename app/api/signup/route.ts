@@ -172,11 +172,31 @@ export async function POST(request: Request) {
     email: body.email,
   })
 
-  // Built from `hashed_token` rather than sent as `action_link`: see
-  // lib/auth/links.ts. The action link bounces through Supabase and comes back
-  // with the session in a URL fragment, which a server can never read.
+  /*
+   * Built from `hashed_token` rather than sent as `action_link`: see
+   * lib/auth/links.ts. The action link bounces through Supabase and comes back
+   * with the session in a URL fragment, which a server can never read.
+   *
+   * **With the code**, which this route used to leave out on purpose. The
+   * reasoning was sound as far as it went: signup mints the session server-side,
+   * so the person is already signed in *in this browser*, and the link's only
+   * remaining job is proving the address — which marks the account rather than
+   * the browser, and therefore works even when tapped inside Gmail.
+   *
+   * What it did not account for is that this is the first email anybody ever
+   * gets from here, and it is the one that sets the expectation for the rest.
+   * Reported as "i thought the sign in email was supposed to give you a code —
+   * im not seeing that in my most recent". It also quietly assumed the session
+   * survives, and on a phone it may not: close the app, come back next week,
+   * and the only way in is `login <name>` — which needs a code, and the one in
+   * this email would have done.
+   */
   const delivery = keyLink?.properties?.hashed_token
-    ? await sendMagicLink(body.email, verifyUrl(keyLink.properties.hashed_token, 'magiclink', request))
+    ? await sendMagicLink(
+        body.email,
+        verifyUrl(keyLink.properties.hashed_token, 'magiclink', request),
+        keyLink.properties.email_otp ?? null,
+      )
     : { sent: false, note: 'couldn’t make you a key just now. type resend to try again.' }
 
   return NextResponse.json({ name: validated.name, note: delivery.note })

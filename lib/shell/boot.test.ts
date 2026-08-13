@@ -76,17 +76,19 @@ describe('arriving somewhere asks for everything at once', () => {
     expect(order).toContain('getRoom')
   })
 
-  it('takes about as long as one request, not two', async () => {
-    const { env } = watched()
-    const started = Date.now()
-
-    const reads = startArrivalReads(env, { room: 'music' } as Location)
-    await Promise.all([reads.rooms, reads.room])
-
-    // Each fake request sleeps 10ms. Serial would be 20 and up; the ceiling is
-    // loose because a busy CI box adds its own.
-    expect(Date.now() - started).toBeLessThan(18)
-  })
+  /*
+   * There was a third test here that timed the pair with `Date.now()` and
+   * required under 18ms for two 10ms sleeps. It measured nothing the two above
+   * do not: taking one request's worth of time is the *consequence* of the
+   * overlap `peak()` already proves, and there is no way to be serial with a
+   * peak of two.
+   *
+   * What it did add was a coin flip. On a loaded machine — the suite running
+   * beside a build, which is exactly how `npm test && npm run build` behaves —
+   * it failed about one run in five, measured. A test that fails for reasons
+   * unrelated to the code is worse than no test at all: it teaches everybody to
+   * re-run rather than look, and the next real failure gets the same shrug.
+   */
 })
 
 describe('what it does not fetch', () => {

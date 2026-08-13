@@ -858,6 +858,29 @@ for *what* it printed and none for the order.
 is no desktop project. Measure what a thumb can reach — `.tap()` scrolls an
 element into view first, which is how an off-screen chip passed a green suite.
 
+**The live channel has no replay, so reconnecting is not catching up.**
+`postgres_changes` is a feed, not a queue: nothing said while the socket was
+down is held anywhere for later. That matters most on a phone, where the system
+suspends a backgrounded page and kills the socket every single time the app
+leaves the screen — reported as a room that stopped moving until "i had to
+leave and go back in", which worked because walking out and back re-reads the
+room. So `lib/data/live.ts` keeps a watermark and asks the database directly
+for anything newer whenever it comes back. Three things about it are
+load-bearing:
+
+- **The watermark is a database timestamp, never `Date.now()`.** A phone clock
+  a few seconds off would otherwise reprint what you have already read, or skip
+  what you have not.
+- **Returning to the screen is two cases, not one.** A computer tab switch
+  usually leaves the socket joined and needs only the missed messages; a phone
+  return finds it closed and needs the channel rebuilt *and* the messages.
+  Doing only the second is churn; doing only the first leaves you deaf from
+  then on, and both versions look identical in a test that checks the missed
+  message arrived.
+- **Every status other than `SUBSCRIBED` is a retry.** They were all ignored,
+  so a channel that errored stayed dead for as long as the room stayed open,
+  with a prompt that kept working and a room that never moved again.
+
 **Never send to an address that cannot receive.** RFC 2606 and RFC 6761 reserve
 `.test`, `.example`, `.invalid`, `.localhost` and `example.com/net/org` so they
 can never resolve, which is why `seed.sql` uses `@seed.invalid` — and why the

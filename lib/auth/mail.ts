@@ -69,16 +69,23 @@ function body(link: string, code: string | null): string {
 }
 
 /**
- * @param code the six-character version of the same key, when there is one.
- *   Signup does not pass one: it mints the session server-side, so the person
- *   is already signed in *in the right browser* and the link's only job is
- *   proving the address (§4.7) — which marks the account, not the browser, and
- *   therefore works from Gmail's browser as well as anywhere else.
+ * @param code the six-character version of the same key, or null when the
+ *   provider did not mint one.
+ *
+ *   **Required, with no default, and that is the fix rather than a style
+ *   choice.** It used to default to `null` on the reasoning that signup does
+ *   not need one — it mints the session server-side, so the link's only job is
+ *   proving the address. Defensible, and it silently applied to `resend` too,
+ *   which is the one email somebody asks for *because the link did not work*.
+ *   Two of the three call sites sent no code, and nothing said so: an argument
+ *   you can leave out is an argument that gets left out.
+ *
+ *   Writing `null` explicitly is still allowed. Forgetting is not.
  */
 export async function sendMagicLink(
   to: string,
   link: string,
-  code: string | null = null,
+  code: string | null,
 ): Promise<SendResult> {
   const key = process.env.RESEND_API_KEY
   const from = process.env.MAIL_FROM

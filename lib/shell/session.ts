@@ -701,6 +701,27 @@ export class Session {
       // anything, and claiming otherwise to someone who just typed a real
       // address is not a white lie.
       { text: result.note ?? `your key is on its way to ${text}.`, tone: 'faint' },
+      /*
+       * What the name means, and what it does not, said at the one moment it
+       * could be taken for more than it is.
+       *
+       * The prompt stops saying `guest` here and starts saying your name, and
+       * that was read as "it looks like you're logged in" — reported as
+       * misleading, because the address has not been proven yet.
+       *
+       * You *are* signed in: the session is real, it is why the held sentence
+       * could post at all, and taking the name back out of the prompt would
+       * make it disagree with the post sitting in the room under that same
+       * name. §3.9's whole design is that the name is yours the moment you pick
+       * it. So the fix is not to hide it — it is to stop leaving the other half
+       * unsaid until the gate closes on somebody two sentences later with
+       * "check your email to keep saying things".
+       */
+      {
+        text: `you’re ${result.name} here now. the address isn’t proven until you follow that key —`,
+        tone: 'faint',
+      },
+      { text: 'i’ll ask for it before the next thing you say.', tone: 'faint' },
       { text: '' },
     ]
 
@@ -708,10 +729,10 @@ export class Session {
     const held = this.held
     this.held = null
 
-    if (!held) {
-      lines.push({ text: `you’re ${result.name} now.`, tone: 'dim' })
-      return { lines, identity: this.who }
-    }
+    // Nothing was being held — `cancel` empties it, so this is reachable. The
+    // two lines above have already said who they are, which is what the line
+    // that used to be here said less completely.
+    if (!held) return { lines, identity: this.who }
 
     /*
      * A heading, and now it has something to head.

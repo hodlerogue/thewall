@@ -116,6 +116,15 @@ describe('§3.9 — signup is deferred to first contribution', () => {
      */
     expect(text(done.lines)).toMatch(/and here it is:/)
     expect(text(done.lines)).toContain(sentence)
+    /*
+     * And what the name does not mean yet. The prompt stops saying `guest` at
+     * this moment, which was read as "it looks like you're logged in" — true of
+     * the session, and not true of the address, which nobody has proven. Left
+     * unsaid, the first anybody heard of it was the gate refusing their second
+     * sentence with "check your email to keep saying things".
+     */
+    expect(text(done.lines)).toMatch(/the address isn’t proven until you follow that key/)
+    expect(text(done.lines)).toMatch(/before the next thing you say/)
     // The prompt stops saying `guest` in the same breath.
     expect(done.identity).toBe('newcomer')
     expect(session.name()).toBe('newcomer')
