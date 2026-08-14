@@ -120,25 +120,29 @@ body {
  * thing lands by the prompt, and anchoring to the echo would show the oldest
  * end of a room and hide the part you asked for.
  *
- * So the boundary is marked where it is rather than moved. A hairline in the
- * quietest colour in the palette, above the line that says what you typed:
- * everything under it is the answer to it. It is inset by the scrollback's own
- * padding, so it reads as a division in the text rather than as furniture
- * around it (§9).
+ * So the boundary is marked where it is rather than moved.
+ *
+ * It was a hairline across the pane above each echo, and that was too much:
+ * "the line across the screen after everything you type and say is taking it
+ * too far." Right — a rule per command turns a scrollback into a stack of
+ * boxes, which is the furniture §9 says not to build, and it drew hardest at
+ * exactly the moment there is most of it, when somebody is typing a lot.
+ *
+ * Space does the same work more quietly. There are 2px between ordinary lines
+ * and 26px above an echo, so the gap is already an order of magnitude — the
+ * rule was decorating a boundary the whitespace had already made. Removing it
+ * costs nothing that was carrying meaning and leaves the dim colour, which is
+ * the other half of how an echo announces itself.
  */
 .line-echo {
   color: var(--fg-dim);
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--rule);
+  margin-top: 26px;
 }
 
 /* Except in the samples on /hello, where the echo is the first line of a
-   four-line picture and a rule above it would be drawing a box inside a box. */
+   four-line picture and the gap would push it off its own illustration. */
 .proof-sample .line-echo {
   margin-top: 0;
-  padding-top: 0;
-  border-top: 0;
 }
 
 /*
