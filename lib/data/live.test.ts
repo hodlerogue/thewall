@@ -128,8 +128,23 @@ class FakeChannel {
 
 type Row = Record<string, string | number>
 
+/**
+ * A request held open until the test lets it go.
+ *
+ * Needed because the race being tested lives *inside* an await — between
+ * fetching rows and printing them — and a fake that resolves immediately has
+ * no inside.
+ */
+function gate() {
+  let release = () => {}
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return { wait: () => held, release: () => release() }
+}
+
 /** Just enough PostgREST to answer the four queries this module makes. */
-function table(rows: Row[]) {
+function table(rows: Row[], hold?: () => Promise<void>) {
   let out = [...rows]
   const api = {
     select: () => api,
@@ -144,17 +159,21 @@ function table(rows: Row[]) {
       api
     ),
     limit: (n: number) => ((out = out.slice(0, n)), api),
-    maybeSingle: () => Promise.resolve({ data: out[0] ?? null, error: null }),
+    maybeSingle: () =>
+      (hold ? hold() : Promise.resolve()).then(() => ({ data: out[0] ?? null, error: null })),
     then: (resolve: (v: { data: Row[]; error: null }) => unknown) =>
-      Promise.resolve({ data: out, error: null }).then(resolve),
+      (hold ? hold() : Promise.resolve()).then(() => ({ data: out, error: null })).then(resolve),
   }
   return api
 }
 
-function fakeClient(tables: Record<string, Row[]>) {
+function fakeClient(tables: Record<string, Row[]>, holdProfiles?: () => Promise<void>) {
   const channels: FakeChannel[] = []
   const client = {
-    from: (name: string) => table(tables[name] ?? []),
+    // Only the author lookup is holdable — that is the await the duplicate
+    // used to slip through, and it is a real network call every time somebody
+    // speaks whose name is not already cached.
+    from: (name: string) => table(tables[name] ?? [], name === 'profiles' ? holdProfiles : undefined),
     channel: () => {
       const made = new FakeChannel()
       channels.push(made)
@@ -352,6 +371,116 @@ describe('a channel that stopped listening', () => {
     expect(channels.length).toBeGreaterThan(1)
     expect(channels[0].removed).toBe(true)
     stop()
+  })
+
+  /*
+   * Reported from two browsers side by side: something said in one arrived in
+   * the other twice, one under the other.
+   *
+   *     mark7835, just now
+   *     well i could mean a lot of things
+   *
+   *     mark7835, just now
+   *     well i could mean a lot of things
+   *
+   * The catch-up fetched rows, then looked up their authors, then moved the
+   * watermark. The author lookup is a real network call the first time anybody
+   * speaks, so a second catch-up starting inside it read a watermark that had
+   * not moved and fetched the same rows again — and flipping between two
+   * windows fires `visibilitychange` on every switch, so a side-by-side test
+   * runs catch-ups over and over.
+   *
+   * These hold the author lookup open on purpose. Without one the fake resolves
+   * in the same tick and there is no window to race in, which is exactly why
+   * the first version of this test passed against the bug.
+   *
+   * Fresh author ids per test: names are cached process-wide, so reusing `a`
+   * would skip the lookup entirely and close the window by accident.
+   */
+  const busy = (author: string): Record<string, Row[]> => ({
+    posts: [{ id: 1, room_slug: room, post_no: 1, author_id: author, body: 'was here first', created_at: older }],
+    profiles: [{ id: author, name: 'marisol' }],
+    replies: [],
+  })
+
+  it('prints it once when a second return lands inside the first', async () => {
+    listeners.length = 0
+    returnToTheApp()
+    const held = gate()
+    const tables = busy('author-race-1')
+    const { client, channels } = fakeClient(tables, () => held.wait())
+    const printed: Line[] = []
+
+    const { createLive } = await import('@/lib/data/live')
+    createLive(client, []).subscribe({ room }, 'ryan', (lines) => printed.push(...lines))
+    await flush()
+    await channels[0].join()
+    await flush()
+
+    tables.posts.push({
+      id: 2,
+      room_slug: room,
+      post_no: 2,
+      author_id: 'author-race-1',
+      body: 'well i could mean a lot of things',
+      created_at: missed,
+    })
+
+    // Click to the other window and back, and back again — two returns, the
+    // second landing while the first is still inside the author lookup.
+    listeners.forEach((wake) => wake())
+    await flush()
+    listeners.forEach((wake) => wake())
+    await flush()
+
+    held.release()
+    await flush()
+    await flush()
+    await flush()
+
+    expect(printed.filter((l) => l.text === 'well i could mean a lot of things')).toHaveLength(1)
+  })
+
+  it('prints it once when it arrives live and a return catches up inside it', async () => {
+    // The other order: the row comes down the channel, and the catch-up that a
+    // window switch fires runs while the live one is still resolving its author.
+    listeners.length = 0
+    returnToTheApp()
+    const held = gate()
+    const tables = busy('author-race-2')
+    const { client, channels } = fakeClient(tables, () => held.wait())
+    const printed: Line[] = []
+
+    const { createLive } = await import('@/lib/data/live')
+    createLive(client, []).subscribe({ room }, 'ryan', (lines) => printed.push(...lines))
+    await flush()
+    await channels[0].join()
+    await flush()
+
+    const row = {
+      id: 2,
+      room_slug: room,
+      post_no: 2,
+      author_id: 'author-race-2',
+      body: 'well i could mean a lot of things',
+      created_at: missed,
+    }
+    tables.posts.push(row)
+
+    // Down the channel, and stuck on the author lookup.
+    void channels[0].say(row)
+    await flush()
+
+    // Switching back to this window while that is still in the air.
+    listeners.forEach((wake) => wake())
+    await flush()
+
+    held.release()
+    await flush()
+    await flush()
+    await flush()
+
+    expect(printed.filter((l) => l.text === 'well i could mean a lot of things')).toHaveLength(1)
   })
 
   it('caps a long absence, and points at look for the rest', async () => {

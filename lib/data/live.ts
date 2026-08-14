@@ -72,6 +72,38 @@ export function createLive(client: SupabaseClient, ephemeralRooms: readonly stri
       let seen: string | null = null
 
       /**
+       * Rows already on the screen, by id.
+       *
+       * Reported from two browsers side by side: something said in one arrived
+       * in the other twice, one under the other. The watermark alone could not
+       * prevent that, because it moves *after* two awaits — the query, then the
+       * author lookup — and anything that runs in that window reads the old
+       * value and fetches the same row again. Two things run in that window in
+       * normal use: a live arrival, and a second catch-up. Flipping between two
+       * windows fires `visibilitychange` on every switch, which is what the
+       * side-by-side test does over and over.
+       *
+       * Ordering the awaits more carefully narrows the window without closing
+       * it. An id that has been printed is a fact, so this asks that instead.
+       */
+      const printed = new Set<number>()
+      const isNew = (id: number | undefined): boolean => {
+        // Nothing to go on — better a possible repeat than a dropped message.
+        if (id === undefined) return true
+        if (printed.has(id)) return false
+        printed.add(id)
+        // A Set iterates in insertion order, so this drops the oldest. The cap
+        // is far past anything one sitting in one room prints.
+        while (printed.size > REMEMBER) {
+          for (const oldest of printed) {
+            printed.delete(oldest)
+            break
+          }
+        }
+        return true
+      }
+
+      /**
        * Everything said while nobody was listening.
        *
        * This is the half that was missing, and it is not the same as
@@ -86,16 +118,31 @@ export function createLive(client: SupabaseClient, ephemeralRooms: readonly stri
        * and go back in" — which worked because walking out of a room and back
        * re-reads it.
        */
-      const catchUp = async () => {
+      /*
+       * One at a time, in order.
+       *
+       * `subscribe` runs one on joining and `visibilitychange` runs one on every
+       * return, so two could overlap — both reading the same watermark, both
+       * fetching the same rows. Chained rather than coalesced: a request that
+       * arrives mid-flight still runs afterwards, so nothing is dropped on the
+       * floor to save a query.
+       */
+      let queue: Promise<void> = Promise.resolve()
+      const catchUp = (): Promise<void> => {
+        queue = queue.then(runCatchUp).catch(() => {})
+        return queue
+      }
+
+      const runCatchUp = async () => {
         if (closed || seen === null) return
 
         const query =
           postId === null
             ? client
                 .from('posts')
-                .select('author_id, post_no, body, created_at')
+                .select('id, author_id, post_no, body, created_at')
                 .eq('room_slug', room)
-            : client.from('replies').select('author_id, body, created_at').eq('post_id', postId)
+            : client.from('replies').select('id, author_id, body, created_at').eq('post_id', postId)
 
         const { data, error } = await query
           .gt('created_at', seen)
@@ -105,7 +152,29 @@ export function createLive(client: SupabaseClient, ephemeralRooms: readonly stri
         if (error || !data?.length || closed) return
 
         const ephemeral = ephemeralRooms.includes(room)
-        const rows = data.slice(0, CATCH_UP) as Row[]
+
+        /*
+         * Claimed, and the watermark moved, before the author lookup below —
+         * which is a network call whenever the author has not been seen before.
+         * Both used to happen after it, so anything running in that window read
+         * a watermark that had not moved and fetched these very rows again.
+         *
+         * The id set is the guarantee and this ordering is the belt: even with
+         * the watermark stale, a row already printed is not printed twice.
+         *
+         * Over the cap the watermark jumps the whole backlog rather than
+         * landing on the last row fetched — `look` is the way to read what was
+         * skipped, so a marker mid-backlog would dribble out another twenty old
+         * messages on every later return, and the row fetched only to learn
+         * there *was* more would be counted read without being printed.
+         */
+        const rows = (data.slice(0, CATCH_UP) as Row[]).filter((row) => isNew(row.id))
+        const over = data.length > CATCH_UP
+        seen = over ? await newest(client, room, postId) : data[data.length - 1].created_at
+
+        // Everything waiting had already been printed by something else.
+        if (!rows.length) return
+
         const authors = await namesOf(client, rows.map((row) => row.author_id))
         if (closed) return
 
@@ -128,20 +197,9 @@ export function createLive(client: SupabaseClient, ephemeralRooms: readonly stri
          * first twenty and saying so beats both alternatives: silently dropping
          * the rest, and pasting four hundred lines into a scrollback somebody
          * is about to type into.
-         *
-         * The watermark then jumps the whole backlog rather than landing on the
-         * last row fetched. Two reasons, and the second is the one that would
-         * have shown up as a bug: `look` is now the way to read what was
-         * skipped, so leaving a marker mid-backlog would mean every later
-         * return dribbles out another twenty old messages — and the twenty-first
-         * row, fetched only to learn that there *was* more, would otherwise be
-         * counted as read without ever being printed.
          */
-        if (data.length > CATCH_UP) {
+        if (over) {
           lines.push({ text: '…and more. type look to read the room.', tone: 'faint', hint: true })
-          seen = await newest(client, room, postId)
-        } else {
-          seen = data[data.length - 1].created_at
         }
 
         if (lines.length && !closed) append(lines)
@@ -172,13 +230,24 @@ export function createLive(client: SupabaseClient, ephemeralRooms: readonly stri
         // makes the catch-up cover the whole time away rather than none of it.
         if (seen === null) seen = await newest(client, room, postId)
 
-        const arrival = async (params: Omit<Arrival, 'mine'>) => {
+        const arrival = (params: Omit<Arrival, 'mine'>) => {
           // The location may have changed while the author name was being
           // resolved. Without this a message from a room you just left prints
           // under the room you just entered, with no attribution.
           if (closed) return
-          if (params.at > (seen ?? '')) seen = params.at
           append(arrivalLines({ ...params, mine: name }))
+        }
+
+        /*
+         * Claimed the moment the row lands, before the author lookup it has to
+         * wait on. Doing it afterwards left a window in which a catch-up read a
+         * watermark that had not moved yet and fetched this very row again —
+         * which is how the same message came out twice, one under the other.
+         */
+        const claim = (row: Row): boolean => {
+          if (!isNew(row.id)) return false
+          if (row.created_at > (seen ?? '')) seen = row.created_at
+          return true
         }
 
         if (postId === null) {
@@ -188,8 +257,9 @@ export function createLive(client: SupabaseClient, ephemeralRooms: readonly stri
             { event: 'INSERT', schema: 'public', table: 'posts', filter: `room_slug=eq.${room}` },
             async (payload) => {
               const row = payload.new as Row
+              if (!claim(row)) return
               const author = await nameOf(client, row.author_id)
-              await arrival({
+              arrival({
                 author,
                 body: row.body,
                 at: row.created_at,
@@ -207,8 +277,9 @@ export function createLive(client: SupabaseClient, ephemeralRooms: readonly stri
             { event: 'INSERT', schema: 'public', table: 'replies', filter: `post_id=eq.${postId}` },
             async (payload) => {
               const row = payload.new as Row
+              if (!claim(row)) return
               const author = await nameOf(client, row.author_id)
-              await arrival({ author, body: row.body, at: row.created_at, depth: 1 })
+              arrival({ author, body: row.body, at: row.created_at, depth: 1 })
             },
           )
         }
@@ -321,6 +392,14 @@ export function createLive(client: SupabaseClient, ephemeralRooms: readonly stri
 }
 
 /** How many missed messages are worth printing before saying "type look". */
+/**
+ * How many arrivals to remember by id, so a race cannot print one twice.
+ *
+ * Bounded because a long sitting in a busy room would otherwise grow this
+ * forever; far past what one sitting in one room actually prints.
+ */
+const REMEMBER = 500
+
 const CATCH_UP = 20
 
 /** Waits between retries, in milliseconds. The last one repeats. */
@@ -378,6 +457,8 @@ async function namesOf(
 }
 
 interface Row {
+  /** The row's own id, which is what makes "have I printed this?" answerable. */
+  id: number
   author_id: string
   post_no: number
   body: string
