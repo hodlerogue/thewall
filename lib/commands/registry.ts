@@ -470,7 +470,7 @@ export const COMMANDS: readonly Command[] = [
      */
     gloss: () => 'create a new room',
     detail: () =>
-      'makes a room: make garden what you are growing (create works too). the first word is its name, the rest says what it is for and shows under it in the lobby. you need a verified account, and you can make three a week. a room has no owner — once it exists it is everybody\u2019s. made from inside another room, that room lists it at the bottom as having grown out of it — it is still an ordinary room with an ordinary name, not something inside anything.',
+      'makes a room: make garden what you are growing (create works too). the first word is its name, the rest says what it is for and shows under it in the lobby. you need a verified account, and you can make three a week. a room has no owner — once it exists it is everybody\u2019s. made from inside another room, it asks first whether that room should list it at the bottom as having grown out of it — say n and it is made without the line, because there is no undoing one. either way it is an ordinary room with an ordinary name, in the lobby and reachable by name, not something inside anything.',
     insert: () => 'make ',
     wrongContext: () => '',
     async run({ arg, context, location, env, session }) {
@@ -507,14 +507,32 @@ export const COMMANDS: readonly Command[] = [
         return error('you need a name first. say something anywhere and i’ll ask you for one.')
       }
 
-      const open = async (line: string): Promise<RunResult> => {
-        const made = await env.makeRoom(slug, line, from)
+      /**
+       * `attach` decides whether the room somebody is standing in is recorded
+       * as this one's parent. Always false from the lobby, and answered out
+       * loud everywhere else — see `askFirst`.
+       */
+      const open = async (line: string, attach: boolean): Promise<RunResult> => {
+        const made = await env.makeRoom(slug, line, attach ? from : undefined)
         if (!made.ok) return error(made.reason)
 
         const room = await env.getRoom(made.slug)
+
+        // Said after the fact as well as before it, because the question is
+        // answered in one keypress and a keypress is easy to make by accident
+        // too. This is the line that tells you which of the two you got.
+        const grew = room?.fromRoom
         return {
           lines: [
             { text: `${made.slug} is open. you are in it.`, tone: 'accent' },
+            ...(grew
+              ? [
+                  {
+                    text: `it grew out of ${grew}, which lists it at the bottom now.`,
+                    tone: 'faint' as const,
+                  },
+                ]
+              : []),
             { text: '' },
             ...(room
               ? renderRoom(room)
@@ -543,6 +561,56 @@ export const COMMANDS: readonly Command[] = [
        * The prompt already knows how to ask; that is the whole of signup (§3.9).
        * One line on the same line still works for anybody who prefers it.
        */
+      /**
+       * Ask before attaching, because attaching cannot be taken back.
+       *
+       * The report: "imagine being in kitchen and making a room for a board
+       * game and now you go into kitchen and that's one of the rooms you see.
+       * and there's no way to move or undo it." Both halves are true.
+       * `from_room` is written once by `create_room` and there is no update
+       * path to it — no grant, no function, no command — so a room made while
+       * you had forgotten where you were standing leaves a line at the bottom
+       * of somebody else's room for good.
+       *
+       * That is the whole argument for a question. Everywhere else `make` is
+       * deliberately frictionless, and it stays that way: from the lobby there
+       * is no parent, so there is nothing to ask and nothing is asked.
+       *
+       * **`n` makes the room anyway, without the line.** Cancelling would be
+       * the obvious thing and the wrong one: the room is wanted — it is the
+       * attachment that was an accident — and a confirm that throws the work
+       * away teaches people to hit `y` to get past it, which is the opposite
+       * of what it is for.
+       *
+       * Anything that is not yes or no asks again rather than guessing. Both
+       * answers are permanent, so there is no safe default to fall back on.
+       */
+      const askFirst = (line: string, again = false): Line[] =>
+        session.askOne(
+          [
+            ...(again ? [{ text: 'y or n.', tone: 'faint' as const }] : []),
+            { text: `you are in ${from}. make ${slug} here?`, tone: 'accent' as const },
+            {
+              text: `${from} will list ${slug} at the bottom, and nothing can take it off again.`,
+              tone: 'faint' as const,
+            },
+            {
+              text: `y for that. n to make ${slug} on its own, with no line in ${from}.`,
+              tone: 'faint' as const,
+            },
+          ],
+          async (answer) => {
+            const said = answer.trim().toLowerCase()
+            if (said === 'y' || said === 'yes') return open(line, true)
+            if (said === 'n' || said === 'no') return open(line, false)
+            return { lines: askFirst(line, true) }
+          },
+        )
+
+      /** From the lobby there is no parent, so there is nothing to ask. */
+      const begin = async (line: string): Promise<RunResult> =>
+        from === undefined ? open(line, false) : { lines: askFirst(line) }
+
       if (gloss === '') {
         return {
           lines: session.askOne(
@@ -551,14 +619,14 @@ export const COMMANDS: readonly Command[] = [
               { text: 'a few words. it goes under the name in the lobby, and it is how people know what to put there.', tone: 'faint' },
             ],
             async (answer) => {
-              const result = await open(answer)
+              const result = await begin(answer)
               return { lines: result.lines, location: result.location }
             },
           ),
         }
       }
 
-      return open(gloss)
+      return begin(gloss)
     },
   },
 

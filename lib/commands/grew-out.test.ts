@@ -68,10 +68,29 @@ function harness(rooms: Room[], name: string | null = 'ryan') {
 
 const seed = () => [room('music'), room('poker'), room('~marisol', { owner: 'marisol' })]
 
+/**
+ * `make` from inside a room now asks before attaching, because attaching
+ * cannot be undone — so every test that makes one from a room answers it.
+ *
+ * `y` attaches. `n` makes the same room with no line in the parent. The
+ * location is the answer's, not the question's: the runner is mid-question and
+ * has not moved anybody yet.
+ */
+async function makeFrom(
+  run: ReturnType<typeof harness>['run'],
+  command: string,
+  at: Location,
+  answer: 'y' | 'n' = 'y',
+) {
+  const asked = await run(command, at)
+  const done = await run(answer, at)
+  return { asked, done }
+}
+
 describe('a room remembers where it was made', () => {
   it('records the room you were standing in', async () => {
     const { env, run } = harness(seed())
-    await run('make bebop the fast stuff', { room: 'music' } as Location)
+    await makeFrom(run, 'make bebop the fast stuff', { room: 'music' } as Location)
     expect((await env.getRoom('bebop'))?.fromRoom).toBe('music')
   })
 
@@ -86,7 +105,7 @@ describe('a room remembers where it was made', () => {
     const { env, run } = harness([room('music', { posts: [
       { id: 12, author: 'marisol', body: 'have you heard this', createdAt: new Date(), replies: [] },
     ] })])
-    await run('make bebop the fast stuff', { room: 'music', post: 12 } as Location)
+    await makeFrom(run, 'make bebop the fast stuff', { room: 'music', post: 12 } as Location)
     expect((await env.getRoom('bebop'))?.fromRoom).toBe('music')
   })
 
@@ -106,8 +125,157 @@ describe('a room remembers where it was made', () => {
 
   it('records nothing when you were on the feed', async () => {
     const { env, run } = harness([...seed(), room('feed')])
-    await run('make bebop the fast stuff', { room: 'feed' } as Location)
+    await makeFrom(run, 'make bebop the fast stuff', { room: 'feed' } as Location)
     expect((await env.getRoom('bebop'))?.fromRoom).toBeUndefined()
+  })
+})
+
+describe('it asks before attaching, because attaching is forever', () => {
+  /*
+   * "imagine being in kitchen and making a room for a board game and now you go
+   * into kitchen and that's one of the rooms you see. and there's no way to
+   * move or undo it."
+   *
+   * Both halves are true. `from_room` is written once by `create_room`, and
+   * there is no update path to it anywhere — no grant, no function, no command
+   * — so a room made while somebody had forgotten where they were standing
+   * leaves a line at the bottom of a room that is not theirs, permanently.
+   * That is what earns a question in a command that is otherwise deliberately
+   * frictionless.
+   */
+  it('asks, naming both rooms, before anything is made', async () => {
+    const { env, run } = harness([room('kitchen')])
+    const asked = await run('make boardgames tuesday nights', { room: 'kitchen' } as Location)
+
+    expect(text(asked.lines)).toContain('you are in kitchen. make boardgames here?')
+    // The part that makes it worth asking at all.
+    expect(text(asked.lines)).toMatch(/nothing can take it off again/)
+    // And nothing has happened yet.
+    expect(await env.getRoom('boardgames')).toBeUndefined()
+  })
+
+  it('attaches on y', async () => {
+    const { env, run } = harness([room('kitchen')])
+    await makeFrom(run, 'make boardgames tuesday nights', { room: 'kitchen' } as Location, 'y')
+    expect((await env.getRoom('boardgames'))?.fromRoom).toBe('kitchen')
+  })
+
+  it('still makes the room on n, without the line', async () => {
+    /*
+     * The design decision worth pinning. Cancelling would be the obvious answer
+     * and the wrong one: the room is wanted — the attachment is the accident —
+     * and a confirm that throws the typing away teaches people to hit `y` to
+     * get past it, which is the opposite of what it is for.
+     */
+    const { env, run } = harness([room('kitchen')])
+    await makeFrom(run, 'make boardgames tuesday nights', { room: 'kitchen' } as Location, 'n')
+
+    const made = await env.getRoom('boardgames')
+    expect(made).toBeDefined()
+    expect(made?.gloss).toBe('tuesday nights')
+    expect(made?.fromRoom).toBeUndefined()
+  })
+
+  it('leaves the parent alone on n', async () => {
+    const { run } = harness([room('kitchen')])
+    await makeFrom(run, 'make boardgames tuesday nights', { room: 'kitchen' } as Location, 'n')
+    expect(text((await run('go kitchen', {} as Location)).lines)).not.toContain('grew out of here')
+  })
+
+  it('takes yes and no in full', async () => {
+    const { env, run } = harness([room('kitchen'), room('shed')])
+    await makeFrom(run, 'make boardgames tuesday nights', { room: 'kitchen' } as Location, 'yes' as 'y')
+    await makeFrom(run, 'make mowers the loud ones', { room: 'shed' } as Location, 'no' as 'n')
+
+    expect((await env.getRoom('boardgames'))?.fromRoom).toBe('kitchen')
+    expect((await env.getRoom('mowers'))?.fromRoom).toBeUndefined()
+  })
+
+  it('asks again on anything else, rather than picking one', async () => {
+    // Both answers are permanent, so there is no safe side to guess toward.
+    const { env, run } = harness([room('kitchen')])
+    await run('make boardgames tuesday nights', { room: 'kitchen' } as Location)
+    const again = await run('maybe', { room: 'kitchen' } as Location)
+
+    expect(text(again.lines)).toContain('y or n.')
+    expect(text(again.lines)).toContain('make boardgames here?')
+    expect(await env.getRoom('boardgames')).toBeUndefined()
+
+    // And it is still answerable after the re-ask.
+    await run('y', { room: 'kitchen' } as Location)
+    expect((await env.getRoom('boardgames'))?.fromRoom).toBe('kitchen')
+  })
+
+  it('asks nothing in the lobby, where there is no parent to attach to', async () => {
+    const { run } = harness(seed())
+    const out = await run('make bebop the fast stuff', {} as Location)
+
+    expect(text(out.lines)).toContain('bebop is open')
+    expect(text(out.lines)).not.toContain('make bebop here?')
+  })
+
+  it('asks nothing on a wall or the feed, for the same reason', async () => {
+    const { run } = harness([...seed(), room('feed')])
+    expect(text((await run('make bebop the fast stuff', { room: '~marisol' } as Location)).lines)).toContain('bebop is open')
+    expect(text((await run('make jazz the slow stuff', { room: 'feed' } as Location)).lines)).toContain('jazz is open')
+  })
+
+  it('asks after the gloss when the gloss had to be asked for too', async () => {
+    // `make boardgames` with nothing after it asks what it is for first. The
+    // question about the parent comes after that, so nobody answers y about a
+    // room they have not finished describing.
+    const { env, run } = harness([room('kitchen')])
+    const forGloss = await run('make boardgames', { room: 'kitchen' } as Location)
+    expect(text(forGloss.lines)).toContain('what is boardgames for?')
+
+    const forParent = await run('tuesday nights', { room: 'kitchen' } as Location)
+    expect(text(forParent.lines)).toContain('make boardgames here?')
+
+    await run('y', { room: 'kitchen' } as Location)
+    const made = await env.getRoom('boardgames')
+    expect(made?.gloss).toBe('tuesday nights')
+    expect(made?.fromRoom).toBe('kitchen')
+  })
+})
+
+describe('and says so, in the room it just opened', () => {
+  /*
+   * Reported as a worry that a room made inside a room "will only show up from
+   * within that specific room", with a request to have to confirm first. The
+   * fact is the opposite — the room is ordinary and the parent link only adds
+   * a line to the parent — but the belief was earned: this printed exactly what
+   * it prints in the lobby, so the one difference was invisible from inside the
+   * room that had just been made.
+   */
+  it('names the room it grew out of', async () => {
+    const { run } = harness([room('music')])
+    const { done } = await makeFrom(run, 'make bebop the fast stuff', { room: 'music' } as Location)
+    expect(text(done.lines)).toContain('it grew out of music, which lists it at the bottom now')
+  })
+
+  it('says nothing of the sort when the answer was n', async () => {
+    const { run } = harness([room('music')])
+    const { done } = await makeFrom(run, 'make bebop the fast stuff', { room: 'music' } as Location, 'n')
+    expect(text(done.lines)).toContain('bebop is open')
+    expect(text(done.lines)).not.toContain('grew out of')
+  })
+
+  it('says none of it when there is no parent to name', async () => {
+    // From the lobby nothing grew out of anything, and a line explaining that
+    // would be a paragraph about a thing that did not happen.
+    const { run } = harness(seed())
+    const out = text((await run('make bebop the fast stuff', {} as Location)).lines)
+
+    expect(out).not.toContain('grew out of')
+    expect(out).not.toMatch(/from the lobby/)
+  })
+
+  it('says it for a room made from inside a post, naming the room', async () => {
+    const { run } = harness([room('music', { posts: [
+      { id: 12, author: 'marisol', body: 'have you heard this', createdAt: new Date(), replies: [] },
+    ] })])
+    const { done } = await makeFrom(run, 'make bebop the fast stuff', { room: 'music', post: 12 } as Location)
+    expect(text(done.lines)).toContain('it grew out of music')
   })
 })
 
@@ -116,7 +284,7 @@ describe('the parent room says what grew out of it', () => {
     const { run } = harness([room('music', { posts: [
       { id: 1, author: 'marisol', body: 'first', createdAt: new Date(), replies: [] },
     ] })])
-    await run('make bebop the fast stuff', { room: 'music' } as Location)
+    await makeFrom(run, 'make bebop the fast stuff', { room: 'music' } as Location)
 
     const out = text((await run('go music', {} as Location)).lines)
     expect(out).toContain('a room that grew out of here')
@@ -139,7 +307,7 @@ describe('the parent room says what grew out of it', () => {
      * the only useful thing on the screen.
      */
     const { run } = harness([room('music')])
-    await run('make bebop the fast stuff', { room: 'music' } as Location)
+    await makeFrom(run, 'make bebop the fast stuff', { room: 'music' } as Location)
 
     const out = text((await run('go music', {} as Location)).lines)
     expect(out).toContain('nothing here yet')
@@ -154,7 +322,7 @@ describe('the parent room says what grew out of it', () => {
     const rooms = [room('music')]
     const { run } = harness(rooms)
     for (let i = 0; i < 11; i++) {
-      await run(`make sub-${i} subtopic number ${i}`, { room: 'music' } as Location)
+      await makeFrom(run, `make sub-${i} subtopic number ${i}`, { room: 'music' } as Location)
     }
     const out = text((await run('go music', {} as Location)).lines)
     expect(out).toContain('and 3 more')
@@ -169,7 +337,7 @@ describe('the parent room says what grew out of it', () => {
      * is for. It was `dim`, the skim-past colour.
      */
     const { run } = harness([room('music')])
-    await run('make bebop the fast stuff', { room: 'music' } as Location)
+    await makeFrom(run, 'make bebop the fast stuff', { room: 'music' } as Location)
 
     const lines = (await run('go music', {} as Location)).lines
     const name = lines.find((l) => l.text === 'bebop')
@@ -187,7 +355,7 @@ describe('the parent room says what grew out of it', () => {
 describe('lineage is a label and never a permission or an address', () => {
   it('gives the new room a plain top-level address', async () => {
     const { run } = harness(seed())
-    const made = await run('make bebop the fast stuff', { room: 'music' } as Location)
+    const { done: made } = await makeFrom(run, 'make bebop the fast stuff', { room: 'music' } as Location)
     expect(made.location).toEqual({ room: 'bebop' })
 
     // Reachable by its own name from anywhere, with no path through the parent.
@@ -199,14 +367,14 @@ describe('lineage is a label and never a permission or an address', () => {
     // There is no moderator here and lineage does not invent one. The person
     // who opened `music` has exactly the powers everybody else in it has.
     const { env, run } = harness([room('music', { madeBy: 'marisol' })])
-    const made = await run('make bebop the fast stuff', { room: 'music' } as Location)
+    const { done: made } = await makeFrom(run, 'make bebop the fast stuff', { room: 'music' } as Location)
     expect(made.lines.some((l) => l.text.includes('bebop is open'))).toBe(true)
     expect((await env.getRoom('bebop'))?.fromRoom).toBe('music')
   })
 
   it('does not put a room in the lobby twice for having a parent', async () => {
     const { run } = harness([room('music')])
-    await run('make bebop the fast stuff', { room: 'music' } as Location)
+    await makeFrom(run, 'make bebop the fast stuff', { room: 'music' } as Location)
     const out = text((await run('look', {} as Location)).lines)
     expect(out.split('\n').filter((line) => line === 'bebop')).toHaveLength(1)
   })
@@ -270,7 +438,7 @@ describe('you can find it under the word you already have in mind', () => {
 
   it('runs when typed by either name', async () => {
     const { env, run } = harness([room('music')])
-    await run('create bebop the fast stuff', { room: 'music' } as Location)
+    await makeFrom(run, 'create bebop the fast stuff', { room: 'music' } as Location)
     expect((await env.getRoom('bebop'))?.fromRoom).toBe('music')
   })
 

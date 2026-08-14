@@ -29,6 +29,10 @@ test('make walks you into the room it just made, and the url follows', async ({ 
   await withName(page)
 
   await type(page, 'make garden what you are growing')
+  // Standing in music, so it asks whether music should list it — see the
+  // lineage tests below. Not what this walk is about, so: no.
+  await expect(scrollback(page)).toContainText('make garden here?')
+  await type(page, 'n')
   await expect(scrollback(page)).toContainText('garden is open')
   await expect(label(page)).toHaveText('roommaker:garden$')
   await expect(page).toHaveURL(/\/garden$/)
@@ -44,6 +48,7 @@ test('make walks you into the room it just made, and the url follows', async ({ 
 test('a new room joins the lobby as a room, not as a second tier', async ({ page }) => {
   await withName(page)
   await type(page, 'make garden what you are growing')
+  await type(page, 'n')
   await type(page, 'say four tomato plants and a lot of optimism')
 
   await type(page, 'leave')
@@ -70,6 +75,10 @@ test('make asks what a room is for, and opens it on the answer', async ({ page }
   await expect(scrollback(page)).not.toContainText('what you are growing')
 
   await type(page, 'the allium bed, and what to do with it')
+  // The parent question comes after the gloss, so nobody answers y about a
+  // room they have not finished describing.
+  await expect(scrollback(page)).toContainText('make onions here?')
+  await type(page, 'n')
   await expect(scrollback(page)).toContainText('onions is open')
   // The prompt follows, which is the half that is easy to leave out.
   await expect(label(page)).toHaveText('roommaker:onions$')
@@ -94,6 +103,7 @@ test('the docs are somewhere you can see them in help', async ({ page }) => {
 test('a room name already taken points at the room that has it', async ({ page }) => {
   await withName(page)
   await type(page, 'make music more music')
+  await type(page, 'y')
   await expect(scrollback(page)).toContainText('already exists')
   await expect(scrollback(page)).toContainText('go music')
 })
@@ -233,6 +243,9 @@ test('a room made from inside a room is listed at the bottom of that room', asyn
   await withName(page)
 
   await type(page, 'make bebop the fast stuff')
+  // Made from inside music on purpose here, so: yes, attach it.
+  await expect(scrollback(page)).toContainText('make bebop here?')
+  await type(page, 'y')
   // A plain top-level address. Not /music/bebop — nothing is inside anything.
   await expect(page).toHaveURL(/\/bebop$/)
   await expect(label(page)).toHaveText('roommaker:bebop$')
@@ -256,6 +269,41 @@ test('a room made from the lobby is nobody’s subtopic', async ({ page }) => {
 
   await type(page, 'go music')
   await expect(scrollback(page)).not.toContainText('grew out of here')
+})
+
+test('saying n makes the room and leaves the room you were in alone', async ({ page }) => {
+  /*
+   * The reported accident, walked end to end: "imagine being in kitchen and
+   * making a room for a board game and now you go into kitchen and that's one
+   * of the rooms you see. and there's no way to move or undo it."
+   *
+   * `music` stands in for the kitchen. The point is that one keystroke gets you
+   * the room you wanted without marking the room you were standing in — and
+   * that the room is fully made either way, because a confirm that throws the
+   * typing away would just train people to answer y.
+   */
+  await withName(page)
+
+  await type(page, 'make boardgames tuesday nights')
+  await expect(scrollback(page)).toContainText('nothing can take it off again')
+  await type(page, 'n')
+
+  // The room is real, and you are in it.
+  await expect(scrollback(page)).toContainText('boardgames is open')
+  await expect(label(page)).toHaveText('roommaker:boardgames$')
+  await expect(page).toHaveURL(/\/boardgames$/)
+  await expect(scrollback(page)).not.toContainText('grew out of')
+
+  // And music is untouched, which is the whole point of asking.
+  await type(page, 'go music')
+  // The heading is the assertion, not the word: the scrollback still holds the
+  // echo of `make boardgames tuesday nights` from a moment ago, so looking for
+  // the room's name here would find somebody's own typing.
+  await expect(scrollback(page)).not.toContainText('grew out of here')
+
+  // Still an ordinary room, findable by name from anywhere.
+  await type(page, 'go boardgames')
+  await expect(label(page)).toHaveText('roommaker:boardgames$')
 })
 
 test('create is on the help list, under the word somebody would look for', async ({ page }) => {
