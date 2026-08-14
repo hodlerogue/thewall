@@ -365,6 +365,25 @@ body {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/*
+ * One line, held open whether or not anything is in it.
+ *
+ * `.pending`, `.mail` and `.composing` share this slot and only one shows at a
+ * time — often none. It used to collapse to zero, so the `…` that appears
+ * between Enter and the answer grew the composer by exactly this much and shrank
+ * the scrollback by the same, then gave it back a moment later. Two layout
+ * changes per command, measured at 28.5px each: "a bit of a stutter where the
+ * text lands, and then a split second later it moves up a bit."
+ *
+ * 6px of padding plus one line at the body's 1.5 line-height — in `em`, so it
+ * tracks the font rather than restating 22.5px. A longer message that wraps to
+ * two lines still grows the slot; only `.pending` is guaranteed one line, and
+ * it is the one on the path somebody walks all day.
+ */
+.status-slot {
+  min-height: calc(6px + 1.5em);
+}
+
 .pending {
   margin: 0;
   padding: 6px 12px 0;
