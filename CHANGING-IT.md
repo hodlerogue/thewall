@@ -904,6 +904,21 @@ load-bearing:
 - **Every status other than `SUBSCRIBED` is a retry.** They were all ignored,
   so a channel that errored stayed dead for as long as the room stayed open,
   with a prompt that kept working and a room that never moved again.
+- **A row is claimed by id before its author is looked up, on both paths.**
+  The catch-up fetched rows, looked up their names, and *then* moved the
+  watermark — and that lookup is a real request whenever a name is not already
+  cached. Anything starting inside it read a watermark that had not moved and
+  fetched the same rows again, which is how a message arrived twice, one under
+  the other, in a two-browser test. Switching windows fires `visibilitychange`
+  every time, so that test runs catch-ups constantly. Both the live handler and
+  the catch-up now claim ids up front; neither alone is sufficient, because the
+  duplicate can come from live-then-catch-up as well as catch-up-then-catch-up.
+
+Tests for any of this must hold a request open — `gate()` in `live.test.ts` —
+and use an author id no other test has used. A fake that resolves in the same
+tick has no inside for a race to happen in, and names are cached process-wide,
+so reusing an id skips the lookup and closes the window by accident. The first
+version of these tests did both and passed against the bug.
 
 **Never send to an address that cannot receive.** RFC 2606 and RFC 6761 reserve
 `.test`, `.example`, `.invalid`, `.localhost` and `example.com/net/org` so they

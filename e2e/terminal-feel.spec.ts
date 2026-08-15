@@ -510,3 +510,44 @@ test('and rewrites nothing anybody wrote', async ({ page }) => {
 
   await expect(body).toHaveText(before!)
 })
+
+test('the answer to a command does not resize the page under it', async ({ page }) => {
+  /*
+   * "When i type say and then something there is a bit of a stutter where the
+   * text lands, and then a split second later it moves up a bit."
+   *
+   * The `…` shown between Enter and the answer shares a slot with the mail
+   * count and the writing indicator, and that slot used to collapse to nothing
+   * when none of the three was showing. So every command resized the composer
+   * twice — 28.5px off the scrollback when the `…` appeared, and 28.5px back
+   * when the answer replaced it — which is a whole line of text moving under
+   * somebody's eyes, twice, per command.
+   *
+   * Not reproducible against fixtures, which answer instantly so the `…` never
+   * renders. What is testable is the property that makes the stutter
+   * impossible: putting the line there changes no height. This measures the
+   * real element the real code renders, so it fails if the slot stops
+   * reserving its line or the line grows past it.
+   */
+  await type(page, 'look')
+  await expect(scrollback(page)).toContainText('commons keeps nothing')
+
+  const shift = await page.evaluate(() => {
+    const composer = document.querySelector('.composer')!
+    const slot = document.querySelector('.status-slot')!
+    const back = document.querySelector('[data-testid=scrollback]')!
+    const before = [composer.getBoundingClientRect().height, back.getBoundingClientRect().height]
+
+    // Exactly what setPending(true) renders, in the place it renders it.
+    const line = document.createElement('p')
+    line.className = 'pending'
+    line.textContent = '…'
+    slot.prepend(line)
+
+    const after = [composer.getBoundingClientRect().height, back.getBoundingClientRect().height]
+    line.remove()
+    return { before, after }
+  })
+
+  expect(shift.after).toEqual(shift.before)
+})

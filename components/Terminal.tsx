@@ -520,32 +520,53 @@ export function Terminal({
       </div>
 
       <div className="composer">
-        {/* Between Enter and the answer there used to be nothing at all — on a
-            phone that is up to a second of a prompt that visibly swallowed
-            your input and printed no reply. */}
-        {pending && (
-          <p className="pending" data-testid="pending">
-            …
-          </p>
-        )}
+        {/*
+          * One line of height, kept whether or not there is anything to put in
+          * it.
+          *
+          * Reported as: "when i type say and then something there is a bit of a
+          * stutter where the text lands, and then a split second later it moves
+          * up a bit." Measured at 28.5px — the three lines below share this
+          * slot, and it used to collapse to nothing when none of them showed.
+          * So every command resized the composer twice: the `…` appears on
+          * Enter and the scrollback loses 28.5px, then the answer arrives, the
+          * `…` goes, and it gets them back. The demo never showed it because
+          * fixtures answer instantly and the `…` never renders.
+          *
+          * Reserving the line costs that space permanently and buys back every
+          * command being still. It also settles two shifts nobody had reported
+          * yet: the mail count arrives from a poll and could shove the page
+          * mid-sentence, and the writing indicator did the same on entering
+          * `write`.
+          */}
+        <div className="status-slot">
+          {/* Between Enter and the answer there used to be nothing at all — on a
+              phone that is up to a second of a prompt that visibly swallowed
+              your input and printed no reply. */}
+          {pending && (
+            <p className="pending" data-testid="pending">
+              …
+            </p>
+          )}
         {/* The Unix precedent §4.1 cites is the login line. This is the same
             idea, kept where you are already looking rather than shown once and
             gone. */}
-        {mail > 0 && !pending && !composing && (
-          <p className="mail" data-testid="mail">
-            you have {mail} {mail === 1 ? 'reply' : 'replies'} waiting — type mail
-          </p>
-        )}
+          {mail > 0 && !pending && !composing && (
+            <p className="mail" data-testid="mail">
+              you have {mail} {mail === 1 ? 'reply' : 'replies'} waiting — type mail
+            </p>
+          )}
         {/* The one state where forgetting you are in it is expensive: every
             line goes into a draft rather than being run, and unlike the signup
             questions there is nothing being asked to remind you. So it says so
             where you are already looking, and says how to get out. */}
-        {composing && !pending && (
-          <p className="composing" data-testid="composing">
-            writing — {composing.lines} {composing.lines === 1 ? 'line' : 'lines'},{' '}
-            {composing.chars}/{Session.LIMIT} · a dot ends it
-          </p>
-        )}
+          {composing && !pending && (
+            <p className="composing" data-testid="composing">
+              writing — {composing.lines} {composing.lines === 1 ? 'line' : 'lines'},{' '}
+              {composing.chars}/{Session.LIMIT} · a dot ends it
+            </p>
+          )}
+        </div>
         <Palette chips={chipsFor(location, name)} onInsert={insert} />
         <form
           className="prompt-row"
