@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { startArrivalReads } from '@/lib/shell/boot'
+import { openingHint, startArrivalReads } from '@/lib/shell/boot'
 import { fixtureEnv, type Env } from '@/lib/shell/env'
 import type { Location } from '@/lib/shell/types'
 
@@ -160,5 +160,41 @@ describe('a failure while nobody is awaiting yet', () => {
     // And the failure is still there to be found by whoever awaits it, rather
     // than swallowed — the boot error path is what turns this into a sentence.
     await expect(reads.room).rejects.toThrow('the database is down')
+  })
+})
+
+/**
+ * The one line of instruction on the first screen.
+ *
+ * Found by walking the demo as somebody arriving for the first time: the line
+ * said `look`, and `look` printed the three items already visible above it. The
+ * first command a newcomer runs should show them something.
+ */
+describe('the line that tells a newcomer what to type', () => {
+  it('does not send anybody to look, which is already on the screen', () => {
+    for (const where of [{}, { room: 'commons' }, { room: 'music', postId: 12 }, { person: 'marisol' }]) {
+      expect(openingHint(where as Location)).not.toContain('look')
+    }
+  })
+
+  it('names a room to walk into when the list is what you are looking at', () => {
+    expect(openingHint({} as Location)).toContain('go')
+    expect(openingHint({} as Location)).not.toContain('rooms')
+  })
+
+  it('names the rooms when a room is what you are looking at', () => {
+    expect(openingHint({ room: 'commons' } as Location)).toContain('rooms')
+    expect(openingHint({ room: 'music' } as Location)).toContain('rooms')
+  })
+
+  it('and from a post or a wall, which are places you arrive at by link', () => {
+    expect(openingHint({ room: 'music', postId: 12 } as Location)).toContain('rooms')
+    expect(openingHint({ person: 'marisol' } as Location)).toContain('rooms')
+  })
+
+  it('names no particular room, because an example gets copied exactly', () => {
+    // A room called `onions` glossed "what you are growing" is how this was
+    // learned the first time.
+    expect(openingHint({} as Location)).toContain('a name from the list')
   })
 })

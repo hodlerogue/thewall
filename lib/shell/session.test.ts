@@ -11,6 +11,7 @@ function harness(
   options: {
     taken?: string[]
     failCreate?: string
+    note?: string
     recycled?: Date
     me?: string
     /** What presence answers, for the states the fixture cannot reach. */
@@ -30,7 +31,9 @@ function harness(
     },
     async create(name) {
       if (options.failCreate) return { ok: false as const, reason: options.failCreate }
-      return { ok: true as const, name }
+      // A note means something other than a normal send happened — the demo
+      // build sets one, and so does a send that failed.
+      return { ok: true as const, name, ...(options.note ? { note: options.note } : {}) }
     },
     async logout() {
       return { ok: true as const }
@@ -814,5 +817,55 @@ describe('help does not offer what commons cannot do', () => {
 
     expect(out).toMatch(/^go — go to another room$/m)
     expect(out).not.toMatch(/^go — open a post$/m)
+  })
+})
+
+/**
+ * Where no key was sent, nothing may say to follow one.
+ *
+ * Found by walking the demo. The demo's note is "nothing was sent — this is a
+ * demo, and your address wasn't kept", and directly under it sat "the address
+ * isn't proven until you follow that key" — pointing at a key the line above
+ * had just said did not exist — followed by "i'll ask for it before the next
+ * thing you say", which the demo then did not do, because there is nothing
+ * there to verify against. Both lines were mine.
+ */
+describe('signup, where the key could not be sent', () => {
+  it('says the name is yours and stops there', async () => {
+    const { run } = harness({ note: 'nothing was sent — this is a demo, and your address wasn’t kept.' })
+    await run('say hello', { room: 'music' } as Location)
+    await run('marko', { room: 'music' } as Location)
+    const done = await run('marko@example.com', { room: 'music' } as Location)
+
+    expect(text(done.lines)).toContain('nothing was sent')
+    expect(text(done.lines)).toContain('you’re marko here now.')
+  })
+
+  it('does not point at a key that was never sent', async () => {
+    const { run } = harness({ note: 'nothing was sent — this is a demo, and your address wasn’t kept.' })
+    await run('say hello', { room: 'music' } as Location)
+    await run('marko', { room: 'music' } as Location)
+    const done = await run('marko@example.com', { room: 'music' } as Location)
+
+    expect(text(done.lines)).not.toContain('follow that key')
+  })
+
+  it('does not promise an ask that will not come', async () => {
+    const { run } = harness({ note: 'nothing was sent — this is a demo, and your address wasn’t kept.' })
+    await run('say hello', { room: 'music' } as Location)
+    await run('marko', { room: 'music' } as Location)
+    const done = await run('marko@example.com', { room: 'music' } as Location)
+
+    expect(text(done.lines)).not.toContain('before the next thing you say')
+  })
+
+  it('still says both where a key really went out', async () => {
+    const { run } = harness()
+    await run('say hello', { room: 'music' } as Location)
+    await run('marko', { room: 'music' } as Location)
+    const done = await run('marko@example.com', { room: 'music' } as Location)
+
+    expect(text(done.lines)).toContain('follow that key')
+    expect(text(done.lines)).toContain('before the next thing you say')
   })
 })

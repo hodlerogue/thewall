@@ -57,3 +57,31 @@ export function startArrivalReads(env: Env, target: Location): ArrivalReads {
 
   return { rooms: env.listRooms(), room }
 }
+
+/**
+ * The one line of instruction on the first screen, matched to where you landed.
+ *
+ * It used to say `look` from everywhere, and the first screen is
+ * server-rendered — so the room, the lobby or the post is already on screen
+ * before anybody reads the line telling them to ask for it. Walked as a
+ * newcomer: land in commons, do as you are told, and watch the same three items
+ * print again underneath a line saying you asked for them. The first command
+ * anybody runs taught that commands repeat what is already there.
+ *
+ * So it names the thing that is *not* on screen. From the lobby the list of
+ * rooms is what you are looking at and a room is what you have not seen; from
+ * anywhere else it is the other way round.
+ *
+ * The lobby line says "a name from the list" rather than naming a room. A
+ * concrete example gets copied exactly — that is how a room ended up called
+ * `onions` glossed "what you are growing" — and the names it would be choosing
+ * between are already on the screen underneath.
+ */
+export function openingHint(location: Location): string {
+  const inTheLobby =
+    location.room === undefined && location.postId === undefined && location.person === undefined
+
+  return inTheLobby
+    ? 'type go and a name from the list to walk into a room, or tap a command below.'
+    : 'type rooms to see what else is going on, or tap a command below.'
+}

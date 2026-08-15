@@ -717,11 +717,28 @@ export class Session {
        * unsaid until the gate closes on somebody two sentences later with
        * "check your email to keep saying things".
        */
-      {
-        text: `you’re ${result.name} here now. the address isn’t proven until you follow that key —`,
-        tone: 'faint',
-      },
-      { text: 'i’ll ask for it before the next thing you say.', tone: 'faint' },
+      /*
+       * ...but only where there *is* a key. A note means something other than a
+       * normal send happened, and in the demo the note is "nothing was sent —
+       * this is a demo, and your address wasn't kept."
+       *
+       * Saying "follow that key" under that line pointed at a key the line
+       * above had just said did not exist, and "i'll ask for it before the next
+       * thing you say" was a promise the demo then broke: the next `say` goes
+       * straight through, because there is nothing to verify against. Found by
+       * walking the demo rather than by a test — both lines are mine, from the
+       * fix for the prompt reading as "logged in", and neither had any business
+       * being said where no key was sent.
+       */
+      ...(result.note === undefined
+        ? [
+            {
+              text: `you’re ${result.name} here now. the address isn’t proven until you follow that key —`,
+              tone: 'faint' as const,
+            },
+            { text: 'i’ll ask for it before the next thing you say.', tone: 'faint' as const },
+          ]
+        : [{ text: `you’re ${result.name} here now.`, tone: 'faint' as const }]),
       { text: '' },
     ]
 

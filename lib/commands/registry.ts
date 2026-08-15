@@ -261,7 +261,7 @@ function row(label: string, ok: boolean, note = ''): Line {
 export const COMMANDS: readonly Command[] = [
   {
     verb: 'look',
-    aliases: ['ls', 'see', 'list', 'show', 'rooms'],
+    aliases: ['ls', 'see', 'list', 'show'],
     contexts: ALL,
     gloss: (c) =>
       c === 'lobby'
@@ -299,6 +299,41 @@ export const COMMANDS: readonly Command[] = [
         return { lines: renderPost(post) }
       }
       return { lines: renderRoom(room) }
+    },
+  },
+
+  {
+    /*
+     * The rooms there are, from wherever you are standing.
+     *
+     * `rooms` used to be an alias of `look`, which meant it showed you the room
+     * you were already in — the one place the word cannot mean. Walked as a
+     * newcomer: land in commons, type the most natural word for "what else is
+     * here", and get commons again, verbatim, under a line saying you had asked
+     * for it.
+     *
+     * It does not move you. `leave` already goes to the lobby and this is a
+     * question rather than a journey — somebody wondering what else is going on
+     * mid-thread should not lose the thread to find out.
+     *
+     * Folded (§3.6): the glossary's first group is capped at ten lines, and
+     * this is a second way to see something `go` and `leave` already reach. It
+     * keeps its `what` entry, and the line printed on arrival names it, which
+     * is the moment somebody actually needs it.
+     */
+    verb: 'rooms',
+    // No aliases: `list`, `show` and `ls` all belong to `look`, and one word
+    // meaning two things is the thing this change exists to stop.
+    aliases: [],
+    folded: true,
+    contexts: ALL,
+    gloss: () => 'the rooms there are',
+    detail: () =>
+      'lists every room, from anywhere, without moving you — the same list the lobby shows. leave goes there instead, if you want to be there.',
+    insert: () => 'rooms',
+    wrongContext: () => '',
+    async run({ env }) {
+      return { lines: renderLobby(await env.listRooms()) }
     },
   },
 
