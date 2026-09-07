@@ -83,6 +83,32 @@ the rest — nothing runs twice and nothing is skipped.
 **Worked when:** `db-check.sh` shows all twenty-four as `applied`, every room has
 something in the last two columns, and the anon role reads all five objects.
 
+### A room exists but the lobby does not list it
+
+```bash
+DATABASE_URL='...' psql "$DATABASE_URL" -f scripts/lobby-check.sql
+```
+
+Read-only, and pasteable into the SQL Editor if you have no psql. It prints
+every room and why it is or is not on the front page.
+
+The answer is usually **faded**: a room that is not furniture drops out of the
+lobby after fourteen days with nothing said in it. That is deliberate (§4.2 —
+the lobby is a building, not a directory) and it is not a deletion; the room is
+still there and `go <name>` still opens it. It is invisible rather than
+announced, though: the lobby's "N more rooms" line counts only rooms it could
+have shown, so a faded room leaves no trace on the page.
+
+A **seeded** room must never fade, which is what `curated` is for. If the check
+shows one of the ten with `furniture = f`, the backfill in
+`20260806000000_three_more_rooms.sql` has not run — apply it with
+`db-deploy.sh`, or set it directly:
+
+```sql
+update public.rooms set curated = true
+ where owner_id is null and created_by is null;
+```
+
 ---
 
 ## 2. Netlify environment
