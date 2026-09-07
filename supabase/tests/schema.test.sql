@@ -1330,6 +1330,20 @@ select tests.ok(
   'and it still fades when it goes quiet, like the user room it is'
 );
 
+-- The other direction — a seeded *name* that exists because somebody typed
+-- `make builders` rather than because the seed inserted it — cannot be tested
+-- from here, and the attempt is recorded because it looked like it could.
+--
+-- This file runs against a database built migrations-then-seed, and the seed
+-- ends with `update ... set curated = true where created_by is null`. That
+-- statement runs last and fixes every seeded room, so the broken state never
+-- exists here however it is provoked: un-curating a room inside a migration is
+-- undone before the first assertion. Three assertions were written, all passed,
+-- and none of them failed when the repair they were guarding was deleted.
+--
+-- The guard that does bite is `furniture.test.ts`, which reads the seed and the
+-- migration and checks the permanent set is named in both.
+
 -- A banned account asking for a room gets told it is banned, rather than being
 -- sent to look for an email that would not have helped.
 --

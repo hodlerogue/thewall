@@ -23,15 +23,24 @@
 --               marked "in the lobby" below can still be one of the six that
 --               did not fit — the lobby says "N more rooms" when that happens.
 --
--- Furniture never fades. That is the whole of what `curated` buys, and every
--- seeded room is meant to have it: the seed sets it, and
--- 20260806000000_three_more_rooms.sql sets it again for anything seeded before
--- the column existed. A seeded room showing `curated=false` here means that
--- migration has not been applied — `./scripts/db-check.sh` will say so.
+-- Furniture never fades. That is the whole of what `curated` buys, and all ten
+-- permanent rooms are meant to have it.
+--
+-- `made_by_hand` is the column that answers the next question. Until
+-- 20260907000000 every repair marked the set with `where created_by is null`,
+-- reading "nobody is recorded as having made this" as "the seed inserted it" —
+-- so a permanent room that exists because somebody typed `make builders` was
+-- outside all of them, stayed uncurated, and faded. That is what happened to
+-- `builders` on a project that had applied every migration.
+--
+--   furniture=f, made_by_hand=f  → the repairs have not run. db-deploy.sh.
+--   furniture=f, made_by_hand=t  → this one. Apply 20260907000000, which marks
+--                                  the permanent set by name.
 
 select
   r.slug,
   r.curated as furniture,
+  r.created_by is not null as made_by_hand,
   coalesce(
     (select max(p.created_at) from public.posts p
       where p.room_slug = r.slug and p.hidden_at is null),
