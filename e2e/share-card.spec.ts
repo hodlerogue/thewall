@@ -89,8 +89,10 @@ test('following the bare domain lands on the fixed card, not a room’s', async 
   /*
    * The bug this exists for, end to end.
    *
-   * `/` does not render — it redirects to commons (§3.10 puts you there), and a
-   * crawler follows the redirect and scrapes the destination. So
+   * `/` does not render — it redirects, and a crawler follows the redirect and
+   * scrapes the destination. It went to commons then; it goes to /hello now for
+   * anybody without a session, which a crawler never has. Either way the
+   * destination's card is the bare domain's card, which is what this checks. So
    * `app/opengraph-image.png` was never once what a link to the bare domain
    * previewed as: X would have shown whatever was being said in commons that
    * hour, cached for a week, long after every one of those posts had expired.

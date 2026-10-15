@@ -18,10 +18,39 @@ async function type(page: Page, text: string) {
   await prompt(page).press('Enter')
 }
 
-test('the front door puts you in commons (§3.10)', async ({ page }) => {
+/*
+ * The bare domain shows a stranger the marketing page, and anybody with an
+ * account the prompt. Asked for as "the primary marketing page before you've
+ * logged in" — until then `/` put everybody in commons and nothing at all sent
+ * anybody to /hello.
+ */
+test('the front door shows somebody new the marketing page', async ({ page }) => {
+  await page.goto('/')
+  await expect(page).toHaveURL(/\/hello$/)
+})
+
+test('and puts somebody with an account in commons (§3.10)', async ({ page, context }) => {
+  // The cookie @supabase/ssr writes for a session. Only its presence is read at
+  // the door, so any value will do here.
+  await context.addCookies([{ name: 'sb-test-auth-token', value: 'x', url: 'http://127.0.0.1:3000' }])
   await page.goto('/')
   await expect(label(page)).toHaveText('guest:commons$')
   await expect(page).toHaveURL(/\/commons$/)
+})
+
+test('and a sign-in result reaches the prompt even without a session', async ({ page }) => {
+  // A magic link that failed leaves no session, and its outcome arrives on `/`
+  // as a query string. The marketing page cannot say what went wrong; the
+  // prompt can, so a query always goes in.
+  await page.goto('/?signed_in=0')
+  await expect(page).toHaveURL(/\/commons\?signed_in=0$/)
+})
+
+test('and the marketing page’s way in goes to the prompt, not round again', async ({ page }) => {
+  await page.goto('/hello')
+  await page.locator('a.landing-button').first().click()
+  await expect(page).toHaveURL(/\/commons$/)
+  await expect(label(page)).toHaveText('guest:commons$')
 })
 
 test('a room url lands you in the room', async ({ page }) => {

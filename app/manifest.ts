@@ -9,9 +9,11 @@ import { MARK_GROUND } from '@/lib/brand/mark'
  * behaves the way `components/Terminal.tsx` already assumes it does, because
  * the viewport stops being shared with a browser UI that resizes on scroll.
  *
- * `start_url` is `/`, not `/lobby`. §3.10 puts arrivals in commons and `/` is
- * the front door that does it; starting at the lobby would give somebody who
- * installed this a different first screen from everybody else.
+ * `start_url` is `/commons`, not `/`. It was `/` while the front door put
+ * everybody in commons; now `/` shows the marketing page to anybody without a
+ * session, and an installed app that opened onto a pitch for the app would be
+ * absurd. Commons is where `/` sends everybody who has an account, so this is
+ * the same first screen as theirs — and not `/lobby`, for the same reason.
  *
  * The colours are `warm` from lib/shell/themes.ts and deliberately fixed, for
  * the same reason the favicon is: this is chrome, not content. A splash screen
@@ -23,7 +25,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'thewall.social',
     short_name: 'thewall',
     description: 'a social site where the whole interface is a command prompt',
-    start_url: '/',
+    start_url: '/commons',
     scope: '/',
     display: 'standalone',
     orientation: 'portrait',

@@ -50,7 +50,7 @@ describe('the manifest, which is what a phone reads before offering to keep this
     // silent no-offer rather than an error, which is why they are listed.
     expect(m.name).toBeTruthy()
     expect(m.short_name).toBeTruthy()
-    expect(m.start_url).toBe('/')
+    expect(m.start_url).toBeTruthy()
     expect(m.display).toBe('standalone')
 
     const sizes = (m.icons ?? []).map((icon) => icon.sizes)
@@ -65,12 +65,12 @@ describe('the manifest, which is what a phone reads before offering to keep this
     })
   })
 
-  it('starts at the front door, not the lobby', async () => {
-    // §3.10 puts arrivals in commons and `/` is what does it. Starting an
-    // installed copy at /lobby would give it a different first screen from
-    // every other way in.
+  it('starts in commons, not at the marketing page or the lobby', async () => {
+    // `/` shows a stranger /hello now, and an installed app opening onto a
+    // pitch for itself would be absurd. Commons is where `/` sends everybody
+    // with an account, so an installed copy gets the same first screen they do.
     const { default: manifest } = await import('@/app/manifest')
-    expect(manifest().start_url).toBe('/')
+    expect(manifest().start_url).toBe('/commons')
   })
 
   it('is drawn in the same colours as the icon', async () => {

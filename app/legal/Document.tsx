@@ -52,7 +52,9 @@ export function LegalPage({ document }: { document: Document }) {
         Questions, or any of the requests above: <a href={`mailto:${CONTACT}`}>{CONTACT}</a>
       </p>
       <p className="document-meta">
-        <Link href="/">← back to the prompt</Link>
+        {/* Not `/`: that shows somebody without a session the marketing page,
+            and this link says "the prompt". */}
+        <Link href="/commons">← back to the prompt</Link>
       </p>
     </main>
   )

@@ -85,7 +85,8 @@ export default function Page() {
         <Link href="/privacy">privacy</Link> · <a href={`mailto:${CONTACT}`}>{CONTACT}</a>
       </p>
       <p className="document-meta">
-        <Link href="/">← go to the prompt</Link>
+        {/* Not `/`, which shows a stranger /hello now — see app/page.tsx. */}
+        <Link href="/commons">← go to the prompt</Link>
       </p>
     </main>
   )

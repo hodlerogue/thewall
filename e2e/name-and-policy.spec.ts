@@ -28,7 +28,7 @@ async function signUp(page: Page, name: string) {
 
 test.describe('renaming', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/commons')
     await expect(label(page)).toBeVisible()
   })
 
@@ -90,7 +90,7 @@ test.describe('a name that changed hands', () => {
 
 test.describe('terms and privacy', () => {
   test('are readable in the prompt, without an account', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/commons')
     await type(page, 'privacy')
     await expect(scrollback(page)).toContainText('reading thewall is anonymous')
     await expect(scrollback(page)).toContainText('thewall.social/privacy')
@@ -100,7 +100,7 @@ test.describe('terms and privacy', () => {
   })
 
   test('are named at the moment an address is asked for', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/commons')
     await type(page, 'say something worth keeping')
     await type(page, 'newcomer')
 
@@ -148,7 +148,7 @@ test.describe('terms and privacy', () => {
     if ((await notice.count()) > 0) {
       await expect(notice).toBeVisible()
       await expect(body).toContainText('NOT SET YET')
-      await page.goto('/')
+      await page.goto('/commons')
       await type(page, 'terms')
       await expect(scrollback(page)).toContainText('governing law')
     } else {
