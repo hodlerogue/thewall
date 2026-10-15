@@ -88,6 +88,22 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
       return { ok: true, slug: typeof data === 'string' ? data : slug }
     },
 
+    async describeRoom(slug: string, gloss: string): Promise<MadeRoom> {
+      const { data, error } = await client.rpc('describe_room', { p_slug: slug, p_gloss: gloss })
+      if (error) {
+        // A project without 20261015000000 has no such function, and the
+        // shared translation would say "making rooms is not switched on".
+        if (/Could not find the function|schema cache|PGRST202/i.test(error.message)) {
+          return {
+            ok: false,
+            reason: 'changing a description is not switched on here yet — the database is missing a migration. type doctor.',
+          }
+        }
+        return { ok: false, reason: friendlyRoomError(error.message) }
+      }
+      return { ok: true, slug: typeof data === 'string' ? data : slug }
+    },
+
     async findRooms(term: string): Promise<RoomHit[]> {
       const { data, error } = await client.rpc('find_rooms', { p_term: term, p_limit: 20 })
       if (error) throw error

@@ -56,6 +56,12 @@ export interface Env {
    */
   makeRoom(slug: string, gloss: string, from?: string): Promise<MadeRoom>
   /**
+   * Change what a room says it is for. Only its maker may, and only for rooms
+   * somebody made — `describe_room` decides, and a refusal comes back as a
+   * reason for the same reason `makeRoom`'s does.
+   */
+  describeRoom(slug: string, gloss: string): Promise<MadeRoom>
+  /**
    * Rooms by name or by what they are for.
    *
    * Once rooms are something people make, the lobby stops being the answer to
@@ -345,10 +351,11 @@ export function fixtureEnv(
       if (people.some((person) => person.name === clean)) {
         return { ok: false, reason: `${clean} is somebody's name. try: go ~${clean} to see them.` }
       }
-      if (gloss.trim().length < 3) {
+      const length = gloss.trim().length
+      if (length < 3 || length > 100) {
         return {
           ok: false,
-          reason: 'say what it is for, in a few words — that is the line under the name in the lobby.',
+          reason: `a room’s description is 3 to 100 characters, and this is ${length}.`,
         }
       }
       /*
@@ -375,6 +382,36 @@ export function fixtureEnv(
         fromRoom: grewFrom,
         posts: [],
       })
+      return { ok: true, slug: clean }
+    },
+
+    /*
+     * The demo has one person in it, and a room it made is marked `madeBy:
+     * 'you'` above — so "only whoever made it" is that. Seeded rooms have no
+     * maker and play the part of the ten that came with the building. Same
+     * refusals, in the same order, as `describe_room`.
+     */
+    async describeRoom(slug, gloss) {
+      const clean = slug.trim().toLowerCase()
+      const room = rooms.find((r) => r.slug === clean)
+      if (!room) return { ok: false, reason: `no room called ${clean}` }
+      if (room.owner !== undefined) {
+        return { ok: false, reason: 'a wall says what its person is saying, and that is not changed here.' }
+      }
+      if (room.madeBy === undefined) {
+        return {
+          ok: false,
+          reason: `${clean} is one of the rooms that came with the building, so it keeps its description.`,
+        }
+      }
+      if (room.madeBy !== 'you') {
+        return { ok: false, reason: `only whoever made ${clean} can change what it says it is for.` }
+      }
+      const length = gloss.trim().length
+      if (length < 3 || length > 100) {
+        return { ok: false, reason: `a room’s description is 3 to 100 characters, and this is ${length}.` }
+      }
+      room.gloss = gloss.trim()
       return { ok: true, slug: clean }
     },
 

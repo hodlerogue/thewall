@@ -2697,10 +2697,136 @@ select tests.ok(
       join pg_namespace n on n.oid = p.pronamespace and n.nspname = 'public'
      where has_function_privilege('authenticated', p.oid, 'execute')
        and not has_function_privilege('anon', p.oid, 'execute')
-  ) = 'change_name/1,create_post/2,create_reply/4,create_room/3,mail/0,mail_count/0,'
-      || 'mark_mail_seen/0,notify_state/0,set_notify/1',
-  'and signing in buys exactly the nine functions that write, and nothing else'
+  ) = 'change_name/1,create_post/2,create_reply/4,create_room/3,describe_room/2,mail/0,'
+      || 'mail_count/0,mark_mail_seen/0,notify_state/0,set_notify/1',
+  'and signing in buys exactly the ten functions that write, and nothing else'
 );
+
+-- describe_room — a room's maker changing what it says it is for ---------------
+--
+-- The first thing a maker can do that nobody else can (20261015000000), so the
+-- refusals matter more than the success. Accounts of its own, on ids nothing
+-- above uses: the shared ones are banned and closed along the way, and an
+-- `on conflict do nothing` onto a reused id quietly hands you one of those.
+insert into auth.users (
+  id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+  confirmation_token, recovery_token, email_change, email_change_token_new,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+values
+  ('d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'describer@seed.invalid', '', now(),
+   '', '', '', '', '{}'::jsonb, '{}'::jsonb, now(), now()),
+  ('e2e2e2e2-e2e2-4e2e-8e2e-e2e2e2e2e2e2', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'bystander@seed.invalid', '', now(),
+   '', '', '', '', '{}'::jsonb, '{}'::jsonb, now(), now())
+on conflict (id) do nothing;
+insert into public.profiles (id, name, verified_at) values
+  ('d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1', 'describer', now()),
+  ('e2e2e2e2-e2e2-4e2e-8e2e-e2e2e2e2e2e2', 'bystander', now())
+on conflict (id) do nothing;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'd1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1';
+
+  select tests.ok(
+    public.create_room('described'::citext, repeat('y', 100)) = 'described',
+    'a room can be made with a 100-character description'
+  );
+  select tests.raises(
+    $sql$select public.create_room('overdescribed'::citext, repeat('y', 101))$sql$,
+    'and not with 101'
+  );
+
+  select tests.ok(
+    public.describe_room('described'::citext, 'leave') = 'described',
+    'its maker can change what it says it is for'
+  );
+  -- Two statements: one statement reads from the snapshot it started with, so
+  -- checking the change in the same select as the call sees the old value.
+  select public.describe_room('described'::citext, 'what it is really for');
+  select tests.ok(
+    (select gloss from public.rooms where slug = 'described') = 'what it is really for',
+    'which is how `leave`, set by mistake, gets fixed'
+  );
+  select tests.raises(
+    $sql$select public.describe_room('described'::citext, repeat('x', 101))$sql$,
+    'not past 100 characters'
+  );
+  select tests.raises(
+    $sql$select public.describe_room('described'::citext, 'x')$sql$,
+    'nor under 3'
+  );
+  select tests.raises(
+    $sql$select public.describe_room('music'::citext, 'all music, all the time')$sql$,
+    'not one of the rooms that came with the building'
+  );
+commit;
+
+-- The case the "came with the building" rule actually exists for. `music` has
+-- no maker, so "only whoever made it" refuses it first and this rule never
+-- runs. A permanent room somebody made by hand does have one — `builders`, on
+-- a project seeded before builders was in the seed (20260907000000) — and its
+-- maker must not get to rewrite one of the ten.
+update public.rooms set created_by = 'd1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1' where slug = 'builders';
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'd1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1';
+  select tests.raises(
+    $sql$select public.describe_room('builders'::citext, 'whatever i say it is')$sql$,
+    'not even a permanent room its maker made by hand'
+  );
+  select tests.raises(
+    $sql$select public.describe_room('~marisol'::citext, 'what i say marisol is saying')$sql$,
+    'not somebody''s wall'
+  );
+  select tests.raises(
+    $sql$select public.describe_room('nowhere-at-all'::citext, 'a room that is not there')$sql$,
+    'not a room that does not exist'
+  );
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'e2e2e2e2-e2e2-4e2e-8e2e-e2e2e2e2e2e2';
+  select tests.raises(
+    $sql$select public.describe_room('described'::citext, 'mine now')$sql$,
+    'and not by anybody else'
+  );
+commit;
+
+begin;
+  set local role anon;
+  select tests.raises(
+    $sql$select public.describe_room('described'::citext, 'nobody in particular')$sql$,
+    'or anybody signed out'
+  );
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'e2e2e2e2-e2e2-4e2e-8e2e-e2e2e2e2e2e2';
+  -- The refusal names the room and not its maker: who opened a room is
+  -- deliberately unreadable (§4.2), and an error is a way of reading.
+  select tests.ok(
+    (select gloss from public.rooms where slug = 'described') = 'what it is really for',
+    'none of the refusals changed anything'
+  );
+commit;
+
+do $$
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', 'e2e2e2e2-e2e2-4e2e-8e2e-e2e2e2e2e2e2', true);
+  perform public.describe_room('described'::citext, 'mine now');
+exception when others then
+  if sqlerrm like '%describer%' then
+    raise exception 'FAILED: the refusal named who made the room: %', sqlerrm;
+  end if;
+  raise notice '  ok    the refusal does not say who made it';
+end;
+$$;
 
 \echo ''
 \echo 'all schema tests passed'

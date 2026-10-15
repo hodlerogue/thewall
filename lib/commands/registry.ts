@@ -167,7 +167,116 @@ const MAIL_LIMIT = 100
  * `make.test.ts` reads the migration, so these cannot drift from it.
  */
 export const GLOSS_MIN = 3
-export const GLOSS_MAX = 60
+/*
+ * 100, raised from 60 on request. Sixty was chosen for "the one line it gets
+ * at 380px" — but the lobby does not print descriptions at all (it prints each
+ * room's newest post), and everywhere that does print one wraps.
+ */
+export const GLOSS_MAX = 100
+
+/**
+ * What is wrong with a room's description, with the numbers in it, or null.
+ *
+ * The database used to refuse both ends with one sentence, "say what it is
+ * for, in a few words", which names neither the problem nor the limit. A line
+ * five characters over got that, was typed again unchanged — because it *was*
+ * a few words saying what the room is for — and then a third time with `say`
+ * in front, which is what somebody does when the prompt seems to want a verb.
+ */
+function glossProblem(line: string, slug: string): Line[] | null {
+  const words = line.trim()
+  if (words.length > GLOSS_MAX) {
+    return [
+      {
+        text: `that is ${words.length} characters, and a room’s description has to fit in ${GLOSS_MAX}.`,
+        tone: 'error',
+      },
+      { text: `cut ${words.length - GLOSS_MAX} and it is yours.`, tone: 'faint' },
+    ]
+  }
+  if (words.length < GLOSS_MIN) {
+    return [
+      {
+        text: `that is too short to tell anybody what ${slug} is for — ${GLOSS_MIN} characters at least.`,
+        tone: 'error',
+      },
+    ]
+  }
+  return null
+}
+
+/** Whether an answer starts with a word the prompt would have run. */
+function looksLikeACommand(answer: string): boolean {
+  const first = answer.trim().split(/\s+/)[0]?.toLowerCase() ?? ''
+  return first !== '' && findCommand(first) !== undefined
+}
+
+/**
+ * Ask what a room is for, and keep asking until the answer will do.
+ *
+ * Asked again after a refusal rather than dropped back to the prompt: the
+ * question used to be spent the moment it was answered, so a refused answer
+ * left you at `ryan:lobby$` with nothing asking anything, and the next attempt
+ * ran as a command. The complaint goes above the question, so the reason and
+ * the thing to do about it arrive together.
+ */
+function askGloss(
+  session: Session,
+  slug: string,
+  question: readonly Line[],
+  accept: (gloss: string) => Promise<RunResult>,
+  complaint: readonly Line[] = [],
+): Line[] {
+  return session.askOne([...complaint, ...question], async (answer) => {
+    const words = answer.trim()
+    const bad = glossProblem(words, slug)
+    if (bad) return { lines: askGloss(session, slug, question, accept, bad) }
+    if (looksLikeACommand(words)) {
+      return { lines: confirmGloss(session, slug, question, accept, words) }
+    }
+    const result = await accept(words)
+    return { lines: result.lines, location: result.location }
+  })
+}
+
+/**
+ * An answer that is also a command, checked before it becomes the room.
+ *
+ * Reported: in the middle of `make`, asked "what is pulsechain for?", typing
+ * `leave` or `go omaha` from habit — and that becoming the room's description.
+ * The prompt looks the same whether it is asking something or waiting for a
+ * command, so habit wins, and nothing said otherwise until it was done.
+ *
+ * Only the first word is looked at, so this asks about "read along with us" as
+ * well as "go omaha" — a `y` away, where the miss it guards against cost a room
+ * its description. `n` asks for the description again; `cancel` (which works
+ * at any question) stops making the room, so somebody who did mean `leave` can.
+ */
+function confirmGloss(
+  session: Session,
+  slug: string,
+  question: readonly Line[],
+  accept: (gloss: string) => Promise<RunResult>,
+  words: string,
+  again = false,
+): Line[] {
+  return session.askOne(
+    [
+      ...(again ? [{ text: 'y or n.', tone: 'faint' as const }] : []),
+      { text: `“${words}” is something you can type, too. is that what ${slug} is for?`, tone: 'accent' },
+      { text: 'y to use it. n to write the description again. cancel stops here.', tone: 'faint' },
+    ],
+    async (said) => {
+      const answer = said.trim().toLowerCase()
+      if (answer === 'y' || answer === 'yes') {
+        const result = await accept(words)
+        return { lines: result.lines, location: result.location }
+      }
+      if (answer === 'n' || answer === 'no') return { lines: askGloss(session, slug, question, accept) }
+      return { lines: confirmGloss(session, slug, question, accept, words, true) }
+    },
+  )
+}
 
 /** A post address that exists, for an error that tells you to open one. */
 async function newestPostIn(env: Env, room: string | undefined): Promise<number | string> {
@@ -519,7 +628,7 @@ export const COMMANDS: readonly Command[] = [
      */
     gloss: () => 'create a new room',
     detail: () =>
-      'makes a room: make garden what you are growing (create works too). the first word is its name, the rest says what it is for and shows under it in the lobby. you need a verified account, and you can make three a week. a room has no owner — once it exists it is everybody\u2019s. made from inside another room, it asks first whether that room should list it at the bottom as having grown out of it — say n and it is made without the line, because there is no undoing one. either way it is an ordinary room with an ordinary name, in the lobby and reachable by name, not something inside anything.',
+      'makes a room: make garden what you are growing (create works too). the first word is its name, the rest says what it is for, up to 100 characters. you need a verified account, and you can make three a week. a room has no owner — once it exists it is everybody\u2019s — though whoever made it can change its description with describe. made from inside another room, it asks first whether that room should list it at the bottom as having grown out of it — say n and it is made without the line, because there is no undoing one. either way it is an ordinary room with an ordinary name, in the lobby and reachable by name, not something inside anything.',
     insert: () => 'make ',
     wrongContext: () => '',
     async run({ arg, context, location, env, session }) {
@@ -591,6 +700,9 @@ export const COMMANDS: readonly Command[] = [
             // in it drops out of the lobby, and §5 is blunt about an empty room
             // being worse than no room.
             { text: 'it stays in the lobby while people are talking in it. it is always reachable by name.', tone: 'faint' },
+            // The one moment the maker needs to know this exists, and the only
+            // person it is true for — so it is said here and not in `help`.
+            { text: 'describe <a few words> changes what it says it is for. only you can.', tone: 'faint', hint: true },
           ],
           location: { room: made.slug },
         }
@@ -660,78 +772,92 @@ export const COMMANDS: readonly Command[] = [
       const begin = async (line: string): Promise<RunResult> =>
         from === undefined ? open(line, false) : { lines: askFirst(line) }
 
-      /**
-       * What is wrong with a description, with the numbers in it, or null.
-       *
-       * The database refused both ends with one sentence, "say what it is for,
-       * in a few words", which names neither the problem nor the limit. A line
-       * five characters over got that, was typed again unchanged — because it
-       * *was* a few words saying what the room is for — and then typed a third
-       * time with `say` in front, which is what somebody does when the prompt
-       * seems to want a verb.
-       */
-      const wrongGloss = (line: string): Line[] | null => {
-        const words = line.trim()
-        if (words.length > GLOSS_MAX) {
-          const over = words.length - GLOSS_MAX
-          return [
-            {
-              text: `that is ${words.length} characters, and the line under a room’s name has to fit in ${GLOSS_MAX}.`,
-              tone: 'error',
-            },
-            { text: `cut ${over} and it is yours.`, tone: 'faint' },
-          ]
-        }
-        if (words.length < GLOSS_MIN) {
-          return [
-            {
-              text: `that is too short to tell anybody what ${slug} is for — ${GLOSS_MIN} characters at least.`,
-              tone: 'error',
-            },
-          ]
-        }
-        return null
-      }
+      const question: Line[] = [
+        { text: `what is ${slug} for?`, tone: 'accent' },
+        {
+          text: `a few words — ${GLOSS_MAX} characters at most. it is how people know what to put there.`,
+          tone: 'faint',
+        },
+      ]
 
-      /*
-       * Asked again after a refusal, rather than dropped back to the prompt.
-       *
-       * The question used to be spent the moment it was answered, so a refused
-       * answer left you at `ryan:lobby$` with nothing asking anything — and the
-       * next attempt, typed as an answer, ran as a command instead. That is how
-       * `say a gathering place for…` ended up being told "you have to be in a
-       * room first", in the lobby, about a room that did not exist yet.
-       *
-       * The complaint goes above the question, so the reason and the thing to
-       * do about it arrive together. It asks for the description only; the name
-       * was fine and is not asked for twice.
-       */
-      const askGloss = (complaint: readonly Line[] = []): Line[] =>
-        session.askOne(
-          [
-            ...complaint,
-            { text: `what is ${slug} for?`, tone: 'accent' },
-            {
-              text: `a few words — ${GLOSS_MAX} characters at most. it goes under the name in the lobby, and it is how people know what to put there.`,
-              tone: 'faint',
-            },
-          ],
-          async (answer) => {
-            const bad = wrongGloss(answer)
-            if (bad) return { lines: askGloss(bad) }
-            const result = await begin(answer)
-            return { lines: result.lines, location: result.location }
-          },
-        )
+      if (gloss === '') return { lines: askGloss(session, slug, question, begin) }
 
-      if (gloss === '') return { lines: askGloss() }
-
-      // On one line, too long: same complaint, then the question — so the fix
-      // is typing a shorter description, not retyping `make pulsechain` first.
-      const bad = wrongGloss(gloss)
-      if (bad) return { lines: askGloss(bad) }
+      // On one line, too long: the same complaint, then the question — so the
+      // fix is a shorter description, not retyping `make pulsechain` first.
+      // Typed on one line it was meant, so it is not checked for looking like a
+      // command; that check is for answers to the question.
+      const bad = glossProblem(gloss, slug)
+      if (bad) return { lines: askGloss(session, slug, question, begin, bad) }
 
       return begin(gloss)
+    },
+  },
+
+  {
+    /*
+     * Change what a room you made says it is for.
+     *
+     * Asked for after descriptions went wrong at `make` — `leave` or
+     * `go omaha`, typed from habit while the prompt was asking a question,
+     * becoming the description for good. `make` now asks before accepting an
+     * answer like that; this is the repair for whatever gets through anyway, or
+     * a room that has simply outgrown its first line.
+     *
+     * The first thing a maker can do that nobody else can, against §4.2's "a
+     * room has no owner" — so it is the description and nothing else. Never the
+     * name, which is an address (§3.4). `describe_room` holds the rules; it
+     * knows who made the room and this does not, because that is deliberately
+     * unreadable from a browser.
+     *
+     * One line, never a question. A question is what let `leave` become a
+     * description in the first place, and there is nothing here to hold for
+     * later: typed on one line, the words are meant.
+     *
+     * Folded (§3.6): a row in everybody's `help` for something only makers can
+     * use. `make` names it at the moment it applies, and `what describe` has it.
+     */
+    verb: 'describe',
+    aliases: [],
+    folded: true,
+    contexts: ['room', 'post'],
+    gloss: () => 'change what your room says it is for',
+    detail: () =>
+      `changes the description of a room you made — stand in it and type describe <a few words>, up to ${GLOSS_MAX} characters. only whoever made a room can, and the rooms that came with the building keep theirs.`,
+    insert: () => 'describe ',
+    wrongContext: (c) =>
+      c === 'commons'
+        ? 'commons came with the building, so it keeps its description.'
+        : 'stand in the room you made first, then: describe <a few words>.',
+    async run({ arg, location, env, session }) {
+      const slug = location.room!
+      if (session.name() === null) {
+        return error('you need a name first. say something anywhere and i’ll ask you for one.')
+      }
+
+      const words = arg.trim()
+      if (words === '') {
+        const room = await env.getRoom(slug)
+        return {
+          lines: [
+            ...(room ? [{ text: `${slug} says: ${room.gloss}`, tone: 'dim' as const }] : []),
+            { text: `describe <a few words> changes that, if you made ${slug}. up to ${GLOSS_MAX} characters.`, tone: 'faint' },
+          ],
+        }
+      }
+
+      const bad = glossProblem(words, slug)
+      if (bad) return { lines: bad }
+
+      const done = await env.describeRoom(slug, words)
+      if (!done.ok) return error(done.reason)
+
+      // The value, the way a room is listed: its name, and under it the line.
+      return {
+        lines: [
+          { text: done.slug, tone: 'accent' },
+          { text: words, tone: 'dim', depth: 1 },
+        ],
+      }
     },
   },
 
