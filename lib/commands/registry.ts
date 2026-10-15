@@ -152,6 +152,12 @@ const renderLobby = (lobby: RoomList): Line[] =>
 /** The one room that holds nothing of its own — see the feed migration. */
 const FEED = 'feed'
 
+/** What `go` treats as the lobby. Neither can be a room's name. */
+const LOBBY_WORDS = new Set(['lobby', '/'])
+
+/** What somebody types looking for the main page, answered when no room has the name. */
+const HOME_WORDS = new Set(['home', 'main', 'start', 'index', 'homepage'])
+
 /** Matches the `limit` in `public.mail()`. Reaching it is said out loud. */
 const MAIL_LIMIT = 100
 
@@ -461,6 +467,35 @@ export const COMMANDS: readonly Command[] = [
   },
 
   {
+    /*
+     * Straight to the lobby, from anywhere.
+     *
+     * Reported as "i'm having trouble getting to thewall homepage". Walked from
+     * inside commons, every natural way of asking failed: `go lobby` said there
+     * was no room called lobby, `lobby` was not a word, `cd /` looked for a
+     * room called "/", and `home` explained how to add the site to a phone's
+     * home screen. Only `leave` worked — and from inside a post, `leave` goes
+     * back to the room, one step, not to the top.
+     *
+     * Folded (§3.6): `leave` already owns the lobby's line in `help`. This is
+     * for the words people try first.
+     */
+    verb: 'lobby',
+    aliases: ['home'],
+    folded: true,
+    contexts: ALL,
+    gloss: () => 'straight to the lobby, from anywhere',
+    detail: () =>
+      'takes you to the lobby — every room, with what was said last in each — from wherever you are. home and go lobby do the same. leave goes back one step instead.',
+    insert: () => 'lobby',
+    wrongContext: () => '',
+    async run({ env, session }) {
+      session.resetPaging()
+      return { lines: renderLobby(await env.listRooms()), location: {} }
+    },
+  },
+
+  {
     verb: 'go',
     aliases: ['cd', 'enter', 'open', 'join', 'read'],
     contexts: ALL,
@@ -572,6 +607,16 @@ export const COMMANDS: readonly Command[] = [
         return { lines: renderFeed(await env.readFeed()), location: { room: FEED } }
       }
 
+      // The lobby by name. It has an address — /lobby — and `go lobby` said
+      // "there's no room called lobby", which is true and the opposite of
+      // helpful to somebody trying to find the main page. Neither word can be a
+      // room: `lobby` is reserved and `/` is not a legal name, so this shadows
+      // nothing anybody could make.
+      if (LOBBY_WORDS.has(arg.toLowerCase())) {
+        session.resetPaging()
+        return { lines: renderLobby(await env.listRooms()), location: {} }
+      }
+
       // Anything else is a room name, and naming a room works from anywhere —
       // the same way an absolute path does.
       const room = await env.getRoom(arg)
@@ -589,6 +634,12 @@ export const COMMANDS: readonly Command[] = [
           arg,
           rooms.map((r) => r.slug),
         )
+        // `go home` and its cousins, when nobody has made a room by that name:
+        // somebody looking for the main page, told where it is. Only on a miss,
+        // so a real room called `home` still wins.
+        if (HOME_WORDS.has(arg.toLowerCase())) {
+          return error(`there’s no room called ${arg}. the lobby lists every room — try: lobby`)
+        }
         return error(
           near ? `there’s no room called ${arg}. did you mean ${near}?` : `there’s no room called ${arg}. try: look`,
         )
@@ -1558,7 +1609,11 @@ export const COMMANDS: readonly Command[] = [
      * one interruption every other decision here has avoided.
      */
     verb: 'install',
-    aliases: ['home', 'homescreen', 'app'],
+    // `home` was here and is `lobby`'s now. Typed by itself it means "take me
+    // back to the start" far more often than "add this to my home screen", and
+    // answering it with install instructions was one of the ways somebody
+    // trying to get to the main page got nowhere.
+    aliases: ['homescreen', 'app'],
     contexts: ALL,
     gloss: () => 'keep this on your home screen',
     detail: () =>
