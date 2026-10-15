@@ -155,6 +155,20 @@ const FEED = 'feed'
 /** Matches the `limit` in `public.mail()`. Reaching it is said out loud. */
 const MAIL_LIMIT = 100
 
+/**
+ * How long the line under a room's name may be, matching `create_room`.
+ *
+ * Checked here as well as there, because the database's refusal could only say
+ * one thing for both ends — "say what it is for, in a few words" — and that is
+ * advice somebody who has just written nine words of description has already
+ * followed. Reported with a screenshot of the same 65-character line typed
+ * three times, then once more with `say` in front of it.
+ *
+ * `make.test.ts` reads the migration, so these cannot drift from it.
+ */
+export const GLOSS_MIN = 3
+export const GLOSS_MAX = 60
+
 /** A post address that exists, for an error that tells you to open one. */
 async function newestPostIn(env: Env, room: string | undefined): Promise<number | string> {
   if (room === undefined) return 12
@@ -646,20 +660,76 @@ export const COMMANDS: readonly Command[] = [
       const begin = async (line: string): Promise<RunResult> =>
         from === undefined ? open(line, false) : { lines: askFirst(line) }
 
-      if (gloss === '') {
-        return {
-          lines: session.askOne(
-            [
-              { text: `what is ${slug} for?`, tone: 'accent' },
-              { text: 'a few words. it goes under the name in the lobby, and it is how people know what to put there.', tone: 'faint' },
-            ],
-            async (answer) => {
-              const result = await begin(answer)
-              return { lines: result.lines, location: result.location }
+      /**
+       * What is wrong with a description, with the numbers in it, or null.
+       *
+       * The database refused both ends with one sentence, "say what it is for,
+       * in a few words", which names neither the problem nor the limit. A line
+       * five characters over got that, was typed again unchanged — because it
+       * *was* a few words saying what the room is for — and then typed a third
+       * time with `say` in front, which is what somebody does when the prompt
+       * seems to want a verb.
+       */
+      const wrongGloss = (line: string): Line[] | null => {
+        const words = line.trim()
+        if (words.length > GLOSS_MAX) {
+          const over = words.length - GLOSS_MAX
+          return [
+            {
+              text: `that is ${words.length} characters, and the line under a room’s name has to fit in ${GLOSS_MAX}.`,
+              tone: 'error',
             },
-          ),
+            { text: `cut ${over} and it is yours.`, tone: 'faint' },
+          ]
         }
+        if (words.length < GLOSS_MIN) {
+          return [
+            {
+              text: `that is too short to tell anybody what ${slug} is for — ${GLOSS_MIN} characters at least.`,
+              tone: 'error',
+            },
+          ]
+        }
+        return null
       }
+
+      /*
+       * Asked again after a refusal, rather than dropped back to the prompt.
+       *
+       * The question used to be spent the moment it was answered, so a refused
+       * answer left you at `ryan:lobby$` with nothing asking anything — and the
+       * next attempt, typed as an answer, ran as a command instead. That is how
+       * `say a gathering place for…` ended up being told "you have to be in a
+       * room first", in the lobby, about a room that did not exist yet.
+       *
+       * The complaint goes above the question, so the reason and the thing to
+       * do about it arrive together. It asks for the description only; the name
+       * was fine and is not asked for twice.
+       */
+      const askGloss = (complaint: readonly Line[] = []): Line[] =>
+        session.askOne(
+          [
+            ...complaint,
+            { text: `what is ${slug} for?`, tone: 'accent' },
+            {
+              text: `a few words — ${GLOSS_MAX} characters at most. it goes under the name in the lobby, and it is how people know what to put there.`,
+              tone: 'faint',
+            },
+          ],
+          async (answer) => {
+            const bad = wrongGloss(answer)
+            if (bad) return { lines: askGloss(bad) }
+            const result = await begin(answer)
+            return { lines: result.lines, location: result.location }
+          },
+        )
+
+      if (gloss === '') return { lines: askGloss() }
+
+      // On one line, too long: same complaint, then the question — so the fix
+      // is typing a shorter description, not retyping `make pulsechain` first.
+      const bad = wrongGloss(gloss)
+      if (bad) return { lines: askGloss(bad) }
 
       return begin(gloss)
     },
