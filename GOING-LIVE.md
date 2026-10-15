@@ -77,6 +77,14 @@ knowing going in: everybody is signed out by the move, because the new project
 mints its own JWT secret and they come back with `login <name>`; and commons is
 not carried, because commons keeps nothing.
 
+**The check at the end: the two fingerprint lines must be identical on both
+sides.** Matching counts are not enough — an earlier version of this file moved
+every reply, matched every count, and still renumbered replies and dropped
+which reply each one answered. The fingerprints hash the addresses, the links
+and the words, so that kind of loss shows up as a different string. `npm run
+test:db` now performs a real move between two databases and fails if they
+differ.
+
 This is safe to run repeatedly now. On its first run against an existing project
 it probes for each migration, records the ones already there, and applies only
 the rest — nothing runs twice and nothing is skipped.
