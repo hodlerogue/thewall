@@ -775,7 +775,7 @@ export const COMMANDS: readonly Command[] = [
       const question: Line[] = [
         { text: `what is ${slug} for?`, tone: 'accent' },
         {
-          text: `a few words — ${GLOSS_MAX} characters at most. it is how people know what to put there.`,
+          text: `a few words — ${GLOSS_MAX} characters at most. it goes at the top of the room, and it is how people know what to put there.`,
           tone: 'faint',
         },
       ]

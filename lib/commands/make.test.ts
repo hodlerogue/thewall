@@ -336,3 +336,40 @@ describe('describe', () => {
     expect(out).toContain('describe <a few words> changes what it says it is for')
   })
 })
+
+/**
+ * Where the description goes.
+ *
+ * "i can't even see where the description of a room goes. when i go into the
+ * room it doesn't even show up." It went nowhere anybody walks — the lobby
+ * shows each room's newest post instead — so it is the first line of the room.
+ */
+describe('a room says what it is for when you walk in', () => {
+  it('on go, before anything said in it', async () => {
+    const { run } = harness()
+    await run('make pulsechain decentralized blockchain talk', lobby)
+    const out = (await run('go pulsechain', lobby)).lines
+    expect(out[0]).toMatchObject({ text: 'decentralized blockchain talk', tone: 'dim' })
+  })
+
+  it('on look', async () => {
+    const { run } = harness()
+    await run('make pulsechain decentralized blockchain talk', lobby)
+    const out = (await run('look', { room: 'pulsechain' } as Location)).lines
+    expect(out[0].text).toBe('decentralized blockchain talk')
+  })
+
+  it('right after it is made, so its maker sees where it went', async () => {
+    const { run } = harness()
+    const out = text((await run('make pulsechain decentralized blockchain talk', lobby)).lines)
+    expect(out).toMatch(/pulsechain is open[\s\S]*decentralized blockchain talk[\s\S]*nothing here yet/)
+  })
+
+  it('and the new one after describe', async () => {
+    const { run } = harness()
+    await run('make pulsechain leave', lobby)
+    await run('describe decentralized blockchain talk', { room: 'pulsechain' } as Location)
+    const out = (await run('look', { room: 'pulsechain' } as Location)).lines
+    expect(out[0].text).toBe('decentralized blockchain talk')
+  })
+})

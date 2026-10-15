@@ -93,10 +93,20 @@ describe('what may be switched off', () => {
 
   it('and commons repeating what commons is, every time you look', () => {
     const room: Room = { slug: 'commons', gloss: 'briefly', ephemeral: true, posts: [post(4)] }
-    const banner = renderRoom(room, at(60))[0]
+    // Found by what it says rather than where it is: the room's description is
+    // the first line now, and the banner follows it.
+    const banner = renderRoom(room, at(60)).find((l) => l.text.includes('commons keeps nothing'))
 
-    expect(banner.text).toContain('commons keeps nothing')
-    expect(banner.hint).toBe(true)
+    expect(banner?.hint).toBe(true)
+  })
+
+  it('but never what a room says it is for', () => {
+    // A description is the room, not an instruction about it, so `hints off`
+    // must not take it away.
+    const room: Room = { slug: 'music', gloss: 'what you are listening to', ephemeral: false, posts: [post(4)] }
+    const first = renderRoom(room, at(60))[0]
+    expect(first.text).toBe('what you are listening to')
+    expect(first.hint).toBeUndefined()
   })
 })
 

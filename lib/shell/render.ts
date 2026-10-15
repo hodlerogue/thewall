@@ -295,6 +295,28 @@ export function renderFeed(
 export function renderRoom(room: Room, now = new Date()): Line[] {
   const lines: Line[] = []
 
+  /*
+   * What the room is for, first.
+   *
+   * Reported as "i can't even see where the description of a room goes. when
+   * i go into the room it doesn't even show up." It did not. A room's
+   * description was asked for at `make`, required, limited, editable with
+   * `describe` — and then printed nowhere you would walk: not in the room, and
+   * not in the lobby, which shows each room's newest post instead (§3.11). It
+   * reached the share card, the page served before the shell loads, and the
+   * list at the bottom of a room something grew out of. The question at
+   * `make` told people it "is how people know what to put there", which was
+   * not true of anywhere they could see it.
+   *
+   * Every way into a room comes through here — `go`, `look`, `make`, arriving
+   * by link — so this is the one place it needs to be said. Dim rather than
+   * accent: accent is the colour of a thing you can type.
+   */
+  if (room.gloss) {
+    lines.push({ text: room.gloss, tone: 'dim' })
+    lines.push({ text: '' })
+  }
+
   if (room.ephemeral) {
     lines.push({
       text: 'commons keeps nothing. everything here is gone in 24 hours.',
