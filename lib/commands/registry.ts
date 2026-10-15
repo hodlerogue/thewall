@@ -2259,7 +2259,7 @@ export const COMMANDS: readonly Command[] = [
   },
 ]
 
-const FLAG_NAMES = ['room', 'rooms', 'by', 'since', 'limit']
+export const FLAG_NAMES = ['room', 'rooms', 'by', 'since', 'limit']
 
 function buildQuery(
   input: string,
