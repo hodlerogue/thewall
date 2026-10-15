@@ -127,7 +127,7 @@ Type `find` followed by a word — `find tomatoes`. Add `--room`, `--by` or
 
 Type `install` to add it to your home screen so it opens full screen like an
 app (on iPhone it'll tell you which two taps to make). `theme` changes the
-colours — warm, black, green or light — and `hints off` hides the little
+colors — warm, black, green or light — and `hints off` hides the little
 suggestions if you'd rather not see them.
 
 ---
