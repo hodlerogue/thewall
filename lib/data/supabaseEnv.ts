@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Live } from '@/lib/data/live'
-import { ROOM_PAGE, type Check, type Env, type MadeRoom, type MailItem, LOBBY_FETCH } from '@/lib/shell/env'
+import { ROOM_PAGE, type Check, type Env, type MadeRoom, type MailItem, type ReportTarget, type Reported, LOBBY_FETCH } from '@/lib/shell/env'
 import type { Post, PostHit, Profile, Room, RoomHit, RoomSummary, RoomList } from '@/lib/shell/model'
 import { FEED_PAGE } from '@/lib/shell/render'
 
@@ -102,6 +102,25 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         return { ok: false, reason: friendlyRoomError(error.message) }
       }
       return { ok: true, slug: typeof data === 'string' ? data : slug }
+    },
+
+    async report(target: ReportTarget, reason: string): Promise<Reported> {
+      const { data, error } = await client.rpc('report_content', {
+        p_room: target.room,
+        p_post_no: target.post ?? null,
+        p_reply_no: target.reply ?? null,
+        p_reason: reason.trim() === '' ? null : reason.trim(),
+      })
+      if (error) {
+        if (/Could not find the function|schema cache|PGRST202/i.test(error.message)) {
+          return {
+            ok: false,
+            reason: 'reporting is not switched on here yet — the database is missing a migration. type doctor.',
+          }
+        }
+        return { ok: false, reason: error.message }
+      }
+      return { ok: true, outcome: data as 'reported' | 'already' | 'hidden' }
     },
 
     async findRooms(term: string): Promise<RoomHit[]> {

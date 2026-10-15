@@ -99,7 +99,10 @@ describe('the support bot’s FAQ', () => {
         // An example about a room the reader has in mind (`go cycling`) is
         // refused here only because the demo has no such room — which is the
         // command working. Anything else is a real refusal.
-        if (!refused || /^there’s no room called /.test(refused.text)) return
+        // Likewise `report room`, which the FAQ tells you to type in a room
+        // somebody made: the demo's rooms all came with the building, and being
+        // told so is the command working.
+        if (!refused || /^there’s no room called |came with the building/.test(refused.text)) return
         refusals.push(`${JSON.stringify(place)}: ${refused.text}`)
       }
       expect.fail(`refused everywhere it was tried:\n${refusals.join('\n')}`)

@@ -13,7 +13,7 @@
  */
 
 import { parseFlags, parseSince, splitStages } from '@/lib/commands/pipeline'
-import { ROOM_PAGE, type Env } from '@/lib/shell/env'
+import { ROOM_PAGE, type Env, type ReportTarget } from '@/lib/shell/env'
 import { formatAgo, type PostHit, type PostQuery, type RoomHit } from '@/lib/shell/model'
 import {
   renderFeed,
@@ -914,6 +914,96 @@ export const COMMANDS: readonly Command[] = [
   },
 
   {
+    /*
+     * Flag something for review.
+     *
+     * Asked for as "a report feature, for example for an inappropriately named
+     * room or post someone makes. and if enough people report it, it should be
+     * auto hidden." `report_content` holds every rule — who may, what may be
+     * reported, and the threshold — so this only works out what is being
+     * pointed at.
+     *
+     * The same aim as `reply`, so there is one grammar to learn: in a room a
+     * number is a post, inside a post it is a reply, and `room/12` works from
+     * anywhere. `room` and `post` name the place you are standing, because a
+     * room's name is not something you can put a number on.
+     *
+     * Never a question. A report is one voice among several, so a wrong aim
+     * costs little — and the line that comes back names exactly what was
+     * reported, so a wrong one is visible at once.
+     */
+    verb: 'report',
+    aliases: ['flag'],
+    contexts: ALL,
+    gloss: () => 'flag something that should not be here',
+    detail: () =>
+      'flags something for review: a room somebody made, a post, or a reply. in a room, report 12 <why> flags post 12, and report room <why> the room itself. inside a post, report 3 <why> flags reply 3, and report post <why> the post. report music/12 <why> works from anywhere. the reason is optional. when enough people report the same thing it is hidden until someone looks at it. you need a confirmed email, and the rooms that came with the site cannot be reported — report what is in them.',
+    insert: () => 'report ',
+    wrongContext: () => '',
+    async run({ arg, context, location, env, session }) {
+      const [aim = '', ...rest] = arg.trim().split(/\s+/)
+      const why = rest.join(' ')
+
+      if (aim === '') {
+        return {
+          lines: [
+            { text: 'report <what> <why> — flag something that should not be here.', tone: 'faint' },
+            { text: 'in a room: report 12 <why> for post 12, or report room <why> for the room.', tone: 'faint' },
+            { text: 'inside a post: report 3 <why> for reply 3, or report post <why> for the post.', tone: 'faint' },
+          ],
+        }
+      }
+      if (session.name() === null) {
+        return error('you need a name first. say something anywhere and i’ll ask you for one.')
+      }
+
+      let target: ReportTarget
+      if (ADDRESS.test(aim)) {
+        const [room, number] = aim.split('/')
+        target = { room, post: Number(number) }
+      } else if (aim === 'room') {
+        if (location.room === undefined) return error('stand in the room first, then: report room <why>.')
+        target = { room: location.room }
+      } else if (aim === 'post') {
+        if (context !== 'post') {
+          return error('open the post first, then: report post <why>. or from the room: report 12 <why>.')
+        }
+        target = { room: location.room!, post: location.postId! }
+      } else if (NUMBER.test(aim)) {
+        if (context === 'post') target = { room: location.room!, post: location.postId!, reply: Number(aim) }
+        else if (location.room !== undefined) target = { room: location.room, post: Number(aim) }
+        else return error(`a number needs a room — try: report music/${aim} <why>`)
+      } else {
+        return error(`report what? a number, room, post, or an address like music/12. try: what report`)
+      }
+
+      const address =
+        target.post === undefined
+          ? target.room
+          : target.reply === undefined
+            ? `${target.room}/${target.post}`
+            : `${target.room}/${target.post}, reply ${target.reply}`
+
+      const done = await env.report(target, why)
+      if (!done.ok) return error(done.reason)
+      if (done.note) return { lines: [{ text: done.note, tone: 'faint' }] }
+
+      return {
+        lines: [
+          done.outcome === 'already'
+            ? { text: `you have already reported ${address}.`, tone: 'faint' }
+            : done.outcome === 'hidden'
+              ? { text: `${address} is hidden now, until someone looks at it. thank you.`, tone: 'faint' }
+              : {
+                  text: `${address} reported. thank you — if enough people agree, it is hidden until someone looks.`,
+                  tone: 'faint',
+                },
+        ],
+      }
+    },
+  },
+
+  {
     verb: 'say',
     contributes: true,
     /*
@@ -1550,6 +1640,7 @@ export const COMMANDS: readonly Command[] = [
         'hints',
         'install',
         'terms',
+        'report',
         'privacy',
         'what',
         'help',

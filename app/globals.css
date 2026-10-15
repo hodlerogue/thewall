@@ -973,3 +973,121 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/*
+ * /admin — reports, hidden things, the threshold.
+ *
+ * In the site's own colours, so it follows whatever theme is chosen, and in the
+ * same mono face: it is a page for one person, and the less it looks like a
+ * different product the less it reads as one. Built for a phone first, like
+ * everything else here (§8).
+ */
+.admin {
+  max-width: var(--prose);
+  margin: 0 auto;
+  padding: 20px 16px 48px;
+  color: var(--fg);
+  background: var(--bg);
+  min-height: 100dvh;
+}
+.admin h1 {
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 400;
+  margin: 0;
+}
+.admin h2 {
+  color: var(--fg);
+  font-size: 15px;
+  font-weight: 400;
+  margin: 28px 0 8px;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 6px;
+}
+.admin a {
+  color: var(--accent);
+}
+.admin-back,
+.admin-quiet {
+  color: var(--fg-faint);
+}
+.admin-count {
+  color: var(--fg-faint);
+}
+.admin-notice {
+  color: var(--accent);
+  border: 1px solid var(--rule);
+  padding: 8px 10px;
+}
+.admin-list,
+.admin-reasons {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.admin-item {
+  border: 1px solid var(--rule);
+  background: var(--bg-raised);
+  padding: 10px 12px;
+  margin: 0 0 10px;
+}
+.admin-item p {
+  margin: 0 0 6px;
+}
+.admin-item-head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.admin-content {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.admin-meta,
+.admin-reasons {
+  color: var(--fg-dim);
+}
+.admin-reasons {
+  margin: 0 0 6px;
+}
+.admin-badge {
+  color: var(--fg-faint);
+  border: 1px solid var(--rule);
+  padding: 0 6px;
+}
+.admin-badge-hidden {
+  color: var(--error);
+  border-color: var(--error);
+}
+.admin-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.admin button {
+  font: inherit;
+  color: var(--accent);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  padding: 8px 12px; /* a thumb's worth on a phone */
+  cursor: pointer;
+}
+.admin button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.admin-threshold {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.admin-threshold input {
+  font: inherit;
+  width: 5em;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  padding: 8px;
+}
