@@ -27,6 +27,7 @@ import {
 import type { RoomList } from '@/lib/shell/model'
 import type { Session } from '@/lib/shell/session'
 import { ABOUT_SUMMARY } from '@/lib/guide/about'
+import { FEEDBACK_ROOM } from '@/lib/support/widget'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
 import { offerInstall } from '@/lib/pwa/install'
 import { hintsOn, setHints } from '@/lib/shell/hints'
@@ -1574,7 +1575,7 @@ export const COMMANDS: readonly Command[] = [
         lines.push(...about)
       }
       /*
-       * Two places, because this list is verbs and they are not.
+       * Places, because this list is verbs and they are not.
        *
        * `feed` and `~name` are rooms, so the only thing that ever named them
        * was the lobby listing and the middle of `what go`. Somebody who types
@@ -1583,13 +1584,20 @@ export const COMMANDS: readonly Command[] = [
        * anything in help about profile, or feed" is what that looks like from
        * outside, and it was accurate.
        *
-       * Two lines, not a third group of six. The point is to name the two doors
+       * A few lines, not a third group of six. The point is to name the doors
        * that no verb spells, then get out of the way.
        */
       lines.push({ text: '' })
-      lines.push({ text: 'and two places:', tone: 'faint' })
+      lines.push({ text: 'and three places:', tone: 'faint' })
       lines.push({ text: `go ${FEED} — everything anybody put on their own wall`, tone: 'dim' })
       lines.push({ text: 'go ~name — somebody: who they are, and their wall', tone: 'dim' })
+      /*
+       * Asked for as "why is feedback not listed in the help menu". `help` is a
+       * list of commands, and feedback is a room — but it is the one room people
+       * go looking for when something is wrong, which is exactly when they type
+       * `help`, and it is where the support form lives.
+       */
+      lines.push({ text: `go ${FEEDBACK_ROOM} — something broken? tell us there`, tone: 'dim' })
 
       lines.push({ text: '' })
       lines.push({ text: 'what <command> explains any of them.', tone: 'faint' })

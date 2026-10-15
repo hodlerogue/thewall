@@ -72,3 +72,22 @@ describe('the lobby, by the words people try', () => {
     expect(result.location).toEqual({ room: 'music' })
   })
 })
+
+describe('help names the feedback room', () => {
+  /*
+   * "Why is feedback not listed in the help menu?" `help` lists commands, and
+   * feedback is a room — but it is the room people want when something is
+   * wrong, which is when they type `help`, and it is where the form lives.
+   */
+  it('from everywhere, with the way to get there', async () => {
+    const { run } = harness()
+    for (const where of [{}, { room: 'music' }, { room: 'music', postId: 12 }] as Location[]) {
+      expect(text((await run('help', where)).lines)).toContain('go feedback — something broken? tell us there')
+    }
+  })
+
+  it('and the way it names actually goes there', async () => {
+    const { run } = harness()
+    expect((await run('go feedback', {} as Location)).location).toEqual({ room: 'feedback' })
+  })
+})
