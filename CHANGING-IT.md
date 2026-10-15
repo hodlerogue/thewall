@@ -748,6 +748,28 @@ site with three hundred of them. Nothing failed: the only assertion was about
 the *total*, so it kept passing while the split rotted. `MADE_SLOTS` is theirs
 now, and adding an eleventh curated room costs a line of length instead.
 
+**The permanent rooms are named, never inferred from `created_by`.** A room
+that is not `curated` drops off the lobby after fourteen days with nothing said
+in it — that is §4.2 working, and it is not a deletion: `go <name>` still opens
+it. Which rooms are exempt used to be worked out with `where created_by is
+null`, reading "nobody is recorded as having made this" as "the seed inserted
+it". That is wrong for a permanent *name* that exists because somebody typed
+`make builders` — the row is outside every repair, never becomes furniture, and
+quietly leaves the front page. Reported exactly that way, on a project that had
+applied every migration including the one written to prevent it.
+
+`20260907000000_furniture_is_named.sql` lists the ten slugs instead.
+`lib/data/furniture.test.ts` keeps the list and the seed in step, and fails if
+anybody replaces it with the inferred predicate again.
+
+Note where that guard is **not**: `npm run test:db` builds a fresh database,
+migrations then seed, and the seed's own blanket repair runs last — so every
+seeded room comes out curated there whatever the migrations did, and the broken
+state cannot be constructed. Three database assertions were written first, all
+passed, and none of them failed when the repair they were guarding was deleted.
+`scripts/lobby-check.sql` is the tool for a live project; its `made_by_hand`
+column is the one that tells the two causes apart.
+
 **`curated` decides which rooms are kept, never how they are printed.** The
 lobby used to show the curated rooms, then a heading reading "and rooms people
 made", then the rest — reported as "I don't like how it's saying 'and rooms

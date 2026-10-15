@@ -1,6 +1,7 @@
 'use client'
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { hideWidget, showWidget, wantsWidget } from '@/lib/support/widget'
 import { Palette } from '@/components/Palette'
 import { append, MAX_LINES, Scrollback, type Keyed } from '@/components/Scrollback'
 import { echoOf } from '@/lib/commands/run'
@@ -85,6 +86,18 @@ export function Terminal({
 }) {
   const [lines, setLines] = useState<Keyed[]>(() => append([], initialLines))
   const [location, setLocation] = useState<Location>(initialLocation)
+
+  /*
+   * The feedback form: loaded the first time the feedback room is entered, by
+   * link or by `go`, and hidden everywhere else. Walking between rooms never
+   * reloads the page, so this is the only place that sees every arrival and
+   * every departure — see lib/support/widget.ts.
+   */
+  const inFeedback = wantsWidget(location)
+  useEffect(() => {
+    if (inFeedback) showWidget()
+    else hideWidget()
+  }, [inFeedback])
   const [name, setName] = useState<string | null>(initialName)
   const [input, setInput] = useState('')
 

@@ -12,12 +12,14 @@ these fail silently — the site keeps loading and one feature is quietly dead.
 ## 1. The database
 
 Your project was set up when there were three migrations. There are now
-twenty-five. What the rest add: the column-scoped grants that close two console
+twenty-seven. What the rest add: the column-scoped grants that close two console
 bypasses, mail, the kill switch, rename, erasure, walls, rooms people make, the
 feed, three more rooms, the daily email, rooms that grew out of a room, that
 email being on by default, never mailing an address that cannot receive, a
 lobby that uses its index, replies you can answer, posts with paragraphs in
-them, `hello` reserved so the landing page cannot shadow a room, and the grant
+them, `hello` reserved so the landing page cannot shadow a room, the permanent rooms
+marked by name so none of them can fade off the lobby, room descriptions up to
+100 characters with `describe` for whoever made the room, and the grant
 sweep below. **None of their features work until they are applied**, and none of
 them fail at build time — they fail in somebody's browser.
 
@@ -76,12 +78,53 @@ knowing going in: everybody is signed out by the move, because the new project
 mints its own JWT secret and they come back with `login <name>`; and commons is
 not carried, because commons keeps nothing.
 
+**The check at the end: the two fingerprint lines must be identical on both
+sides.** Matching counts are not enough — an earlier version of this file moved
+every reply, matched every count, and still renumbered replies and dropped
+which reply each one answered. The fingerprints hash the addresses, the links
+and the words, so that kind of loss shows up as a different string. `npm run
+test:db` now performs a real move between two databases and fails if they
+differ.
+
 This is safe to run repeatedly now. On its first run against an existing project
 it probes for each migration, records the ones already there, and applies only
 the rest — nothing runs twice and nothing is skipped.
 
-**Worked when:** `db-check.sh` shows all twenty-four as `applied`, every room has
+**Worked when:** `db-check.sh` shows all twenty-seven as `applied`, every room has
 something in the last two columns, and the anon role reads all five objects.
+
+### A room exists but the lobby does not list it
+
+```bash
+DATABASE_URL='...' psql "$DATABASE_URL" -f scripts/lobby-check.sql
+```
+
+Read-only, and pasteable into the SQL Editor if you have no psql. It prints
+every room and why it is or is not on the front page.
+
+The answer is usually **faded**: a room that is not furniture drops out of the
+lobby after fourteen days with nothing said in it. That is deliberate (§4.2 —
+the lobby is a building, not a directory) and it is not a deletion; the room is
+still there and `go <name>` still opens it. It is invisible rather than
+announced, though: the lobby's "N more rooms" line counts only rooms it could
+have shown, so a faded room leaves no trace on the page.
+
+A **permanent** room must never fade, which is what `curated` is for. If the
+check shows one of the ten with `furniture = f`, read the `made_by_hand` column
+next to it:
+
+- `made_by_hand = f` — the repairs have not run. `db-deploy.sh`.
+- `made_by_hand = t` — **this is the one that bit.** Every repair before
+  `20260907000000` marked the permanent set with `where created_by is null`,
+  reading "nobody is recorded as having made this" as "the seed inserted it".
+  A permanent room that exists because somebody typed `make builders` is
+  outside all of them, so it never became furniture and faded like any other
+  room. `builders` is the likeliest to be in that state: it was added to the
+  seed after launch, so a project seeded before that never received it.
+
+`20260907000000_furniture_is_named.sql` fixes both by naming the ten slugs
+instead of guessing at them. Apply it with `db-deploy.sh`, or run it directly —
+it is two `update`s and safe to re-run.
 
 ---
 

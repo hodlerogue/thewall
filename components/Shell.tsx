@@ -8,7 +8,7 @@ import { supabaseEnv } from '@/lib/data/supabaseEnv'
 import { httpSignupApi, supabaseWriter } from '@/lib/data/writer'
 import { demoWorld, fixtureSignup, fixtureWriter } from '@/lib/shell/demo'
 import { fixtureEnv, type Env } from '@/lib/shell/env'
-import { startArrivalReads, type ArrivalReads } from '@/lib/shell/boot'
+import { openingHint, startArrivalReads, type ArrivalReads } from '@/lib/shell/boot'
 import { describeError } from '@/lib/shell/errors'
 import { shouldSuggest, suggestion, watchForInstall } from '@/lib/pwa/install'
 import { renderFeed, renderPost, renderProfile, renderRoom, renderRoomList } from '@/lib/shell/render'
@@ -244,8 +244,23 @@ export function Shell({
           ...(useFixtures
             ? [{ text: 'demo — nothing you type here is saved.', tone: 'faint' as const }]
             : []),
+          /*
+           * The first thing anybody is told to type, and it has to show them
+           * something they cannot already see.
+           *
+           * It said `look`, everywhere, and the first screen is server-rendered
+           * — so the room, the lobby or the post is already on screen before
+           * this line is read. Walked as a newcomer: land in commons, do as you
+           * are told, and watch the same three items print again under a line
+           * saying you asked for them. The first command anybody runs taught
+           * that commands repeat what is already there.
+           *
+           * So it names what is *not* on screen, which depends on where the
+           * link dropped you. From the lobby that is a room; from anywhere else
+           * it is the fact that there are other rooms at all.
+           */
           {
-            text: 'type look to see what’s around you, or tap a command below.',
+            text: openingHint(location),
             tone: 'faint',
             hint: true,
           },

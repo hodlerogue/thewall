@@ -14,7 +14,7 @@ async function type(page: Page, text: string) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/commons')
   await expect(page.getByTestId('prompt-label')).toBeVisible()
 })
 
@@ -112,7 +112,7 @@ test('the manifest is real, and points at icons that exist', async ({ page }) =>
     icons: { src: string; sizes: string; type: string }[]
   }
   expect(body.display).toBe('standalone')
-  expect(body.start_url).toBe('/')
+  expect(body.start_url).toBe('/commons')
 
   for (const icon of body.icons) {
     const response = await page.request.get(icon.src)
@@ -129,7 +129,7 @@ test('the manifest is real, and points at icons that exist', async ({ page }) =>
 })
 
 test('the page links to the manifest, or nothing ever reads it', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/commons')
   await expect(page.locator('link[rel="manifest"]')).toHaveCount(1)
 })
 
@@ -155,7 +155,7 @@ test('install is a command you can find, not a banner you have to dismiss', asyn
 test('somebody who has just arrived is told where to find out what this is', async ({ page }) => {
   // A command prompt on a social site raises a question that neither `help` nor
   // `what` answers: they say what you can type, not what this is.
-  await page.goto('/')
+  await page.goto('/commons')
   await expect(scrollback(page)).toContainText('new here? type about.')
 
   await type(page, 'about')
@@ -180,8 +180,9 @@ test('the rundown is a page, readable without typing anything', async ({ page })
   // §4.8 — the pipe is still not advertised, here or anywhere.
   await expect(page.locator('.glossary')).not.toContainText('| count')
 
-  // And it leads back to the prompt and to the policies.
-  await expect(page.locator('a[href="/"]')).toBeVisible()
+  // And it leads back to the prompt and to the policies. `/commons`, not `/`:
+  // the bare domain shows somebody without a session the marketing page now.
+  await expect(page.locator('a[href="/commons"]')).toBeVisible()
   await expect(page.locator('a[href="/terms"]')).toBeVisible()
   await expect(page.locator('a[href="/privacy"]')).toBeVisible()
 })

@@ -18,7 +18,7 @@ async function type(page: Page, text: string) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/commons')
   await expect(page.getByTestId('prompt-label')).toBeVisible()
 })
 
@@ -195,7 +195,7 @@ test('a key that could not be recorded says that, instead of nothing', async ({ 
 })
 
 test('an ordinary arrival says nothing about keys', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/commons')
   await expect(page.getByTestId('prompt-label')).toBeVisible()
   await expect(scrollback(page)).not.toContainText('your key')
   await expect(scrollback(page)).not.toContainText('verified')

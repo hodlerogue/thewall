@@ -77,13 +77,13 @@ test.describe('the newest thing is the one you can see', () => {
 
 test.describe('a browser that has never been signed in', () => {
   test('is told login exists, without having to already know', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/commons')
     await type(page, 'help')
     await expect(scrollback(page)).toContainText('login — get back into your account')
   })
 
   test('is told where the feed and somebody’s page are, which no verb spells', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/commons')
     await type(page, 'help')
 
     await expect(scrollback(page)).toContainText('go feed')
@@ -93,7 +93,7 @@ test.describe('a browser that has never been signed in', () => {
   test('asks which name, and takes the answer as a name rather than a command', async ({
     page,
   }) => {
-    await page.goto('/')
+    await page.goto('/commons')
     await type(page, 'login')
     await expect(scrollback(page)).toContainText('what name do you go by here?')
 
@@ -108,7 +108,7 @@ test.describe('a browser that has never been signed in', () => {
   })
 
   test('says nobody is called that, rather than pretending it sent something', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/commons')
     await type(page, 'login nobodyatall')
     await expect(scrollback(page)).toContainText('no one here is called nobodyatall')
   })

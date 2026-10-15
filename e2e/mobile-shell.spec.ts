@@ -16,7 +16,7 @@ import { expect, test, type Page } from '@playwright/test'
 const prompt = (page: Page) => page.getByTestId('prompt-input')
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/commons')
   // The shell loads its first room before the prompt exists; without waiting,
   // a test can measure the scrollback mid-boot.
   await expect(page.getByTestId('prompt-label')).toBeVisible()

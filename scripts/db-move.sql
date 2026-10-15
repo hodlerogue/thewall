@@ -161,12 +161,27 @@ order by p.room_slug, p.post_no;
 -- same post is the only thing it would collapse, and it is worth that to make
 -- the paste safe to run twice, which is what people do when they are not sure
 -- it worked the first time.
+--
+-- **With their numbers, and with what each one answers.** Written before
+-- replies had either, this left both behind and the trigger renumbered them on
+-- arrival, 1, 2, 3 with no gaps — so on a post where reply 4 had been erased,
+-- reply 5 landed as 4, the next new reply took 5, and every "answering 3" came
+-- across answering nothing. The paste succeeded and the counts in part three
+-- matched. Found by running a real move between two databases, which is now
+-- what the last section of `scripts/db-test.sh` does on every `npm run test:db`.
+--
+-- The trigger only numbers a reply it was not given a number for, so carrying
+-- `reply_no` is enough to keep it. `replies_address` makes the pair unique, so
+-- a genuine collision fails the paste loudly instead of overwriting anything.
 select
-  'insert into public.replies (post_id, author_id, body, created_at, hidden_at)' ||
+  'insert into public.replies (post_id, author_id, body, created_at, hidden_at,' ||
+  ' reply_no, to_reply_no)' ||
   ' select p.id, ' || quote_literal(x.author_id::text) || '::uuid, ' ||
   quote_literal(x.body) || ', ' ||
   quote_literal(x.created_at::text) || '::timestamptz, ' ||
-  coalesce(quote_literal(x.hidden_at::text) || '::timestamptz', 'null') ||
+  coalesce(quote_literal(x.hidden_at::text) || '::timestamptz', 'null') || ', ' ||
+  x.reply_no || ', ' ||
+  coalesce(x.to_reply_no::text, 'null') ||
   ' from public.posts p where p.room_slug = ' || quote_literal(parent.room_slug::text) ||
   '::citext and p.post_no = ' || parent.post_no ||
   ' and not exists (select 1 from public.replies e where e.post_id = p.id and e.author_id = ' ||
@@ -178,6 +193,23 @@ join public.rooms r on r.slug = parent.room_slug
 -- generated statement carries, because they are identical on both sides.
 where not r.ephemeral
 order by x.id;
+
+-- Every post's reply counter, carried as a high-water mark.
+--
+-- The counter is what keeps an erased reply's number from being handed out
+-- again. `max(reply_no) + 1` cannot see a gap at the top — erase the newest
+-- reply and the max forgets it ever existed — so the old project's own counter
+-- comes across. As an update rather than in the insert, because seeded posts
+-- already exist on the new side, conflict, and would keep the seed's value.
+select
+  'update public.posts set next_reply_no = greatest(next_reply_no, ' ||
+  p.next_reply_no || ') where room_slug = ' || quote_literal(p.room_slug::text) ||
+  '::citext and post_no = ' || p.post_no || ';'
+from public.posts p
+join public.rooms r on r.slug = p.room_slug
+where not r.ephemeral
+  and p.next_reply_no > 1
+order by p.room_slug, p.post_no;
 
 -- Who used to be called what. §4.6's whole mitigation for a name changing hands
 -- is that the *reader* is told, and this table is where that is known. Leaving
@@ -236,6 +268,14 @@ update public.rooms r
      coalesce((select max(p.post_no) + 1 from public.posts p where p.room_slug = r.slug), 1)
    );
 
+-- The same for every post's replies. Part one carries the old counters; this
+-- is the floor under them, for a paste that was cut short.
+update public.posts p
+   set next_reply_no = greatest(
+     p.next_reply_no,
+     coalesce((select max(x.reply_no) + 1 from public.replies x where x.post_id = p.id), 1)
+   );
+
 
 -- ============================================================================
 -- PART THREE — run on BOTH, and compare the two printouts by eye.
@@ -263,21 +303,52 @@ union all
 select 'email opt-ins', count(*) from public.notify_settings where daily
 order by what;
 
+-- Fingerprints. Compare these two lines on both sides; they must be identical.
+--
+-- Counts cannot see the damage a move actually does. The version that
+-- renumbered every reply and dropped every "answering 3" produced exactly the
+-- right number of replies — the counts above matched, and the thread was
+-- wrong. These hash the address, the pointer and the words of everything that
+-- is meant to survive, so a renumbered reply, a lost link or a changed body
+-- shows up as a different string. Seeded rows are identical on both sides and
+-- hash the same, so no filtering is needed to make them comparable.
+select 'posts fingerprint' as what, md5(coalesce(string_agg(
+         p.room_slug || '/' || p.post_no || ':' || md5(p.body),
+         ',' order by p.room_slug, p.post_no), '')) as hash
+  from public.posts p join public.rooms r on r.slug = p.room_slug
+ where not r.ephemeral
+union all
+select 'replies fingerprint', md5(coalesce(string_agg(
+         p.room_slug || '/' || p.post_no || '#' || x.reply_no || '>' ||
+         coalesce(x.to_reply_no::text, '-') || ':' || md5(x.body),
+         ',' order by p.room_slug, p.post_no, x.reply_no), ''))
+  from public.replies x
+  join public.posts p on p.id = x.post_id
+  join public.rooms r on r.slug = p.room_slug
+ where not r.ephemeral;
+
 -- And the thing that actually breaks if part two was skipped.
 --
--- Answered yes/no rather than as two numbers to compare. `last_value` means
--- different things depending on whether the sequence has been called yet, so
--- the raw pair reads as a mismatch on a project where nothing is wrong — and
--- an operator who has just moved a database does not need a puzzle. The only
--- question that matters is whether the next id handed out is free.
+-- Answered yes/no rather than as two numbers to compare. The only question
+-- that matters is whether the next id handed out is free.
+--
+-- "Next" is worked out, not read. `last_value` is the next id only before the
+-- sequence has ever been called; after one ordinary insert it is the id just
+-- *used*, which equals max(id) on every healthy project. Comparing it straight
+-- against max(id) — as this did — printed SEQUENCE WILL COLLIDE on the OLD
+-- side of every real move, in the middle of moving somebody's data, about a
+-- database with nothing wrong with it. It looked clean in testing only because
+-- part two's setval had been run there by accident, leaving is_called false.
 select
-  case when (select last_value from public.posts_id_seq)
+  case when (select case when is_called then last_value + 1 else last_value end
+               from public.posts_id_seq)
             > coalesce((select max(id) from public.posts), 0)
        then 'posts: sequence is clear'
        else 'posts: SEQUENCE WILL COLLIDE — run part two' end as check
 union all
 select
-  case when (select last_value from public.replies_id_seq)
+  case when (select case when is_called then last_value + 1 else last_value end
+               from public.replies_id_seq)
             > coalesce((select max(id) from public.replies), 0)
        then 'replies: sequence is clear'
        else 'replies: SEQUENCE WILL COLLIDE — run part two' end
@@ -291,4 +362,14 @@ select
             (select max(p.post_no) from public.posts p where p.room_slug = r.slug), 0)
        )
        then 'addresses: every room allocator is clear'
-       else 'addresses: A ROOM WILL REUSE AN ADDRESS — run part two' end;
+       else 'addresses: A ROOM WILL REUSE AN ADDRESS — run part two' end
+union all
+-- And the same promise for replies, which have addresses too (`reply 7`).
+select
+  case when not exists (
+         select 1 from public.posts p
+          where p.next_reply_no <= coalesce(
+            (select max(x.reply_no) from public.replies x where x.post_id = p.id), 0)
+       )
+       then 'reply numbers: every post allocator is clear'
+       else 'reply numbers: A POST WILL REUSE A REPLY NUMBER — run part two' end;

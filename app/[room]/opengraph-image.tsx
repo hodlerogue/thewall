@@ -90,7 +90,8 @@ export default async function Image({ params }: { params: Promise<{ room: string
 
   return ogCard({
     path: `/${room.slug}`,
-    lines: [{ text: room.gloss, tone: 'faint' }, { text: '' }, ...renderRoom(room)],
+    // The description is renderRoom's first line now, so it is not added here.
+    lines: renderRoom(room),
   })
 }
 

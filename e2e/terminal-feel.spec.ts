@@ -17,7 +17,7 @@ async function type(page: Page, text: string) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/commons')
   await expect(page.getByTestId('prompt-label')).toBeVisible()
 })
 

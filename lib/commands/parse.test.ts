@@ -37,7 +37,10 @@ const text = (lines: { text: string }[]) => lines.map((l) => l.text).join('\n')
  * everywhere and teaches the step people are missing.
  */
 const ALIAS_TABLE: Record<string, string[]> = {
-  look: ['ls', 'see', 'list', 'show', 'rooms'],
+  // `rooms` was here and is its own verb now, for the same reason `reply` is:
+  // as an alias it resolved to `look`, and inside a room `look` shows the room
+  // you are standing in — the one thing the word `rooms` cannot mean.
+  look: ['ls', 'see', 'list', 'show'],
   go: ['cd', 'enter', 'open', 'join', 'read'],
   // `write` was here and is its own verb now — the longer form, with
   // paragraphs. One word cannot mean two things, and this table is what said so.
@@ -428,5 +431,38 @@ describe('§3.6 — help is a glossary, not a wall', () => {
     }
     // §4.8 — the pipe is still not on it. That is the point of it.
     expect(out).not.toContain('|')
+  })
+})
+
+/**
+ * No word may belong to two commands.
+ *
+ * `BY_NAME` is built by walking the registry and setting each verb and then
+ * each of its aliases, so a word claimed twice resolves to whichever command
+ * comes *later* in the file. That is not a rule anybody could be expected to
+ * hold in their head while moving a block of code around.
+ *
+ * It nearly bit: `rooms` was an alias of `look` and became a verb of its own,
+ * and both entries worked only because the new command happened to be defined
+ * below `look`. Reordering the registry would have silently put the alias back
+ * in charge — and the alias is the version that shows you the room you are
+ * standing in when you ask what rooms there are.
+ */
+describe('every word belongs to exactly one command', () => {
+  it('has no word claimed by two of them', () => {
+    const owner = new Map<string, string>()
+    const clashes: string[] = []
+
+    for (const command of COMMANDS) {
+      for (const word of [command.verb, ...command.aliases]) {
+        const taken = owner.get(word)
+        if (taken !== undefined && taken !== command.verb) {
+          clashes.push(`"${word}" is claimed by both ${taken} and ${command.verb}`)
+        }
+        owner.set(word, command.verb)
+      }
+    }
+
+    expect(clashes).toEqual([])
   })
 })
