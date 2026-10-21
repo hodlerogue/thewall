@@ -307,6 +307,15 @@ export function Terminal({
       }
       historyAt.current = null
 
+      /*
+       * Your own command always lands where you can see it.
+       *
+       * Following the bottom only if you were already there is right for
+       * somebody else's message and wrong for this. Reported on a phone: scroll
+       * up to find a room, type go, and the room arrived below the screen with
+       * nothing to say it had.
+       */
+      pinnedToBottom.current = true
       const echo = echoOf(text, promptLabel(name, location))
       setInput('')
       setLines((prev) => append(prev, [echo]))
@@ -399,6 +408,8 @@ export function Terminal({
     const onPop = async () => {
       const target = pathToLocation(window.location.pathname)
       setLocation(target)
+      // Back is a move you made, the same as `go`.
+      pinnedToBottom.current = true
       try {
         const result = await run('look', target, { typed: false })
         setLines((prev) => append(prev, [{ text: '', tone: 'faint' }, ...result.lines]))
