@@ -2392,6 +2392,15 @@ export const COMMANDS: readonly Command[] = [
       if (/(^|\s)--rooms(\s|=|$)/.test(source)) {
         if (sinks.length > 0) return error('rooms don’t pipe yet. try: find --rooms garden')
         const term = source.replace(/(^|\s)--rooms(=\S*)?/g, ' ').trim()
+        /*
+         * The other flags are about posts. They used to be read as part of
+         * the room's name — `find --rooms --since=1d` answered "no room called
+         * --since=1d" — which blames the room for what was a flag.
+         */
+        const stray = /(?:^|\s)(--?[a-z][a-z-]*)/i.exec(term)
+        if (stray) {
+          return error(`${stray[1]} is for posts — --rooms finds rooms by name or what they’re for. try: find --rooms garden`)
+        }
         return { lines: renderRoomHits(await env.findRooms(term), term) }
       }
 
@@ -2411,19 +2420,25 @@ export const COMMANDS: readonly Command[] = [
       if (sinks.length === 0) {
         // Nothing was *said* about it — but it may be the name of a room, and
         // that is the likeliest thing somebody typing one word meant (§3.7).
+        if (hits.length === 0) {
+          // A filter naming something that does not exist is the likelier
+          // story than a quiet week, and "nothing said" hid which it was.
+          const missing = await missingFilter(env, query.named)
+          if (missing) return error(missing)
+        }
         if (hits.length === 0 && query.query.text) {
           const rooms = await env.findRooms(query.query.text).catch(() => [])
           if (rooms.length > 0) {
             return {
               lines: [
-                { text: `nothing said about ${query.query.text}.`, tone: 'faint' },
+                ...nothingSaid(query),
                 { text: '' },
                 ...renderRoomHits(rooms, query.query.text),
               ],
             }
           }
         }
-        return { lines: renderHits(hits, query.query.text) }
+        return { lines: hits.length === 0 ? nothingSaid(query) : renderHits(hits) }
       }
       if (sinks.length > 1) {
         return error('one pipe at a time for now. try: find --since=7d | count')
@@ -2457,11 +2472,70 @@ export const COMMANDS: readonly Command[] = [
 
 export const FLAG_NAMES = ['room', 'rooms', 'by', 'since', 'limit']
 
-function buildQuery(
-  input: string,
-  location: Location,
-): { query: PostQuery } | { problem: string } {
+/** A search, and what it was asked so the answer can say so. */
+interface BuiltQuery {
+  query: PostQuery
+  /** The filters typed, rather than implied by where you stand. */
+  named: { room?: string; by?: string }
+  /** `--since` as typed, since the Date it became reads worse. */
+  since?: string
+  /** The room filter came from standing in it. */
+  here: boolean
+}
+
+/**
+ * "nothing said about records." — with what else narrowed it.
+ *
+ * Standing in a room filters to it without a word, so an empty search from
+ * inside music read as "nobody anywhere has said this", which was not what
+ * was asked. It says where it looked now, and how to look everywhere.
+ */
+function nothingSaid({ query, since, here }: BuiltQuery): Line[] {
+  const about = query.text ? ` about ${query.text}` : ''
+  const by = query.by ? ` by ${query.by}` : ''
+  const room = query.room ? ` in ${query.room}` : ''
+  const when = since ? ` in the last ${since}` : ''
+  const lines: Line[] = [{ text: `nothing said${about}${by}${room}${when}.`, tone: 'faint' }]
+  if (here) {
+    lines.push({ text: `that was just ${query.room}. leave, then find again, to look everywhere.`, tone: 'faint', hint: true })
+  }
+  return lines
+}
+
+/** The room or person a filter named, when there is no such thing. */
+async function missingFilter(env: Env, named: BuiltQuery['named']): Promise<string | undefined> {
+  if (named.room !== undefined && !(await env.getRoom(named.room).catch(() => undefined))) {
+    return `there’s no room called ${named.room}. try: find --rooms ${named.room}`
+  }
+  if (named.by !== undefined && !(await env.getProfile(named.by).catch(() => undefined))) {
+    return `no one here is called ${named.by}.`
+  }
+  return undefined
+}
+
+function buildQuery(input: string, location: Location): BuiltQuery | { problem: string } {
   const { values, loose } = parseFlags(input)
+
+  /*
+   * One dash, which a terminal-literate visitor reaches for first. It was
+   * searched for as a word: `find -r records` answered "nothing said about
+   * -r records".
+   */
+  const single = loose.find((word) => /^-[a-z]/i.test(word))
+  if (single) {
+    return { problem: `flags take two dashes here. try: ${FLAG_NAMES.map((f) => `--${f}`).join(', ')}` }
+  }
+
+  /*
+   * `--since 3d`, with a space. The value lands in the search words and the
+   * flag arrives empty — which printed " isn’t a length of time", naming
+   * nothing. Said with the fix, using what they typed.
+   */
+  for (const name of ['room', 'by', 'since', 'limit']) {
+    if (values.get(name) !== '') continue
+    const next = new RegExp(`--${name}\\s+([^-\\s]\\S*)`, 'i').exec(input)?.[1]
+    if (next) return { problem: `--${name} takes its value after an =. try: --${name}=${next}` }
+  }
 
   for (const name of values.keys()) {
     if (FLAG_NAMES.includes(name)) continue
@@ -2477,21 +2551,26 @@ function buildQuery(
   // away the most obvious way anyone would reach for this.
   const query: PostQuery = { limit: 20 }
   if (loose.length > 0) query.text = loose.join(' ')
+  const named: BuiltQuery['named'] = {}
+  let here = false
 
   const room = values.get('room')
   if (room !== undefined) {
     if (room === '') return { problem: 'which room? try: find --room=music' }
     query.room = room.toLowerCase()
+    named.room = query.room
   } else if (location.room !== undefined) {
     // Standing somewhere is itself a filter; naming the room again would be
     // busywork. --room from anywhere still overrides it.
     query.room = location.room
+    here = true
   }
 
   const by = values.get('by')
   if (by !== undefined) {
     if (by === '') return { problem: 'said by whom? try: find --by=marisol' }
-    query.by = by.toLowerCase()
+    query.by = by.replace(/^[~@]/, '').toLowerCase()
+    named.by = query.by
   } else if (location.person !== undefined) {
     // Standing on somebody is a filter for the same reason standing in a room
     // is: `find tomatoes` on ~marisol means the ones she said. --by overrides.
@@ -2501,7 +2580,7 @@ function buildQuery(
   const since = values.get('since')
   if (since !== undefined) {
     const from = parseSince(since)
-    if (!from) return { problem: `${since} isn’t a length of time. try: --since=7d, 24h, or 30m` }
+    if (!from) return { problem: `${since === '' ? 'that' : since} isn’t a length of time. try: --since=7d, 24h, or 30m` }
     query.since = from
   }
 
@@ -2509,19 +2588,15 @@ function buildQuery(
   if (limit !== undefined) {
     const parsed = Number(limit)
     if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
-      return { problem: 'how many? a whole number from 1 to 100.' }
+      return { problem: '--limit takes a whole number from 1 to 100. try: --limit=5' }
     }
     query.limit = parsed
   }
 
-  return { query }
+  return { query, named, since: since || undefined, here }
 }
 
-function renderHits(hits: readonly PostHit[], term?: string): Line[] {
-  if (hits.length === 0) {
-    return [{ text: term ? `nothing said about ${term}.` : 'nothing matched.', tone: 'faint' }]
-  }
-
+function renderHits(hits: readonly PostHit[]): Line[] {
   const lines: Line[] = []
   // Oldest first, like everything else printed into the scrollback: the view
   // snaps to the bottom, so the last line written is the one you actually see.
