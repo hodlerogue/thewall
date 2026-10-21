@@ -25,7 +25,7 @@ import { describe } from '@/lib/seo/pages'
 import { fixtureEnv } from '@/lib/shell/env'
 import { renderRoomList } from '@/lib/shell/render'
 import type { Line } from '@/lib/shell/types'
-import { FRONT_DOOR, promptLabel } from '@/lib/shell/types'
+import { START, promptLabel } from '@/lib/shell/types'
 
 /**
  * The page you send somebody who has not seen this before.
@@ -36,8 +36,8 @@ import { FRONT_DOOR, promptLabel } from '@/lib/shell/types'
  * group chat, which has about four seconds. This is the four seconds.
  *
  * A page of its own, and now the front door for anybody who has not signed in
- * here: `/` sends them to it, and sends anybody with a session into commons
- * (§3.10). Asked for as "the primary marketing page before you've logged in" —
+ * here: `/` sends them to it, and sends anybody with a session to the lobby
+ * (START). Asked for as "the primary marketing page before you've logged in" —
  * until then nothing sent anyone here, and the only link was in /about's
  * footer. The cost of a page of its own is that `hello` can never be a room
  * name, which is why there is a migration reserving it.
@@ -150,7 +150,7 @@ export default async function Page() {
           <p className="landing-footnote">{DEMO_FOOTNOTE}</p>
 
           <p className="landing-actions">
-            <Link className="landing-button" href={`/${FRONT_DOOR}`}>
+            <Link className="landing-button" href={START}>
               {CTA_PRIMARY} →
             </Link>
             <Link className="landing-link" href="/about">
@@ -224,7 +224,7 @@ export default async function Page() {
             decoding="async"
           />
           <p className="landing-actions">
-            <Link className="landing-button" href={`/${FRONT_DOOR}`}>
+            <Link className="landing-button" href={START}>
               {CTA_PRIMARY} →
             </Link>
           </p>

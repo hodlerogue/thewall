@@ -108,19 +108,30 @@ export interface Location {
 export type Context = 'lobby' | 'room' | 'commons' | 'post' | 'person'
 
 /**
- * The room typing the bare domain puts you in (§3.10).
+ * The room the shell opens in when nothing says otherwise, and the one whose
+ * share card is the fixed site card (§3.10).
  *
- * Here rather than beside the fixtures because two things outside the shell
- * need it and neither should pull the seed content in to get it: `app/page.tsx`,
- * which redirects `/` to it, and that room's share card, which has to be the
- * front door's card precisely *because* of that redirect — a crawler follows it
- * and never sees `/` at all.
+ * It used to be where the bare domain put anybody with an account too, which
+ * is why it is called this. That is START now — see below. The share card
+ * stays pinned here on its own merits: commons keeps nothing, so a generated
+ * card would spend its week in a cache advertising posts already gone.
  *
  * The same string is spelled in three other places. `lib/brand/og.test.ts` pins
- * them together, because the failure when they drift is invisible: a link to
- * the domain previews as whatever room the redirect happens to point at.
+ * them together.
  */
 export const FRONT_DOOR = 'commons'
+
+/**
+ * Where you start: the lobby.
+ *
+ * §3.10 put people in commons, a peer room, and kept the lobby a directory one
+ * `leave` away. Changed by the owner: starting in commons meant the first
+ * screen was usually a room with nothing in it — commons deletes everything
+ * after a day — and the lobby is the one screen that shows the whole building.
+ * `/` sends anybody with an account here, the landing page's buttons lead
+ * here, and so does an installed app.
+ */
+export const START = '/lobby'
 
 /** A palette entry reads `verb — what it does` (§3.6): a glossary, not a toolbar. */
 export interface Chip {

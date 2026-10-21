@@ -90,8 +90,8 @@ replies are waiting.
 
 ## 9. What is commons, and why did my post disappear?
 
-Commons is the room you start in, and it keeps nothing: everything said there is
-gone after 24 hours. That's deliberate — it's for passing remarks. If you want
+Commons is the one room that keeps nothing: everything said there is gone
+after 24 hours. That's deliberate — it's for passing remarks. If you want
 something to stay, post it in another room; `rooms` shows them all.
 
 ## 10. How do I write something longer than one line?

@@ -381,7 +381,7 @@ test('nothing runs off the side of a phone', async ({ page }) => {
 test('the way out is the product, not a signup', async ({ page }) => {
   await page.goto('/hello')
   await page.getByRole('link', { name: /open the prompt/ }).first().click()
-  await expect(page).toHaveURL(/\/commons$/)
+  await expect(page).toHaveURL(/\/lobby$/)
 })
 
 test('it survives a theme somebody else chose', async ({ page }) => {
