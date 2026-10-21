@@ -112,7 +112,7 @@ test('the manifest is real, and points at icons that exist', async ({ page }) =>
     icons: { src: string; sizes: string; type: string }[]
   }
   expect(body.display).toBe('standalone')
-  expect(body.start_url).toBe('/commons')
+  expect(body.start_url).toBe('/lobby')
 
   for (const icon of body.icons) {
     const response = await page.request.get(icon.src)
