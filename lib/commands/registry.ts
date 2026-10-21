@@ -27,6 +27,7 @@ import {
 } from '@/lib/shell/render'
 import type { RoomList } from '@/lib/shell/model'
 import { NAME_WAY_OUT, type Session } from '@/lib/shell/session'
+import { USAGE } from '@/lib/commands/manual'
 import { ABOUT_SUMMARY } from '@/lib/guide/about'
 import { FEEDBACK_ROOM } from '@/lib/support/widget'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
@@ -453,6 +454,58 @@ function row(label: string, ok: boolean, note = ''): Line {
     text: `${ok ? '  ' : '! '}${label.padEnd(30)} ${note}`,
     tone: ok ? 'dim' : 'error',
   }
+}
+
+/**
+ * One command, in full: what it is, what it does, how to type it.
+ *
+ * §3.8 — plain English first, aliases last. This is where terminal users find
+ * the shorthand and everyone else confirms they never needed it.
+ */
+function explain(arg: string, context: Context): RunResult {
+  const command = findCommand(arg)
+  if (!command) {
+    const near = nearestCommand(arg)
+    return error(
+      near
+        ? `i don’t know "${arg}". did you mean ${near.verb} — ${near.gloss(context)}?`
+        : `i don’t know "${arg}". try: help`,
+    )
+  }
+
+  const lines: Line[] = [
+    { text: `${command.verb} — ${command.gloss(context)}`, tone: 'accent' },
+    { text: command.detail(context), depth: 1 },
+  ]
+  const usage = USAGE[command.verb] ?? []
+  if (usage.length > 0) {
+    lines.push({ text: '' })
+    for (const form of usage) lines.push({ text: form, tone: 'dim', depth: 1 })
+  }
+  if (command.aliases.length > 0) {
+    lines.push({ text: `also: ${command.aliases.join(', ')}`, tone: 'faint', depth: 1 })
+  }
+  if (!command.contexts.includes(context)) {
+    lines.push({ text: 'not from where you’re standing, though.', tone: 'faint', depth: 1 })
+  }
+  return { lines }
+}
+
+/**
+ * `help all`: every command and the forms it takes, in the order `help`
+ * would list them, with nothing left out — `help` itself is capped to stay
+ * readable at a glance, and this is where the rest are.
+ */
+function manual(): Line[] {
+  const lines: Line[] = [{ text: 'every command, and how to type it:', tone: 'faint' }]
+  for (const command of COMMANDS) {
+    lines.push({ text: '' })
+    lines.push({ text: command.verb, tone: 'accent' })
+    for (const form of USAGE[command.verb] ?? []) lines.push({ text: form, tone: 'dim', depth: 1 })
+  }
+  lines.push({ text: '' })
+  lines.push({ text: 'what <command> explains any of them in full.', tone: 'faint' })
+  return lines
 }
 
 export const COMMANDS: readonly Command[] = [
@@ -1656,31 +1709,8 @@ export const COMMANDS: readonly Command[] = [
     insert: () => 'what ',
     wrongContext: () => '',
     async run({ arg, context }) {
-      if (arg === '') return error('what what? try: what go')
-
-      const command = findCommand(arg)
-      if (!command) {
-        const near = nearestCommand(arg)
-        return error(
-          near
-            ? `i don’t know "${arg}". did you mean ${near.verb} — ${near.gloss(context)}?`
-            : `i don’t know "${arg}". try: help`,
-        )
-      }
-
-      // §3.8 — plain English first, aliases second. This is where terminal
-      // users find the shorthand and everyone else confirms they never needed it.
-      const lines: Line[] = [
-        { text: `${command.verb} — ${command.gloss(context)}`, tone: 'accent' },
-        { text: command.detail(context), depth: 1 },
-      ]
-      if (command.aliases.length > 0) {
-        lines.push({ text: `also: ${command.aliases.join(', ')}`, tone: 'faint', depth: 1 })
-      }
-      if (!command.contexts.includes(context)) {
-        lines.push({ text: 'not from where you’re standing, though.', tone: 'faint', depth: 1 })
-      }
-      return { lines }
+      if (arg === '') return error('what what? try: what go — or help all for every command.')
+      return explain(arg, context)
     },
   },
 
@@ -1689,10 +1719,20 @@ export const COMMANDS: readonly Command[] = [
     aliases: ['commands', 'h'],
     contexts: ALL,
     gloss: () => 'everything you can type',
-    detail: () => 'lists what you can type from where you are.',
+    detail: () =>
+      'lists what you can type from where you are. help <command> explains one, the same as what does, and help all lists every command and how to type it.',
     insert: () => 'help',
     wrongContext: () => '',
-    async run({ context }) {
+    async run({ arg, context }) {
+      /*
+       * `help find` printed the whole list, as if the word after it were not
+       * there — the form every other terminal answers with one page. It is
+       * `what find` now. `help all` is the manual: every command, folded and
+       * rarely-needed ones included, each with the forms it takes.
+       */
+      if (/^(-{0,2}all|everything|-a)$/i.test(arg)) return { lines: manual() }
+      if (arg !== '') return explain(arg, context)
+
       /*
        * Two groups, not one list of fifteen.
        *
@@ -1784,7 +1824,7 @@ export const COMMANDS: readonly Command[] = [
       lines.push({ text: `go ${FEEDBACK_ROOM} — something broken? tell us there`, tone: 'dim' })
 
       lines.push({ text: '' })
-      lines.push({ text: 'what <command> explains any of them.', tone: 'faint' })
+      lines.push({ text: 'help <command> explains one. help all lists every command and how to type it.', tone: 'faint' })
       return { lines }
     },
   },
@@ -2128,7 +2168,7 @@ export const COMMANDS: readonly Command[] = [
     verb: 'rename',
     aliases: ['name', 'callme'],
     contexts: ALL,
-    gloss: () => 'change my name',
+    gloss: () => 'change your name',
     detail: () =>
       'changes what you are called, as often as you like. everything you have said follows the new name, and the old one goes free for anyone to take the moment you drop it — so do not release a name you want back.',
     insert: () => 'rename ',
@@ -2346,7 +2386,7 @@ export const COMMANDS: readonly Command[] = [
     aliases: ['verify', 'key'],
     hidden: true,
     contexts: ALL,
-    gloss: () => 'send my key again',
+    gloss: () => 'send your key again',
     detail: () =>
       'sends another sign-in link to your address. the one from signup expires, and you need a followed link to keep your name and keep posting.',
     insert: () => 'resend',
@@ -2370,7 +2410,7 @@ export const COMMANDS: readonly Command[] = [
     contexts: ALL,
     gloss: () => 'find something that was said',
     detail: () =>
-      'looks for words in what people have said, everywhere or just here: find tomatoes. narrow it with --room, --by, --since or --limit. results can be piped: find --by=jameson --since=7d | count, or | go to open the newest.',
+      'looks for words in what people have said, everywhere or just here: find tomatoes. narrow it with --room, --by, --since or --limit, or look for rooms instead with --rooms. results can be piped: find --by=jameson --since=7d | count, or | go to open the newest.',
     insert: () => 'find ',
     wrongContext: () => '',
     async run({ arg, location, env, typed }) {
