@@ -156,7 +156,19 @@ interface OneQuestion {
    * few words" is advice for a different question entirely.
    */
   question: readonly Line[]
+  /** A name is being asked for — see `asksForName`. */
+  forName?: boolean
 }
+
+/**
+ * Said under every question that asks for a name.
+ *
+ * QA could not see a way out of "what do you want to be called?": `cancel`
+ * worked, and nothing on screen said so. Every other question here names its
+ * exit; these two were the ones people most often wandered into by accident,
+ * by typing `say` or `login`.
+ */
+export const NAME_WAY_OUT: Line = { text: 'cancel stops here.', tone: 'faint' }
 
 export interface AnswerResult {
   lines: Line[]
@@ -277,6 +289,7 @@ export class Session {
     return [
       { text: 'one thing first — you need a name to say that under.', tone: 'faint' },
       { text: 'what do you want to be called?', tone: 'accent' },
+      NAME_WAY_OUT,
     ]
   }
 
@@ -287,10 +300,26 @@ export class Session {
    * returns the lines to print. Nothing is validated here — the caller knows
    * what a good answer looks like and this does not.
    */
-  askOne(question: readonly Line[], answer: OneQuestion['answer']): Line[] {
+  askOne(
+    question: readonly Line[],
+    answer: OneQuestion['answer'],
+    options: { forName?: boolean } = {},
+  ): Line[] {
     this.mode = 'ask-one'
-    this.pending = { answer, question }
+    this.pending = { answer, question, forName: options.forName }
     return [...question]
+  }
+
+  /**
+   * Whether the open question wants a name — signing up, or signing in.
+   *
+   * A name has no spaces, so at these questions a line that is a command with
+   * something after it (`go music`, `say hi`) cannot be an answer. The runner
+   * uses this to let it leave the question and run, the way `login ryan`
+   * always could.
+   */
+  asksForName(): boolean {
+    return this.mode === 'ask-name' || (this.mode === 'ask-one' && this.pending?.forName === true)
   }
 
   cancel(): Line[] {
@@ -653,10 +682,11 @@ export class Session {
         }
         if (answer === 'n' || answer === 'no') {
           this.mode = 'ask-name'
-          return { lines: [{ text: 'what do you want to be called?', tone: 'accent' }] }
+          return { lines: [{ text: 'what do you want to be called?', tone: 'accent' }, NAME_WAY_OUT] }
         }
         return { lines: this.confirmName(name, true) }
       },
+      { forName: true },
     )
   }
 
@@ -684,6 +714,7 @@ export class Session {
         lines: [
           { text: `no harm done — nothing was made, and ${wrong} is still free.`, tone: 'faint' },
           { text: 'what do you want to be called?', tone: 'accent' },
+          NAME_WAY_OUT,
         ],
       }
     }

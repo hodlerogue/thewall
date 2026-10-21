@@ -26,7 +26,7 @@ import {
   saidBy,
 } from '@/lib/shell/render'
 import type { RoomList } from '@/lib/shell/model'
-import type { Session } from '@/lib/shell/session'
+import { NAME_WAY_OUT, type Session } from '@/lib/shell/session'
 import { ABOUT_SUMMARY } from '@/lib/guide/about'
 import { FEEDBACK_ROOM } from '@/lib/support/widget'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
@@ -298,11 +298,13 @@ function askLoginName(session: Session): Line[] {
     [
       { text: 'what name do you go by here?' },
       { text: 'i’ll send a key to the address it signed up with.', tone: 'faint' },
+      NAME_WAY_OUT,
     ],
     async (text) => {
       if (looksLikeACommand(text)) return { lines: confirmLoginName(session, text.trim()) }
       return { lines: await session.signIn(text) }
     },
+    { forName: true },
   )
 }
 
@@ -328,6 +330,7 @@ function confirmLoginName(session: Session, words: string, again = false): Line[
       if (answer === 'n' || answer === 'no') return { lines: askLoginName(session) }
       return { lines: confirmLoginName(session, words, true) }
     },
+    { forName: true },
   )
 }
 
