@@ -110,7 +110,8 @@ test('the demo draws a line exactly the way the site draws it', async ({ page, c
     target.evaluate(
       (sel) =>
         [...document.querySelectorAll(`${sel} .line`)]
-          .slice(-3)
+          // The echo, then the three lines the name question prints.
+          .slice(-4)
           .map((line) => line.outerHTML)
           .join('\n'),
       selector,
