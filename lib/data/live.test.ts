@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { arrivalLines } from '@/lib/data/live'
 import type { Line } from '@/lib/shell/types'
 
@@ -95,15 +95,26 @@ describe('what arrives live', () => {
 
 class FakeChannel {
   handlers: ((payload: { new: Record<string, unknown> }) => Promise<void> | void)[] = []
+  /** Presence listeners, kept apart so `say` reaches only the row handlers. */
+  presence: (() => void)[] = []
+  /** Who the server says is here, once it has said. */
+  people: Record<string, { name: string | null }[]> = {}
+  constructor(readonly opts?: { config?: { presence?: { key?: string; enabled?: boolean } } }) {}
   status: ((s: string) => Promise<void> | void) | null = null
   tracked = false
   removed = false
   /** What the real channel exposes, and what tells the two returns apart. */
   state: 'joined' | 'closed' = 'closed'
 
-  on(_event: string, _filter: unknown, cb: (p: { new: Record<string, unknown> }) => Promise<void>) {
-    this.handlers.push(cb)
+  on(event: string, _filter: unknown, cb: (p: { new: Record<string, unknown> }) => Promise<void>) {
+    if (event === 'presence') this.presence.push(cb as unknown as () => void)
+    else this.handlers.push(cb)
     return this
+  }
+  /** The server's first word on who is here. */
+  sync(people: Record<string, { name: string | null }[]>) {
+    this.people = people
+    for (const heard of this.presence) heard()
   }
   subscribe(cb: (s: string) => Promise<void> | void) {
     this.status = cb
@@ -119,7 +130,7 @@ class FakeChannel {
     return Promise.resolve('ok')
   }
   presenceState() {
-    return {}
+    return this.people
   }
   async say(row: Record<string, unknown>) {
     for (const handler of this.handlers) await handler({ new: row })
@@ -174,8 +185,8 @@ function fakeClient(tables: Record<string, Row[]>, holdProfiles?: () => Promise<
     // used to slip through, and it is a real network call every time somebody
     // speaks whose name is not already cached.
     from: (name: string) => table(tables[name] ?? [], name === 'profiles' ? holdProfiles : undefined),
-    channel: () => {
-      const made = new FakeChannel()
+    channel: (_topic: string, opts?: ConstructorParameters<typeof FakeChannel>[0]) => {
+      const made = new FakeChannel(opts)
       channels.push(made)
       return made
     },
@@ -545,5 +556,79 @@ describe('a channel that stopped listening', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 1_100))
     expect(channels).toHaveLength(1)
+  })
+})
+
+/**
+ * `who`, which answered nobody — always, everywhere.
+ *
+ * The channel carried a presence key and nothing else, and realtime-js asks
+ * the server for presence only when the config says `enabled: true` or a
+ * presence listener exists. Neither did, so nobody was ever present. Then a
+ * smaller one on top: `who` typed straight after arriving read the state
+ * before the server had sent any.
+ */
+describe('who is here', () => {
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
+  const tables = { posts: [] as Row[], profiles: [] as Row[], replies: [] as Row[] }
+
+  it('asks the server for presence, both ways the library listens for', async () => {
+    const { client, channels } = fakeClient(tables)
+    const { createLive } = await import('@/lib/data/live')
+    createLive(client, []).subscribe({ room: 'music' }, 'ryan', () => {})
+    await flush()
+
+    expect(channels[0].opts?.config?.presence).toMatchObject({ key: 'ryan', enabled: true })
+    expect(channels[0].presence).toHaveLength(1)
+  })
+
+  it('waits for the room to say who is in it, rather than answering nobody', async () => {
+    vi.useFakeTimers()
+    try {
+      const { client, channels } = fakeClient(tables)
+      const { createLive } = await import('@/lib/data/live')
+      const live = createLive(client, [])
+      live.subscribe({ room: 'music' }, 'ryan', () => {})
+      await vi.advanceTimersByTimeAsync(0)
+
+      // Typed the moment you arrive: nothing heard yet, so it waits.
+      let answer: unknown = null
+      void live.present().then((p) => (answer = p))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(answer).toBeNull()
+
+      // The server says who is here, and `who` answers then — not at the
+      // timeout, which is what would happen if the listener never fired.
+      channels[0].sync({ ryan: [{ name: 'ryan' }], marisol: [{ name: 'marisol' }], x1: [{ name: null }] })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(answer).toEqual({ names: ['marisol', 'ryan'], guests: 1 })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('but not forever, when the channel never answers', async () => {
+    vi.useFakeTimers()
+    try {
+      const { client } = fakeClient(tables)
+      const { createLive, ARRIVAL_MS } = await import('@/lib/data/live')
+      const live = createLive(client, [])
+      live.subscribe({ room: 'music' }, 'ryan', () => {})
+      await vi.advanceTimersByTimeAsync(0)
+
+      const asked = live.present()
+      await vi.advanceTimersByTimeAsync(ARRIVAL_MS)
+      expect(await asked).toEqual({ names: [], guests: 0 })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('and at once in the lobby, where there is nobody to wait for', async () => {
+    const { client } = fakeClient(tables)
+    const { createLive } = await import('@/lib/data/live')
+    const live = createLive(client, [])
+    live.subscribe({}, 'ryan', () => {})
+    expect(await live.present()).toEqual({ names: [], guests: 0 })
   })
 })
