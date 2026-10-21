@@ -1389,6 +1389,18 @@ select tests.ok(
   (select room || '/' || post_no from public.search_said('law of bicycles') limit 1) = 'builders/2',
   'and a reply carries the address of the post it is under, since it has none of its own'
 );
+-- QA: a post and a reply under it both read `builders/2`, which looked like
+-- the same line twice. The reply's own number is what tells them apart.
+select tests.ok(
+  (select reply_no from public.search_said('law of bicycles') where is_reply limit 1)
+    = (select r.reply_no from public.replies r where r.body ilike '%law of bicycles%' limit 1),
+  'a reply hit says which reply it is'
+);
+select tests.ok(
+  not exists (select 1 from public.search_said(null, null, null, null, 50) where not is_reply and reply_no is not null)
+  and not exists (select 1 from public.search_said(null, null, null, null, 50) where is_reply and reply_no is null),
+  'and only replies carry a reply number'
+);
 select tests.ok(
   not exists (select 1 from public.search_said('super keeps saying')),
   'commons is never searchable — nothing there has an address to go to'

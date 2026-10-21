@@ -103,6 +103,10 @@ test.describe('a browser that has never been signed in', () => {
      * that once created accounts called `look`, arriving by a new route.
      */
     await type(page, 'look')
+    // Checked first, since it is also a command (QA typed `logout` here) —
+    // and still never run as one.
+    await expect(scrollback(page)).toContainText('“look” is something you can type, too')
+    await type(page, 'y')
     await expect(scrollback(page)).toContainText('no one here is called look')
     await expect(scrollback(page)).not.toContainText('quiet in here')
   })

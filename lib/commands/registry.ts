@@ -22,6 +22,7 @@ import {
   renderProfile,
   renderRoom,
   renderRoomList,
+  replyMark,
   saidBy,
 } from '@/lib/shell/render'
 import type { RoomList } from '@/lib/shell/model'
@@ -31,7 +32,7 @@ import { FEEDBACK_ROOM } from '@/lib/support/widget'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
 import { offerInstall } from '@/lib/pwa/install'
 import { hintsOn, setHints } from '@/lib/shell/hints'
-import { DEFAULT_THEME, THEMES, findTheme } from '@/lib/shell/themes'
+import { DEFAULT_THEME, THEMES, findTheme, meantTheme } from '@/lib/shell/themes'
 import { pathToLocation } from '@/lib/shell/types'
 import type { Context, Line, Location, RunResult } from '@/lib/shell/types'
 
@@ -51,6 +52,12 @@ export interface HandlerArgs {
   hint: () => Promise<string>
   /** Who you are, and the machinery that asks if you aren't anyone yet (§3.9). */
   session: Session
+  /**
+   * The word actually typed — the verb or one of its aliases. Absent when the
+   * shell runs a command itself. For the rare alias that means something a
+   * little different on its own: bare `posts` lists posts, bare `find` asks.
+   */
+  typed?: string
 }
 
 export type Handler = (args: HandlerArgs) => Promise<RunResult>
@@ -324,6 +331,24 @@ function confirmLoginName(session: Session, words: string, again = false): Line[
   )
 }
 
+/**
+ * `go 1` where there is no post 1, said with the numbers that do exist.
+ *
+ * QA: "post numbers don't start at 1, so `go 1` fails in every room." They are
+ * addresses, not counts — music starts at 11, and a number taken down is never
+ * reused — so the fix is not renumbering but saying what is here.
+ */
+async function noPost(env: Env, slug: string, id: number): Promise<string> {
+  const room = await env.getRoom(slug).catch(() => undefined)
+  const posts = room?.posts ?? []
+  if (posts.length === 0) return `there’s no post ${id} in ${slug} — nothing has been said here yet.`
+  const newest = posts[0].id
+  const oldest = posts[posts.length - 1].id
+  if (room?.more) return `there’s no post ${id} in ${slug}. the newest is ${newest} — look shows what’s here.`
+  if (oldest === newest) return `there’s no post ${id} in ${slug}. the only one here is ${newest}. try: go ${newest}`
+  return `there’s no post ${id} in ${slug}. posts here run from ${oldest} to ${newest}. try: go ${newest}`
+}
+
 /** A post address that exists, for an error that tells you to open one. */
 async function newestPostIn(env: Env, room: string | undefined): Promise<number | string> {
   if (room === undefined) return 12
@@ -485,16 +510,15 @@ export const COMMANDS: readonly Command[] = [
      * question rather than a journey — somebody wondering what else is going on
      * mid-thread should not lose the thread to find out.
      *
-     * Folded (§3.6): the glossary's first group is capped at ten lines, and
-     * this is a second way to see something `go` and `leave` already reach. It
-     * keeps its `what` entry, and the line printed on arrival names it, which
-     * is the moment somebody actually needs it.
+     * In help's "and anywhere" group rather than the first one, which is
+     * capped at ten lines. It was folded out of help entirely, and QA found it
+     * by guessing: "`rooms` works but isn't in help". From commons especially
+     * it is the one-word answer to "where else is there?".
      */
     verb: 'rooms',
     // No aliases: `list`, `show` and `ls` all belong to `look`, and one word
     // meaning two things is the thing this change exists to stop.
     aliases: [],
-    folded: true,
     contexts: ALL,
     gloss: () => 'the rooms there are',
     detail: () =>
@@ -574,12 +598,32 @@ export const COMMANDS: readonly Command[] = [
        * branch below and answered "there's no one called marisol/2", which is
        * an error about the wrong thing entirely.
        */
+      /*
+       * One place at a time. QA: `go 14 extra` answered "there's no room called
+       * 14 extra", which blames a room for what was a stray word. Nothing `go`
+       * takes has a space in it, so the first word is what was meant.
+       */
+      const words = arg.split(/\s+/)
+      if (words.length > 1) return error(`go takes one place at a time. try: go ${words[0]}`)
+
       if (arg.includes('/')) {
         const target = pathToLocation(`/${arg}`)
         if (target.room !== undefined && target.postId !== undefined) {
           const post = await env.getPost(target.room, target.postId)
           if (!post) return error(`there’s nothing at ${arg}. try: go ${target.room}`)
           return { lines: renderPost(post), location: target }
+        }
+        // QA: `go music/abc` answered "there's no room called music/abc" —
+        // music exists; it is the half after the slash that is wrong.
+        const [place, after] = arg.split('/', 2)
+        if (place !== '' && after !== '') {
+          const room = place.startsWith('~') ? undefined : await env.getRoom(place).catch(() => undefined)
+          const newest = room && !room.ephemeral ? room.posts[0]?.id : undefined
+          return error(
+            newest === undefined
+              ? `“${after}” isn’t a post number — after the slash comes a number. try: go ${place}`
+              : `“${after}” isn’t a post number — after the slash comes a number. try: go ${place}/${newest}`,
+          )
         }
       }
 
@@ -639,7 +683,7 @@ export const COMMANDS: readonly Command[] = [
           )
         }
         const post = await env.getPost(location.room!, id)
-        if (!post) return error(`there’s no post ${id} in ${location.room}. try: look`)
+        if (!post) return error(await noPost(env, location.room!, id))
         return { lines: renderPost(post), location: { room: location.room, postId: id } }
       }
 
@@ -1345,6 +1389,12 @@ export const COMMANDS: readonly Command[] = [
         return missing ? error(missing) : sendReply(args, target, body)
       }
 
+      if (context === 'post' && args.arg.trim() === '') {
+        // QA: bare `reply` answered "say what? try: say i agree" — right
+        // advice, wrong verb, for somebody who had just typed reply.
+        return error('reply what? try: reply i agree — or reply 2 <something> to answer reply 2.')
+      }
+
       if (context === 'post') {
         // Otherwise this *is* say — looked up rather than duplicated, so there
         // is exactly one contribution path and §3.9's held-sentence machinery
@@ -1670,6 +1720,7 @@ export const COMMANDS: readonly Command[] = [
        */
       const ELSEWHERE = [
         'about',
+        'rooms',
         'login',
         'logout',
         'mail',
@@ -1787,7 +1838,7 @@ export const COMMANDS: readonly Command[] = [
         return { lines }
       }
 
-      const chosen = findTheme(arg)
+      const chosen = meantTheme(arg)
       if (!chosen) {
         const near = nearestSlug(arg, THEMES.map((t) => t.name))
         return error(
@@ -1799,7 +1850,11 @@ export const COMMANDS: readonly Command[] = [
 
       applyTheme(chosen.name)
       return {
-        lines: [{ text: `${chosen.name} — ${chosen.gloss}.`, tone: 'faint' }],
+        lines: [
+          // Said when the word was not the name, so `theme black` is learned.
+          ...(findTheme(arg) ? [] : [{ text: `${arg.trim().toLowerCase()} is called ${chosen.name} here.`, tone: 'faint' as const }]),
+          { text: `${chosen.name} — ${chosen.gloss}.`, tone: 'faint' },
+        ],
       }
     },
   },
@@ -2315,7 +2370,7 @@ export const COMMANDS: readonly Command[] = [
       'looks for words in what people have said, everywhere or just here: find tomatoes. narrow it with --room, --by, --since or --limit. results can be piped: find --by=jameson --since=7d | count, or | go to open the newest.',
     insert: () => 'find ',
     wrongContext: () => '',
-    async run({ arg, location, env }) {
+    async run({ arg, location, env, typed }) {
       // Only this command splits on `|`. That is why `say i love a|b` keeps
       // its pipe instead of becoming half a sentence and a broken pipeline.
       const [source = '', ...rest] = arg.split('|')
@@ -2335,6 +2390,14 @@ export const COMMANDS: readonly Command[] = [
         if (sinks.length > 0) return error('rooms don’t pipe yet. try: find --rooms garden')
         const term = source.replace(/(^|\s)--rooms(=\S*)?/g, ' ').trim()
         return { lines: renderRoomHits(await env.findRooms(term), term) }
+      }
+
+      // QA: bare `find` printed everything recent, which reads as a bug rather
+      // than an answer. Flags alone still search — `find --by=marisol` has
+      // said what it wants — and so does a pipe, which is asking for a count.
+      // `posts` on its own is a request for exactly that list, so it keeps it.
+      if (source.trim() === '' && sinks.length === 0 && typed?.toLowerCase() !== 'posts') {
+        return error('find what? try: find tomatoes — or find --rooms garden for rooms.')
       }
 
       const query = buildQuery(source, location)
@@ -2469,7 +2532,7 @@ function renderHits(hits: readonly PostHit[], term?: string): Line[] {
     lines.push(
       saidBy(
         `${hit.room}/${hit.id}`,
-        `${hit.author}, ${formatAgo(hit.createdAt)}${hit.isReply ? '  (reply)' : ''}`,
+        `${hit.author}, ${formatAgo(hit.createdAt)}${replyMark(hit)}`,
       ),
     )
     lines.push({ text: hit.body, depth: 1 })

@@ -327,7 +327,7 @@ describe('a profile lists replies as replies', () => {
 
     // Her reply in music, which is jameson's post.
     expect(out).toContain('warped ones still play')
-    expect(out).toMatch(/music\/12.*\(reply\)/)
+    expect(out).toMatch(/music\/12.*\(reply \d+\)/)
 
     // And a real post of hers carries no marker.
     expect(out).toMatch(/kitchen\/8(?!.*\(reply\))/)

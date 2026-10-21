@@ -182,6 +182,7 @@ export function createRunner(
       env,
       hint,
       session,
+      typed: parsed.head,
     })
 
     /*

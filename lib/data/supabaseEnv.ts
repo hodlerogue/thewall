@@ -373,6 +373,8 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         body: string
         created_at: string
         is_reply: boolean
+        /** Absent before 20261017000000; null on a post. */
+        reply_no?: number | null
       }[]
 
       return rows.map((row) => ({
@@ -382,6 +384,7 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         body: row.body,
         createdAt: new Date(row.created_at),
         isReply: row.is_reply,
+        ...(row.reply_no == null ? {} : { replyNo: row.reply_no }),
       }))
     },
 

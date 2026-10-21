@@ -555,7 +555,7 @@ export function renderProfile(profile: Profile, now = new Date()): Line[] {
     lines.push(
       saidBy(
         `${post.room}/${post.id}`,
-        `${formatAgo(post.createdAt, now)}${post.isReply ? '  (reply)' : ''}`,
+        `${formatAgo(post.createdAt, now)}${replyMark(post)}`,
       ),
     )
     lines.push({ text: post.body, depth: 1 })
@@ -610,4 +610,10 @@ function truncate(text: string, max: number): string {
   const more = first.length < text.trimEnd().length
   if (first.length <= max) return more ? `${first}…` : first
   return `${first.slice(0, max - 1).trimEnd()}…`
+}
+
+/** "  (reply 3)" after a hit that is a reply, nothing after a post. */
+export function replyMark(hit: PostHit): string {
+  if (!hit.isReply) return ''
+  return hit.replyNo === undefined ? '  (reply)' : `  (reply ${hit.replyNo})`
 }

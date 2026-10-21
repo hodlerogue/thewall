@@ -90,6 +90,34 @@ export function findTheme(name: string): Theme | undefined {
 }
 
 /**
+ * The words people reach for, and which theme each one means.
+ *
+ * QA: `theme dark` answered "did you mean warm?" — the nearest spelling, and
+ * the wrong answer to the question. Spelling cannot know that dark means
+ * black; a list can. Only for the command: a stored theme is always a name.
+ */
+const OTHER_WORDS: Record<string, string> = {
+  dark: 'black',
+  night: 'black',
+  oled: 'black',
+  white: 'light',
+  day: 'light',
+  paper: 'light',
+  bright: 'light',
+  default: 'warm',
+  amber: 'warm',
+  matrix: 'green',
+  hacker: 'green',
+  phosphor: 'green',
+}
+
+/** The theme a typed word means, by name or by one of the words above. */
+export function meantTheme(word: string): Theme | undefined {
+  const typed = word.toLowerCase().trim()
+  return findTheme(OTHER_WORDS[typed] ?? typed)
+}
+
+/**
  * Written as one blob so it can be inlined before first paint. Without that a
  * visitor who chose black gets a flash of the warm ground on every load, which
  * is exactly the sort of thing that makes a site feel provisional.

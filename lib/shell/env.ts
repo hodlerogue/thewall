@@ -562,6 +562,7 @@ export function fixtureEnv(
               body: reply.body,
               createdAt: reply.createdAt,
               isReply: true,
+              replyNo: reply.id,
             })),
           ]),
         )
