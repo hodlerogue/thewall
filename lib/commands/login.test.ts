@@ -368,7 +368,9 @@ describe('the instruction printed mid-signup is one you can actually type', () =
      */
     const { session, asked } = harness()
     session.begin({ location: { room: 'commons' }, body: 'hello' })
-    const out = text((await session.answer('login')).lines)
+    // Checked first, since it is also a command — then taken.
+    expect(text((await session.answer('login')).lines)).toMatch(/do you want to be called login\?/)
+    const out = text((await session.answer('y')).lines)
 
     expect(asked).toEqual([])
     expect(out).toMatch(/where should i send your key/)

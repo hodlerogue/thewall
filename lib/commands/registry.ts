@@ -213,7 +213,7 @@ function glossProblem(line: string, slug: string): Line[] | null {
 }
 
 /** Whether an answer starts with a word the prompt would have run. */
-function looksLikeACommand(answer: string): boolean {
+export function looksLikeACommand(answer: string): boolean {
   const first = answer.trim().split(/\s+/)[0]?.toLowerCase() ?? ''
   return first !== '' && findCommand(first) !== undefined
 }
@@ -281,6 +281,45 @@ function confirmGloss(
       }
       if (answer === 'n' || answer === 'no') return { lines: askGloss(session, slug, question, accept) }
       return { lines: confirmGloss(session, slug, question, accept, words, true) }
+    },
+  )
+}
+
+/** `login` on its own: which name? */
+function askLoginName(session: Session): Line[] {
+  return session.askOne(
+    [
+      { text: 'what name do you go by here?' },
+      { text: 'i’ll send a key to the address it signed up with.', tone: 'faint' },
+    ],
+    async (text) => {
+      if (looksLikeACommand(text)) return { lines: confirmLoginName(session, text.trim()) }
+      return { lines: await session.signIn(text) }
+    },
+  )
+}
+
+/**
+ * A command typed where a name was asked for, checked before it is looked up.
+ *
+ * QA: `login`, then `logout` from habit, answered "no one here is called
+ * logout" — the question had quietly eaten the command, and the reply read as
+ * if the site had misunderstood rather than as "you were still answering
+ * something". Asked rather than refused, because names can be command words:
+ * somebody really may be called `look`. Same shape as `make`'s check.
+ */
+function confirmLoginName(session: Session, words: string, again = false): Line[] {
+  return session.askOne(
+    [
+      ...(again ? [{ text: 'y or n.', tone: 'faint' as const }] : []),
+      { text: `“${words}” is something you can type, too. is it the name you go by?`, tone: 'accent' },
+      { text: 'y to send it a key. n to type the name again. cancel stops logging in.', tone: 'faint' },
+    ],
+    async (said) => {
+      const answer = said.trim().toLowerCase()
+      if (answer === 'y' || answer === 'yes') return { lines: await session.signIn(words) }
+      if (answer === 'n' || answer === 'no') return { lines: askLoginName(session) }
+      return { lines: confirmLoginName(session, words, true) }
     },
   )
 }
@@ -2205,15 +2244,7 @@ export const COMMANDS: readonly Command[] = [
             ],
           }
         }
-        return {
-          lines: session.askOne(
-            [
-              { text: 'what name do you go by here?' },
-              { text: 'i’ll send a key to the address it signed up with.', tone: 'faint' },
-            ],
-            async (text) => ({ lines: await session.signIn(text) }),
-          ),
-        }
+        return { lines: askLoginName(session) }
       }
       return { lines: await session.signIn(arg) }
     },
