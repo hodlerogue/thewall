@@ -68,6 +68,7 @@ export function showWidget(doc: Document = document): void {
     // The snippet's own attribute, so the widget finds it whether it reads
     // `document.currentScript` or looks for `script[data-form-id]`.
     script.dataset.formId = WIDGET_FORM_ID
+    script.addEventListener('load', () => announceLoaded(doc))
     doc.body.appendChild(script)
     return
   }
@@ -79,6 +80,28 @@ export function showWidget(doc: Document = document): void {
     if (previous) el.style.setProperty('display', previous)
     else el.style.removeProperty('display')
   }
+}
+
+/**
+ * Tell a widget that arrived late that the page has loaded.
+ *
+ * Reported: `go feedback` took you to the room and the form did not appear
+ * until the page was refreshed. Most embed scripts wait to draw until the
+ * browser announces that the page has finished loading — `DOMContentLoaded`,
+ * or `load` — because that is when a pasted <script> tag can safely touch the
+ * page. Each announcement happens once per page. On a refresh of /feedback the
+ * widget arrives in time to hear them; arriving by `go`, it arrives on a page
+ * that finished loading whenever the site was first opened, and waits for
+ * announcements that have already been made.
+ *
+ * So once its script has run, they are made again — only the ones that have
+ * already happened. Nothing else on this site listens for either (checked when
+ * this was written), so the repeat reaches the widget and nothing else.
+ */
+function announceLoaded(doc: Document): void {
+  if (doc.readyState === 'loading') return
+  doc.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }))
+  if (doc.readyState === 'complete') doc.defaultView?.dispatchEvent(new Event('load'))
 }
 
 export function hideWidget(doc: Document = document): void {

@@ -5,9 +5,10 @@
 # §6 puts moderation tooling out of scope "beyond a manual kill switch". This is
 # the manual part: the levers live in the database as service-role functions,
 # and this is the memory of what they are called and what the arguments mean.
-# There is no admin account and no in-app moderation surface on purpose — an
-# admin bit that a signed-in user can be checked against is an escalation target
-# that buys nothing when the operator is one person with psql (§7).
+# Hiding and restoring can also be done at /admin now, by accounts listed in
+# public.admins (20261016000000) — added once people could report things, and
+# kept narrow because an admin account is something worth stealing. Banning and
+# erasure stay here, behind the database password, on purpose.
 #
 #   DATABASE_URL='postgresql://postgres:...@db.<ref>.supabase.co:5432/postgres' \
 #     ./scripts/moderate.sh <command> [args]

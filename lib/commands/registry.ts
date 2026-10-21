@@ -13,7 +13,7 @@
  */
 
 import { parseFlags, parseSince, splitStages } from '@/lib/commands/pipeline'
-import { ROOM_PAGE, type Env } from '@/lib/shell/env'
+import { ROOM_PAGE, type Env, type ReportTarget } from '@/lib/shell/env'
 import { formatAgo, type PostHit, type PostQuery, type RoomHit } from '@/lib/shell/model'
 import {
   renderFeed,
@@ -22,15 +22,17 @@ import {
   renderProfile,
   renderRoom,
   renderRoomList,
+  replyMark,
   saidBy,
 } from '@/lib/shell/render'
 import type { RoomList } from '@/lib/shell/model'
 import type { Session } from '@/lib/shell/session'
 import { ABOUT_SUMMARY } from '@/lib/guide/about'
+import { FEEDBACK_ROOM } from '@/lib/support/widget'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
 import { offerInstall } from '@/lib/pwa/install'
 import { hintsOn, setHints } from '@/lib/shell/hints'
-import { DEFAULT_THEME, THEMES, findTheme } from '@/lib/shell/themes'
+import { DEFAULT_THEME, THEMES, findTheme, meantTheme } from '@/lib/shell/themes'
 import { pathToLocation } from '@/lib/shell/types'
 import type { Context, Line, Location, RunResult } from '@/lib/shell/types'
 
@@ -50,6 +52,12 @@ export interface HandlerArgs {
   hint: () => Promise<string>
   /** Who you are, and the machinery that asks if you aren't anyone yet (§3.9). */
   session: Session
+  /**
+   * The word actually typed — the verb or one of its aliases. Absent when the
+   * shell runs a command itself. For the rare alias that means something a
+   * little different on its own: bare `posts` lists posts, bare `find` asks.
+   */
+  typed?: string
 }
 
 export type Handler = (args: HandlerArgs) => Promise<RunResult>
@@ -212,7 +220,7 @@ function glossProblem(line: string, slug: string): Line[] | null {
 }
 
 /** Whether an answer starts with a word the prompt would have run. */
-function looksLikeACommand(answer: string): boolean {
+export function looksLikeACommand(answer: string): boolean {
   const first = answer.trim().split(/\s+/)[0]?.toLowerCase() ?? ''
   return first !== '' && findCommand(first) !== undefined
 }
@@ -282,6 +290,63 @@ function confirmGloss(
       return { lines: confirmGloss(session, slug, question, accept, words, true) }
     },
   )
+}
+
+/** `login` on its own: which name? */
+function askLoginName(session: Session): Line[] {
+  return session.askOne(
+    [
+      { text: 'what name do you go by here?' },
+      { text: 'i’ll send a key to the address it signed up with.', tone: 'faint' },
+    ],
+    async (text) => {
+      if (looksLikeACommand(text)) return { lines: confirmLoginName(session, text.trim()) }
+      return { lines: await session.signIn(text) }
+    },
+  )
+}
+
+/**
+ * A command typed where a name was asked for, checked before it is looked up.
+ *
+ * QA: `login`, then `logout` from habit, answered "no one here is called
+ * logout" — the question had quietly eaten the command, and the reply read as
+ * if the site had misunderstood rather than as "you were still answering
+ * something". Asked rather than refused, because names can be command words:
+ * somebody really may be called `look`. Same shape as `make`'s check.
+ */
+function confirmLoginName(session: Session, words: string, again = false): Line[] {
+  return session.askOne(
+    [
+      ...(again ? [{ text: 'y or n.', tone: 'faint' as const }] : []),
+      { text: `“${words}” is something you can type, too. is it the name you go by?`, tone: 'accent' },
+      { text: 'y to send it a key. n to type the name again. cancel stops logging in.', tone: 'faint' },
+    ],
+    async (said) => {
+      const answer = said.trim().toLowerCase()
+      if (answer === 'y' || answer === 'yes') return { lines: await session.signIn(words) }
+      if (answer === 'n' || answer === 'no') return { lines: askLoginName(session) }
+      return { lines: confirmLoginName(session, words, true) }
+    },
+  )
+}
+
+/**
+ * `go 1` where there is no post 1, said with the numbers that do exist.
+ *
+ * QA: "post numbers don't start at 1, so `go 1` fails in every room." They are
+ * addresses, not counts — music starts at 11, and a number taken down is never
+ * reused — so the fix is not renumbering but saying what is here.
+ */
+async function noPost(env: Env, slug: string, id: number): Promise<string> {
+  const room = await env.getRoom(slug).catch(() => undefined)
+  const posts = room?.posts ?? []
+  if (posts.length === 0) return `there’s no post ${id} in ${slug} — nothing has been said here yet.`
+  const newest = posts[0].id
+  const oldest = posts[posts.length - 1].id
+  if (room?.more) return `there’s no post ${id} in ${slug}. the newest is ${newest} — look shows what’s here.`
+  if (oldest === newest) return `there’s no post ${id} in ${slug}. the only one here is ${newest}. try: go ${newest}`
+  return `there’s no post ${id} in ${slug}. posts here run from ${oldest} to ${newest}. try: go ${newest}`
 }
 
 /** A post address that exists, for an error that tells you to open one. */
@@ -445,16 +510,15 @@ export const COMMANDS: readonly Command[] = [
      * question rather than a journey — somebody wondering what else is going on
      * mid-thread should not lose the thread to find out.
      *
-     * Folded (§3.6): the glossary's first group is capped at ten lines, and
-     * this is a second way to see something `go` and `leave` already reach. It
-     * keeps its `what` entry, and the line printed on arrival names it, which
-     * is the moment somebody actually needs it.
+     * In help's "and anywhere" group rather than the first one, which is
+     * capped at ten lines. It was folded out of help entirely, and QA found it
+     * by guessing: "`rooms` works but isn't in help". From commons especially
+     * it is the one-word answer to "where else is there?".
      */
     verb: 'rooms',
     // No aliases: `list`, `show` and `ls` all belong to `look`, and one word
     // meaning two things is the thing this change exists to stop.
     aliases: [],
-    folded: true,
     contexts: ALL,
     gloss: () => 'the rooms there are',
     detail: () =>
@@ -534,12 +598,32 @@ export const COMMANDS: readonly Command[] = [
        * branch below and answered "there's no one called marisol/2", which is
        * an error about the wrong thing entirely.
        */
+      /*
+       * One place at a time. QA: `go 14 extra` answered "there's no room called
+       * 14 extra", which blames a room for what was a stray word. Nothing `go`
+       * takes has a space in it, so the first word is what was meant.
+       */
+      const words = arg.split(/\s+/)
+      if (words.length > 1) return error(`go takes one place at a time. try: go ${words[0]}`)
+
       if (arg.includes('/')) {
         const target = pathToLocation(`/${arg}`)
         if (target.room !== undefined && target.postId !== undefined) {
           const post = await env.getPost(target.room, target.postId)
           if (!post) return error(`there’s nothing at ${arg}. try: go ${target.room}`)
           return { lines: renderPost(post), location: target }
+        }
+        // QA: `go music/abc` answered "there's no room called music/abc" —
+        // music exists; it is the half after the slash that is wrong.
+        const [place, after] = arg.split('/', 2)
+        if (place !== '' && after !== '') {
+          const room = place.startsWith('~') ? undefined : await env.getRoom(place).catch(() => undefined)
+          const newest = room && !room.ephemeral ? room.posts[0]?.id : undefined
+          return error(
+            newest === undefined
+              ? `“${after}” isn’t a post number — after the slash comes a number. try: go ${place}`
+              : `“${after}” isn’t a post number — after the slash comes a number. try: go ${place}/${newest}`,
+          )
         }
       }
 
@@ -599,7 +683,7 @@ export const COMMANDS: readonly Command[] = [
           )
         }
         const post = await env.getPost(location.room!, id)
-        if (!post) return error(`there’s no post ${id} in ${location.room}. try: look`)
+        if (!post) return error(await noPost(env, location.room!, id))
         return { lines: renderPost(post), location: { room: location.room, postId: id } }
       }
 
@@ -913,6 +997,96 @@ export const COMMANDS: readonly Command[] = [
   },
 
   {
+    /*
+     * Flag something for review.
+     *
+     * Asked for as "a report feature, for example for an inappropriately named
+     * room or post someone makes. and if enough people report it, it should be
+     * auto hidden." `report_content` holds every rule — who may, what may be
+     * reported, and the threshold — so this only works out what is being
+     * pointed at.
+     *
+     * The same aim as `reply`, so there is one grammar to learn: in a room a
+     * number is a post, inside a post it is a reply, and `room/12` works from
+     * anywhere. `room` and `post` name the place you are standing, because a
+     * room's name is not something you can put a number on.
+     *
+     * Never a question. A report is one voice among several, so a wrong aim
+     * costs little — and the line that comes back names exactly what was
+     * reported, so a wrong one is visible at once.
+     */
+    verb: 'report',
+    aliases: ['flag'],
+    contexts: ALL,
+    gloss: () => 'flag something that should not be here',
+    detail: () =>
+      'flags something for review: a room somebody made, a post, or a reply. in a room, report 12 <why> flags post 12, and report room <why> the room itself. inside a post, report 3 <why> flags reply 3, and report post <why> the post. report music/12 <why> works from anywhere. the reason is optional. when enough people report the same thing it is hidden until someone looks at it. you need a confirmed email, and the rooms that came with the site cannot be reported — report what is in them.',
+    insert: () => 'report ',
+    wrongContext: () => '',
+    async run({ arg, context, location, env, session }) {
+      const [aim = '', ...rest] = arg.trim().split(/\s+/)
+      const why = rest.join(' ')
+
+      if (aim === '') {
+        return {
+          lines: [
+            { text: 'report <what> <why> — flag something that should not be here.', tone: 'faint' },
+            { text: 'in a room: report 12 <why> for post 12, or report room <why> for the room.', tone: 'faint' },
+            { text: 'inside a post: report 3 <why> for reply 3, or report post <why> for the post.', tone: 'faint' },
+          ],
+        }
+      }
+      if (session.name() === null) {
+        return error('you need a name first. say something anywhere and i’ll ask you for one.')
+      }
+
+      let target: ReportTarget
+      if (ADDRESS.test(aim)) {
+        const [room, number] = aim.split('/')
+        target = { room, post: Number(number) }
+      } else if (aim === 'room') {
+        if (location.room === undefined) return error('stand in the room first, then: report room <why>.')
+        target = { room: location.room }
+      } else if (aim === 'post') {
+        if (context !== 'post') {
+          return error('open the post first, then: report post <why>. or from the room: report 12 <why>.')
+        }
+        target = { room: location.room!, post: location.postId! }
+      } else if (NUMBER.test(aim)) {
+        if (context === 'post') target = { room: location.room!, post: location.postId!, reply: Number(aim) }
+        else if (location.room !== undefined) target = { room: location.room, post: Number(aim) }
+        else return error(`a number needs a room — try: report music/${aim} <why>`)
+      } else {
+        return error(`report what? a number, room, post, or an address like music/12. try: what report`)
+      }
+
+      const address =
+        target.post === undefined
+          ? target.room
+          : target.reply === undefined
+            ? `${target.room}/${target.post}`
+            : `${target.room}/${target.post}, reply ${target.reply}`
+
+      const done = await env.report(target, why)
+      if (!done.ok) return error(done.reason)
+      if (done.note) return { lines: [{ text: done.note, tone: 'faint' }] }
+
+      return {
+        lines: [
+          done.outcome === 'already'
+            ? { text: `you have already reported ${address}.`, tone: 'faint' }
+            : done.outcome === 'hidden'
+              ? { text: `${address} is hidden now, until someone looks at it. thank you.`, tone: 'faint' }
+              : {
+                  text: `${address} reported. thank you — if enough people agree, it is hidden until someone looks.`,
+                  tone: 'faint',
+                },
+        ],
+      }
+    },
+  },
+
+  {
     verb: 'say',
     contributes: true,
     /*
@@ -1213,6 +1387,12 @@ export const COMMANDS: readonly Command[] = [
 
         const missing = await nothingAt(env, target.room, target.postId)
         return missing ? error(missing) : sendReply(args, target, body)
+      }
+
+      if (context === 'post' && args.arg.trim() === '') {
+        // QA: bare `reply` answered "say what? try: say i agree" — right
+        // advice, wrong verb, for somebody who had just typed reply.
+        return error('reply what? try: reply i agree — or reply 2 <something> to answer reply 2.')
       }
 
       if (context === 'post') {
@@ -1540,6 +1720,7 @@ export const COMMANDS: readonly Command[] = [
        */
       const ELSEWHERE = [
         'about',
+        'rooms',
         'login',
         'logout',
         'mail',
@@ -1549,6 +1730,7 @@ export const COMMANDS: readonly Command[] = [
         'hints',
         'install',
         'terms',
+        'report',
         'privacy',
         'what',
         'help',
@@ -1574,7 +1756,7 @@ export const COMMANDS: readonly Command[] = [
         lines.push(...about)
       }
       /*
-       * Two places, because this list is verbs and they are not.
+       * Places, because this list is verbs and they are not.
        *
        * `feed` and `~name` are rooms, so the only thing that ever named them
        * was the lobby listing and the middle of `what go`. Somebody who types
@@ -1583,13 +1765,20 @@ export const COMMANDS: readonly Command[] = [
        * anything in help about profile, or feed" is what that looks like from
        * outside, and it was accurate.
        *
-       * Two lines, not a third group of six. The point is to name the two doors
+       * A few lines, not a third group of six. The point is to name the doors
        * that no verb spells, then get out of the way.
        */
       lines.push({ text: '' })
-      lines.push({ text: 'and two places:', tone: 'faint' })
+      lines.push({ text: 'and three places:', tone: 'faint' })
       lines.push({ text: `go ${FEED} — everything anybody put on their own wall`, tone: 'dim' })
       lines.push({ text: 'go ~name — somebody: who they are, and their wall', tone: 'dim' })
+      /*
+       * Asked for as "why is feedback not listed in the help menu". `help` is a
+       * list of commands, and feedback is a room — but it is the one room people
+       * go looking for when something is wrong, which is exactly when they type
+       * `help`, and it is where the support form lives.
+       */
+      lines.push({ text: `go ${FEEDBACK_ROOM} — something broken? tell us there`, tone: 'dim' })
 
       lines.push({ text: '' })
       lines.push({ text: 'what <command> explains any of them.', tone: 'faint' })
@@ -1649,7 +1838,7 @@ export const COMMANDS: readonly Command[] = [
         return { lines }
       }
 
-      const chosen = findTheme(arg)
+      const chosen = meantTheme(arg)
       if (!chosen) {
         const near = nearestSlug(arg, THEMES.map((t) => t.name))
         return error(
@@ -1661,7 +1850,11 @@ export const COMMANDS: readonly Command[] = [
 
       applyTheme(chosen.name)
       return {
-        lines: [{ text: `${chosen.name} — ${chosen.gloss}.`, tone: 'faint' }],
+        lines: [
+          // Said when the word was not the name, so `theme black` is learned.
+          ...(findTheme(arg) ? [] : [{ text: `${arg.trim().toLowerCase()} is called ${chosen.name} here.`, tone: 'faint' as const }]),
+          { text: `${chosen.name} — ${chosen.gloss}.`, tone: 'faint' },
+        ],
       }
     },
   },
@@ -2106,15 +2299,7 @@ export const COMMANDS: readonly Command[] = [
             ],
           }
         }
-        return {
-          lines: session.askOne(
-            [
-              { text: 'what name do you go by here?' },
-              { text: 'i’ll send a key to the address it signed up with.', tone: 'faint' },
-            ],
-            async (text) => ({ lines: await session.signIn(text) }),
-          ),
-        }
+        return { lines: askLoginName(session) }
       }
       return { lines: await session.signIn(arg) }
     },
@@ -2185,7 +2370,7 @@ export const COMMANDS: readonly Command[] = [
       'looks for words in what people have said, everywhere or just here: find tomatoes. narrow it with --room, --by, --since or --limit. results can be piped: find --by=jameson --since=7d | count, or | go to open the newest.',
     insert: () => 'find ',
     wrongContext: () => '',
-    async run({ arg, location, env }) {
+    async run({ arg, location, env, typed }) {
       // Only this command splits on `|`. That is why `say i love a|b` keeps
       // its pipe instead of becoming half a sentence and a broken pipeline.
       const [source = '', ...rest] = arg.split('|')
@@ -2205,6 +2390,14 @@ export const COMMANDS: readonly Command[] = [
         if (sinks.length > 0) return error('rooms don’t pipe yet. try: find --rooms garden')
         const term = source.replace(/(^|\s)--rooms(=\S*)?/g, ' ').trim()
         return { lines: renderRoomHits(await env.findRooms(term), term) }
+      }
+
+      // QA: bare `find` printed everything recent, which reads as a bug rather
+      // than an answer. Flags alone still search — `find --by=marisol` has
+      // said what it wants — and so does a pipe, which is asking for a count.
+      // `posts` on its own is a request for exactly that list, so it keeps it.
+      if (source.trim() === '' && sinks.length === 0 && typed?.toLowerCase() !== 'posts') {
+        return error('find what? try: find tomatoes — or find --rooms garden for rooms.')
       }
 
       const query = buildQuery(source, location)
@@ -2339,7 +2532,7 @@ function renderHits(hits: readonly PostHit[], term?: string): Line[] {
     lines.push(
       saidBy(
         `${hit.room}/${hit.id}`,
-        `${hit.author}, ${formatAgo(hit.createdAt)}${hit.isReply ? '  (reply)' : ''}`,
+        `${hit.author}, ${formatAgo(hit.createdAt)}${replyMark(hit)}`,
       ),
     )
     lines.push({ text: hit.body, depth: 1 })

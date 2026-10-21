@@ -1389,6 +1389,18 @@ select tests.ok(
   (select room || '/' || post_no from public.search_said('law of bicycles') limit 1) = 'builders/2',
   'and a reply carries the address of the post it is under, since it has none of its own'
 );
+-- QA: a post and a reply under it both read `builders/2`, which looked like
+-- the same line twice. The reply's own number is what tells them apart.
+select tests.ok(
+  (select reply_no from public.search_said('law of bicycles') where is_reply limit 1)
+    = (select r.reply_no from public.replies r where r.body ilike '%law of bicycles%' limit 1),
+  'a reply hit says which reply it is'
+);
+select tests.ok(
+  not exists (select 1 from public.search_said(null, null, null, null, 50) where not is_reply and reply_no is not null)
+  and not exists (select 1 from public.search_said(null, null, null, null, 50) where is_reply and reply_no is null),
+  'and only replies carry a reply number'
+);
 select tests.ok(
   not exists (select 1 from public.search_said('super keeps saying')),
   'commons is never searchable — nothing there has an address to go to'
@@ -2697,9 +2709,10 @@ select tests.ok(
       join pg_namespace n on n.oid = p.pronamespace and n.nspname = 'public'
      where has_function_privilege('authenticated', p.oid, 'execute')
        and not has_function_privilege('anon', p.oid, 'execute')
-  ) = 'change_name/1,create_post/2,create_reply/4,create_room/3,describe_room/2,mail/0,'
-      || 'mail_count/0,mark_mail_seen/0,notify_state/0,set_notify/1',
-  'and signing in buys exactly the ten functions that write, and nothing else'
+  ) = 'admin_resolve/4,admin_review/0,admin_threshold/1,change_name/1,create_post/2,'
+      || 'create_reply/4,create_room/3,describe_room/2,is_admin/0,mail/0,mail_count/0,'
+      || 'mark_mail_seen/0,notify_state/0,report_content/4,set_notify/1',
+  'and signing in buys exactly these fifteen functions, and nothing else — the admin ones check admins themselves'
 );
 
 -- describe_room — a room's maker changing what it says it is for ---------------
@@ -2827,6 +2840,218 @@ exception when others then
   raise notice '  ok    the refusal does not say who made it';
 end;
 $$;
+
+-- Reports, the threshold, and the dashboard (20261016000000) -------------------
+--
+-- Accounts of their own, on ids nothing above uses.
+\echo ''
+\echo 'reports — enough people hide it, an admin restores it'
+
+insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+  confirmation_token, recovery_token, email_change, email_change_token_new,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+select ('f' || n || 'f' || n || 'f' || n || 'f' || n || '-0000-4000-8000-00000000000' || n)::uuid,
+       '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+       'reporter' || n || '@seed.invalid', '', now(), '', '', '', '', '{}'::jsonb, '{}'::jsonb, now(), now()
+  from generate_series(1, 7) n
+on conflict (id) do nothing;
+
+-- 1 makes things; 2, 3, 4 and 6 report; 5 never verified; 7 is the admin.
+insert into public.profiles (id, name, verified_at)
+select ('f' || n || 'f' || n || 'f' || n || 'f' || n || '-0000-4000-8000-00000000000' || n)::uuid,
+       'reporter' || n, case when n = 5 then null else now() end
+  from generate_series(1, 7) n
+on conflict (id) do nothing;
+
+insert into public.admins (profile_id) values ('f7f7f7f7-0000-4000-8000-000000000007');
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'f1f1f1f1-0000-4000-8000-000000000001';
+  select public.create_room('reportme'::citext, 'a room to be reported');
+  select public.create_post('reportme'::citext, 'something people will object to');
+  select public.create_post('reportme'::citext, 'something fine');
+commit;
+insert into public.replies (post_id, author_id, body)
+select id, 'f2f2f2f2-0000-4000-8000-000000000002', 'a reply that will be reported'
+  from public.posts where room_slug = 'reportme' and post_no = 2;
+
+begin;
+  set local role anon;
+  select tests.raises(
+    $sql$select public.report_content('reportme'::citext, 1)$sql$,
+    'nobody signed out can report'
+  );
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'f5f5f5f5-0000-4000-8000-000000000005';
+  select tests.raises(
+    $sql$select public.report_content('reportme'::citext, 1)$sql$,
+    'nor an account that never followed its key'
+  );
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'f2f2f2f2-0000-4000-8000-000000000002';
+  select tests.ok(public.report_content('reportme'::citext, 1, null, 'rude') = 'reported',
+    'a verified account reports a post');
+  select tests.ok(public.report_content('reportme'::citext, 1) = 'already',
+    'and reporting it twice counts once');
+  select tests.ok(
+    (select hidden_at from public.posts where room_slug = 'reportme' and post_no = 1) is null,
+    'one report hides nothing');
+  select tests.raises($sql$select public.report_content('music'::citext)$sql$,
+    'a room that came with the building cannot be reported');
+  select tests.raises($sql$select public.report_content('~marisol'::citext)$sql$,
+    'nor a wall as a whole');
+  select tests.raises($sql$select public.report_content('commons'::citext, 1)$sql$,
+    'nor anything in commons');
+  select tests.raises($sql$select public.report_content('reportme'::citext, 99)$sql$,
+    'nor something that is not there');
+  select tests.raises($sql$select public.report_content('reportme'::citext, 2, 1)$sql$,
+    'nor your own words');
+  select tests.raises($sql$select public.report_content('reportme'::citext, 2, null, repeat('x', 201))$sql$,
+    'and a reason is 200 characters at most');
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'f3f3f3f3-0000-4000-8000-000000000003';
+  select tests.ok(public.report_content('reportme'::citext, 1) = 'reported', 'a second person reports it');
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'f4f4f4f4-0000-4000-8000-000000000004';
+  select tests.ok(public.report_content('reportme'::citext, 1) = 'hidden',
+    'and the third hides it, at the default of three');
+  -- Checked from here as well as below: to a signed-in reader it is simply gone.
+  select tests.ok(
+    not exists (select 1 from public.posts where room_slug = 'reportme' and post_no = 1),
+    'and to everybody reading, it is gone');
+commit;
+
+select tests.ok(
+  (select hidden_at from public.posts where room_slug = 'reportme' and post_no = 1) is not null,
+  'which is hidden, not deleted: the row is still there');
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'f4f4f4f4-0000-4000-8000-000000000004';
+  select tests.ok(public.report_content('reportme'::citext, 2, 1) = 'reported', 'a reply can be reported');
+  select tests.ok(public.report_content('reportme'::citext) = 'reported', 'and so can a room somebody made');
+
+  select tests.raises($sql$select public.is_admin() or (select count(*) from public.admin_review()) >= 0$sql$,
+    'the dashboard refuses somebody who is not an admin');
+  select tests.ok(not public.is_admin(), 'and says they are not one');
+  select tests.raises($sql$select public.admin_resolve('reportme'::citext, 1, null, 'restore')$sql$,
+    'nor can they restore anything');
+  select tests.raises($sql$select public.admin_threshold(1)$sql$,
+    'nor change the threshold');
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'f7f7f7f7-0000-4000-8000-000000000007';
+  select tests.ok(public.is_admin(), 'an admin is told they are one');
+  select tests.ok(
+    (select reports from public.admin_review() where target = 'reportme/1') = 3
+      and (select hidden_at from public.admin_review() where target = 'reportme/1') is not null
+      and (select reporters from public.admin_review() where target = 'reportme/1')
+          = array['reporter2', 'reporter3', 'reporter4']
+      and (select author from public.admin_review() where target = 'reportme/1') = 'reporter1',
+    'and sees what was hidden, by whom it was reported, and who wrote it');
+  select tests.ok(
+    (select reasons from public.admin_review() where target = 'reportme/1') = array['rude'],
+    'with the reasons people gave');
+commit;
+
+-- Hidden by the old lever, with no reports at all: "restore anything".
+select public.hide_post('kitchen'::citext, 1, true);
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'f7f7f7f7-0000-4000-8000-000000000007';
+  select tests.ok(exists (select 1 from public.admin_review() where target = 'kitchen/1'),
+    'the dashboard lists anything hidden, not only what was reported');
+  select public.admin_resolve('kitchen'::citext, 1, null, 'restore');
+  select public.admin_resolve('reportme'::citext, 1, null, 'restore');
+commit;
+
+select tests.ok(
+  (select hidden_at from public.posts where room_slug = 'reportme' and post_no = 1) is null
+    and (select hidden_at from public.posts where room_slug = 'kitchen' and post_no = 1) is null,
+  'restoring makes both visible again');
+select tests.ok(
+  not exists (select 1 from public.reports where target = 'reportme/1' and resolved_at is null)
+    and (select count(*) from public.reports where target = 'reportme/1' and resolution = 'restored') = 3,
+  'and closes the reports, keeping them');
+select tests.ok(
+  (select count(*) from public.moderation_log
+    where admin_id = 'f7f7f7f7-0000-4000-8000-000000000007' and action = 'restore') = 2
+    and exists (select 1 from public.moderation_log where admin_id is null and target = 'reportme/1'),
+  'and every hide and restore is in the log, the automatic one too');
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'f2f2f2f2-0000-4000-8000-000000000002';
+  select tests.ok(public.report_content('reportme'::citext, 1) = 'already',
+    'the same people cannot hide it again by reporting it again');
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'f6f6f6f6-0000-4000-8000-000000000006';
+  select tests.ok(public.report_content('reportme'::citext, 1) = 'reported',
+    'somebody new can, and it starts counting from one');
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'f7f7f7f7-0000-4000-8000-000000000007';
+  select public.admin_resolve('reportme'::citext, 1, null, 'dismiss');
+  select tests.ok(public.admin_threshold(1) = 1, 'an admin sets the threshold');
+commit;
+select tests.ok(
+  (select hidden_at from public.posts where room_slug = 'reportme' and post_no = 1) is null,
+  'dismissing leaves it as it was');
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'f6f6f6f6-0000-4000-8000-000000000006';
+  select tests.raises($sql$select public.report_content('reportme'::citext, 3)$sql$, 'post 3 is not there');
+commit;
+
+-- Twenty a day.
+insert into public.reports (target, room_slug, post_no, reporter_id, created_at)
+select 'reportme/' || (100 + n), 'reportme', 100 + n, 'f6f6f6f6-0000-4000-8000-000000000006', now()
+  from generate_series(1, 20) n;
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'f6f6f6f6-0000-4000-8000-000000000006';
+  select tests.raises($sql$select public.report_content('reportme'::citext, 2)$sql$,
+    'twenty reports a day, and then no more');
+commit;
+
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'f7f7f7f7-0000-4000-8000-000000000007';
+  select public.admin_threshold(3);
+commit;
+
+-- Nothing a browser can call adds an admin.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'f2f2f2f2-0000-4000-8000-000000000002';
+  select tests.raises(
+    $sql$insert into public.admins (profile_id) values ('f2f2f2f2-0000-4000-8000-000000000002')$sql$,
+    'nobody can make themselves an admin');
+  select tests.raises($sql$select count(*) from public.reports$sql$,
+    'nor read who reported what');
+commit;
 
 \echo ''
 \echo 'all schema tests passed'

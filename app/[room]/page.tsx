@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
 import { Readable } from '@/components/Readable'
 import { Shell } from '@/components/Shell'
+import { personIsMissing, roomIsMissing } from '@/lib/brand/ogData'
 import { personMetadata, roomMetadata } from '@/lib/seo/pages'
 import { pathToLocation } from '@/lib/shell/types'
 
@@ -33,6 +35,23 @@ export async function generateMetadata({
 export default async function Page({ params }: { params: Promise<{ room: string }> }) {
   const { room } = await params
   const location = pathToLocation(`/${room}`)
+
+  /*
+   * A real 404 for a room or person that is not there.
+   *
+   * QA: `/nope404` answered 200 with a blank page, so to a search engine every
+   * typo was a page, and to a person it was nothing at all. Only when the
+   * database said "no such thing" — a failed read still gets the prompt, which
+   * explains itself, rather than a 404 for a room that may well exist. Checked
+   * here, before anything renders, because once the page starts streaming the
+   * status is already sent.
+   */
+  const missing =
+    location.person !== undefined
+      ? await personIsMissing(location.person)
+      : location.room === undefined || (await roomIsMissing(location.room))
+  if (missing) notFound()
+
   return (
     <Shell initialLocation={location}>
       <Readable at={location} />

@@ -177,12 +177,67 @@ describe('§3.9 — signup is deferred to first contribution', () => {
     const at: Location = { room: 'music' }
     await run('say hello', at)
 
-    // `read` is an alias for `go`. Mid-signup it has to be a name.
+    // `read` is an alias for `go`. Mid-signup it has to be a name — after
+    // checking that it was meant as one.
     const out = text((await run('read', at)).lines)
     expect(out).not.toMatch(/i don’t know/)
     expect(session.isAsking()).toBe(true)
-    // It was accepted as a name and moved on to the second question.
-    expect(out).toMatch(/where should i send your key\?/)
+    expect(out).toMatch(/do you want to be called read\?/)
+    // Confirmed, it was accepted as a name and moved on to the second question.
+    expect(text((await run('y', at)).lines)).toMatch(/where should i send your key\?/)
+  })
+
+  it('checks before taking a command word as a name', async () => {
+    const at: Location = { room: 'music' }
+    // QA: `logout` typed at the name question became the account `logout`.
+    const { run, session, posted } = harness()
+    const sentence = 'kept through all of this'
+    await run(`say ${sentence}`, at)
+
+    const asked = text((await run('logout', at)).lines)
+    expect(asked).toMatch(/“logout” is something you can type, too/)
+    expect(asked).toMatch(/cancel stops here/)
+    expect(asked).not.toMatch(/where should i send your key/)
+
+    // Anything but y or n asks again, and spends nothing.
+    expect(text((await run('maybe', at)).lines)).toMatch(/y or n\.[\s\S]*called logout\?/)
+
+    // n: back to the name question, sentence still held.
+    expect(text((await run('n', at)).lines)).toMatch(/what do you want to be called\?/)
+    expect(session.isAsking()).toBe(true)
+    await run('newcomer', at)
+    await run('newcomer@example.com', at)
+    expect(session.name()).toBe('newcomer')
+    expect(posted).toEqual([{ room: 'music', body: sentence }])
+  })
+
+  it('stays at the name question when a confirmed command word is taken', async () => {
+    const at: Location = { room: 'music' }
+    const { run, session } = harness({ taken: ['look'] })
+    await run('say hello', at)
+    await run('look', at)
+    const out = text((await run('y', at)).lines)
+    expect(out).toMatch(/look is taken/)
+    expect(session.isAsking()).toBe(true)
+    // Still answering the name question, not a bare prompt holding a sentence.
+    expect(text((await run('looker', at)).lines)).toMatch(/where should i send your key\?/)
+  })
+
+  it('points at login when the name typed is login', async () => {
+    const at: Location = { room: 'music' }
+    const { run } = harness()
+    await run('say hello', at)
+    expect(text((await run('login', at)).lines)).toMatch(/already have an account\? type login and its name/)
+  })
+
+  it('cancel stops from the check, too', async () => {
+    const at: Location = { room: 'music' }
+    const { run, session, posted } = harness()
+    await run('say hello', at)
+    await run('logout', at)
+    expect(text((await run('cancel', at)).lines)).toMatch(/nothing sent/)
+    expect(session.isAsking()).toBe(false)
+    expect(posted).toEqual([])
   })
 
   it('never asks for a password — a prompt cannot mask input (§9)', async () => {
@@ -549,6 +604,8 @@ describe('§3.9 — one step back, when the name was wrong', () => {
     const { run, session } = harness()
     await run('say hello', at)
     await run('back', at)
+    // `back` is also an alias for `leave`, so it is checked first.
+    await run('y', at)
     await run('back@example.com', at)
     expect(session.name()).toBe('back')
   })

@@ -88,19 +88,37 @@ export async function offerInstall(): Promise<Line[]> {
 
   const event = deferred
   if (event) {
-    // One shot. Chrome will not replay a consumed prompt, so holding on to it
-    // would leave `install` silently doing nothing the second time.
+    // One use per event: the browser will not show the same one twice.
     deferred = null
     remember()
+
+    /*
+     * Started, never awaited.
+     *
+     * Reported by QA as "install prints nothing and freezes the prompt; all
+     * later commands are ignored until reload". This used to await `prompt()`
+     * and then `userChoice` — and the prompt runs one command at a time, so
+     * for as long as either promise was pending, every Enter after it was
+     * dropped. Both can stay pending indefinitely: Chrome often shows the
+     * offer as a small icon in the address bar rather than a dialog, which is
+     * easy to miss, and closing it some ways settles nothing. A command that
+     * waits on a browser dialog the person may never see is a frozen site.
+     *
+     * So the dialog is asked for and the command answers at once. What the
+     * person chooses, the browser says itself; `appinstalled` (above) is what
+     * notices if they said yes. A refusal to open — no user activation, or a
+     * browser that will not — lands in the catch and changes nothing, because
+     * the line below already says where else to look.
+     */
     try {
-      await event.prompt()
-      const { outcome } = await event.userChoice
-      return outcome === 'accepted'
-        ? [{ text: 'added. it opens without the browser chrome now.', tone: 'faint' }]
-        : [{ text: 'no problem. type install if you change your mind.', tone: 'faint' }]
+      void Promise.resolve(event.prompt()).catch(() => {})
     } catch {
       return [{ text: 'your browser wouldn’t open the prompt. the menu will have it.', tone: 'faint' }]
     }
+    return [
+      { text: 'your browser is asking whether to add it — answer there.', tone: 'faint' },
+      { text: 'nothing appeared? the browser menu has "install" or "add to home screen".', tone: 'faint' },
+    ]
   }
 
   return advice()

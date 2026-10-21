@@ -38,18 +38,43 @@ export function ogEnv(): Env | null {
  * to produce a page**: a title that throws is a 500 for a crawler. Both callers
  * already handle "nothing came back" by falling back to something generic.
  */
-async function reader<T>(fetch: (env: Env) => Promise<T>): Promise<T | undefined> {
+async function reader<T>(fetch: (env: Env) => Promise<T>): Promise<Attempt<T>> {
   try {
     const env = ogEnv()
-    return env ? await fetch(env) : undefined
+    return env ? { answered: true, value: await fetch(env) } : { answered: false }
   } catch {
-    return undefined
+    return { answered: false }
   }
 }
 
-export const readLobby = cache(() => reader((env) => env.listRooms()))
-export const readRoom = cache((slug: string) => reader((env) => env.getRoom(slug)))
-export const readProfile = cache((name: string) => reader((env) => env.getProfile(name)))
-export const readPost = cache((room: string, postId: number) =>
-  reader((env) => env.getPost(room, postId)),
-)
+/**
+ * Whether the database answered, kept apart from what it answered.
+ *
+ * A 404 has to mean "asked, and there is no such thing" — never "could not
+ * ask". Collapsing both into `undefined` was fine while the only consequence
+ * was a generic title, and stopped being fine once a missing room answered
+ * with a real 404 (QA: `/nope404` came back 200 with a blank page). A blip
+ * telling a search engine that `/music` does not exist would be worse than
+ * the bug.
+ */
+type Attempt<T> = { answered: true; value: T } | { answered: false }
+
+const value = <T>(attempt: Attempt<T | undefined>) => (attempt.answered ? attempt.value : undefined)
+const absent = <T>(attempt: Attempt<T | undefined>) => attempt.answered && attempt.value === undefined
+
+const lobby = cache(() => reader((env) => env.listRooms()))
+const room = cache((slug: string) => reader((env) => env.getRoom(slug)))
+const profile = cache((name: string) => reader((env) => env.getProfile(name)))
+const post = cache((slug: string, postId: number) => reader((env) => env.getPost(slug, postId)))
+
+export const readLobby = () => lobby().then(value)
+export const readRoom = (slug: string) => room(slug).then(value)
+export const readProfile = (name: string) => profile(name).then(value)
+export const readPost = (slug: string, postId: number) => post(slug, postId).then(value)
+
+/** True only when the database answered that there is no such room. */
+export const roomIsMissing = (slug: string) => room(slug).then(absent)
+/** True only when the database answered that there is nobody by that name. */
+export const personIsMissing = (name: string) => profile(name).then(absent)
+/** True only when the database answered that there is no such post. */
+export const postIsMissing = (slug: string, postId: number) => post(slug, postId).then(absent)

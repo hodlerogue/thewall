@@ -408,7 +408,7 @@ describe('the fixture Env cannot quietly disagree with the real one', () => {
     // The address is the post's — a reply has none of its own (§4.3) — so the
     // marker is what keeps that from being a small lie.
     expect(out).toContain('builders/5')
-    expect(out).toContain('(reply)')
+    expect(out).toMatch(/\(reply \d+\)/)
   })
 
   it('refuses the names the database refuses', async () => {

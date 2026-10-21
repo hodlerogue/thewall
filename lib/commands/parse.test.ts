@@ -139,7 +139,7 @@ describe('§3.4 — post ids are addresses, not positions', () => {
 
   it('says so plainly when the id is not there', async () => {
     const out = text((await run('go 99', { room: 'music' })).lines)
-    expect(out).toBe('there’s no post 99 in music. try: look')
+    expect(out).toBe('there’s no post 99 in music. posts here run from 11 to 12. try: go 12')
   })
 
   it('explains that post numbers need a room, and names one', async () => {

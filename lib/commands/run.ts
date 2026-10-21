@@ -124,6 +124,13 @@ export function createRunner(
     const hint = () => (hinted ??= roomHint(env))
 
     if (!parsed.command) {
+      // QA: `cancel` with nothing open answered `i don't know "cancel"` — on
+      // the one word every question on the site tells you to type. It is not
+      // a command (it would sit in help doing nothing), so it is caught here.
+      if (/^(cancel|nevermind|never mind|quit|stop)$/i.test(input.trim())) {
+        return answer({ lines: session.cancel() })
+      }
+
       /*
        * `reply/5 that is the bit i meant` — a slash where a space belongs.
        *
@@ -175,6 +182,7 @@ export function createRunner(
       env,
       hint,
       session,
+      typed: parsed.head,
     })
 
     /*

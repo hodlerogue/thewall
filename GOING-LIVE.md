@@ -12,14 +12,16 @@ these fail silently — the site keeps loading and one feature is quietly dead.
 ## 1. The database
 
 Your project was set up when there were three migrations. There are now
-twenty-seven. What the rest add: the column-scoped grants that close two console
+twenty-nine. What the rest add: the column-scoped grants that close two console
 bypasses, mail, the kill switch, rename, erasure, walls, rooms people make, the
 feed, three more rooms, the daily email, rooms that grew out of a room, that
 email being on by default, never mailing an address that cannot receive, a
 lobby that uses its index, replies you can answer, posts with paragraphs in
 them, `hello` reserved so the landing page cannot shadow a room, the permanent rooms
 marked by name so none of them can fade off the lobby, room descriptions up to
-100 characters with `describe` for whoever made the room, and the grant
+100 characters with `describe` for whoever made the room, `report` and the
+admin dashboard, search results that say which reply a hit is (either order
+with the deploy is fine — the app copes without it), and the grant
 sweep below. **None of their features work until they are applied**, and none of
 them fail at build time — they fail in somebody's browser.
 
@@ -90,8 +92,33 @@ This is safe to run repeatedly now. On its first run against an existing project
 it probes for each migration, records the ones already there, and applies only
 the rest — nothing runs twice and nothing is skipped.
 
-**Worked when:** `db-check.sh` shows all twenty-seven as `applied`, every room has
+**Worked when:** `db-check.sh` shows all twenty-nine as `applied`, every room has
 something in the last two columns, and the anon role reads all five objects.
+
+### Reports and the admin dashboard
+
+`report` lets anybody with a confirmed email flag a room somebody made, a post,
+or a reply. When three different people report the same thing it is hidden
+until somebody looks — nothing is deleted. The dashboard at **/admin** lists
+everything reported and everything hidden, with restore, hide and dismiss, and
+the number of reports it takes.
+
+Nobody is an admin until you make them one, and only the database can:
+
+```sql
+insert into public.admins (profile_id)
+select id from public.profiles where name = 'yourname';
+```
+
+Then sign in at the prompt as that name and open `/admin`. To remove someone:
+`delete from public.admins where profile_id = (select id from public.profiles where name = 'theirname');`
+
+What an admin can do is deliberately narrow — hide, restore, dismiss reports,
+set the threshold. Banning and erasing stay in `scripts/moderate.sh`. Every
+admin action, and every automatic hide, is written to `public.moderation_log`.
+
+After a move to a new Supabase account, add yourself as an admin again — the
+move carries hidden posts and rooms, but not the list of admins or open reports.
 
 ### A room exists but the lobby does not list it
 

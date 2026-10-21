@@ -1,4 +1,5 @@
 import { suggestAlternates, validateName } from '@/lib/auth/names'
+import { looksLikeACommand } from '@/lib/commands/registry'
 import { DOCUMENTS } from '@/lib/legal/documents'
 import { formatAgo } from '@/lib/shell/model'
 import type { Line, Location } from '@/lib/shell/types'
@@ -527,7 +528,7 @@ export class Session {
     return this.mode === 'ask-name' ? this.answerName(text) : this.answerEmail(text)
   }
 
-  private async answerName(text: string): Promise<AnswerResult> {
+  private async answerName(text: string, sure = false): Promise<AnswerResult> {
     const validated = validateName(text)
     if (!validated.ok) {
       const lines: Line[] = [{ text: validated.reason, tone: 'error' }]
@@ -536,6 +537,8 @@ export class Session {
       }
       return { lines }
     }
+
+    if (!sure && looksLikeACommand(validated.name)) return { lines: this.confirmName(validated.name) }
 
     const { available, alternates } = await this.api.checkName(validated.name)
     if (!available) {
@@ -615,6 +618,46 @@ export class Session {
         },
       ],
     }
+  }
+
+  /**
+   * A name that is also a command, checked before it becomes somebody.
+   *
+   * QA typed `logout` at "what do you want to be called?" and was offered the
+   * account `logout` — habit, at a prompt that looks the same whether it is
+   * asking something or waiting for a command. Not refused: `look` and `find`
+   * are names people may genuinely want, and refusing them is the bug that once
+   * went the other way. So it asks, like `make` does about a description.
+   *
+   * `n` goes back to the name question with the held sentence still held;
+   * `cancel` works here as at any question.
+   */
+  private confirmName(name: string, again = false): Line[] {
+    return this.askOne(
+      [
+        ...(again ? [{ text: 'y or n.', tone: 'faint' as const }] : []),
+        { text: `“${name}” is something you can type, too. do you want to be called ${name}?`, tone: 'accent' },
+        { text: 'y to take it. n to pick another name. cancel stops here.', tone: 'faint' },
+        // The one command somebody at this question most likely meant.
+        ...(/^(login|signin|auth)$/.test(name)
+          ? [{ text: 'already have an account? type login and its name.', tone: 'faint' as const }]
+          : []),
+      ],
+      async (said) => {
+        const answer = said.trim().toLowerCase()
+        if (answer === 'y' || answer === 'yes') {
+          // Back at the name question, so "taken" or anything else refused
+          // leaves it asking rather than at a bare prompt holding a sentence.
+          this.mode = 'ask-name'
+          return this.answerName(name, true)
+        }
+        if (answer === 'n' || answer === 'no') {
+          this.mode = 'ask-name'
+          return { lines: [{ text: 'what do you want to be called?', tone: 'accent' }] }
+        }
+        return { lines: this.confirmName(name, true) }
+      },
+    )
   }
 
   private async answerEmail(text: string): Promise<AnswerResult> {

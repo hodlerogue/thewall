@@ -30,17 +30,18 @@ import { describe, expect, it } from 'vitest'
 const source = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
 
 describe('a page reads each address once', () => {
-  const readers = ['readLobby', 'readRoom', 'readProfile', 'readPost']
+  // Each exported reader goes through one of these, so the 404 check on a page
+  // and the page itself share the read rather than asking twice.
+  const cached = { readLobby: 'lobby', readRoom: 'room', readProfile: 'profile', readPost: 'post' }
 
-  it.each(readers)('%s is memoised per request', (name) => {
-    const line = source('lib/brand/ogData.ts')
-      .split('\n')
-      .find((l) => l.includes(`export const ${name} =`))
+  it.each(Object.entries(cached))('%s is memoised per request', (name, inner) => {
+    const lines = source('lib/brand/ogData.ts').split('\n')
+    const line = lines.find((l) => l.includes(`export const ${name} =`))
+    const memo = lines.find((l) => l.startsWith(`const ${inner} =`))
 
     expect(line, `${name} is not exported from ogData`).toBeDefined()
-    expect(line, `${name} must be wrapped in cache() or every caller pays again`).toContain(
-      'cache(',
-    )
+    expect(line, `${name} must read through the cached ${inner}`).toContain(` ${inner}(`)
+    expect(memo, `${inner} must be wrapped in cache() or every caller pays again`).toContain('cache(')
   })
 
   // The reads themselves are `env.getRoom` and friends. A caller holding an

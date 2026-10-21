@@ -130,6 +130,18 @@ app (on iPhone it'll tell you which two taps to make). `theme` changes the
 colors — warm, black, green or light — and `hints off` hides the little
 suggestions if you'd rather not see them.
 
+## 16. How do I report something that shouldn't be here?
+
+Type `report` with the post's number and, if you like, why — in a room,
+`report 12 spam` reports post 12. Inside a post, `report 2 rude` reports reply
+number 2, and `report post` reports the post itself. To report a room someone
+made — say, for its name — stand in it and type `report room`.
+
+When enough different people report the same thing, it's hidden until someone
+reviews it. Nothing is deleted, and you can only report each thing once. You
+need a confirmed email address to report, and the rooms that came with the site
+can't be reported — report what's in them instead.
+
 ---
 
 ## Anything else

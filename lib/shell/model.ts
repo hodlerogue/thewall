@@ -162,6 +162,15 @@ export interface PostHit {
    */
   isReply?: boolean
   /**
+   * Which reply, when it is one — its number inside the post.
+   *
+   * QA read `poker/10` and `poker/10 (reply)` on one profile as the same line
+   * twice. They were the post and an answer under it; the number says which
+   * answer, and is what `reply 3 <something>` takes once you are there.
+   * Absent on a database that predates the migration, which gets "(reply)".
+   */
+  replyNo?: number
+  /**
    * How many answers it has, where that is known.
    *
    * Absent for a search hit, which is a needle rather than a thing to browse.

@@ -45,6 +45,22 @@ export interface Check {
 /** What `make` did, or why it could not. */
 export type MadeRoom = { ok: true; slug: string } | { ok: false; reason: string }
 
+/** What a report points at: a room, a post in it, or a reply under that post. */
+export interface ReportTarget {
+  room: string
+  post?: number
+  reply?: number
+}
+
+/**
+ * What became of a report. `hidden` means it was the one that tipped it over
+ * the threshold — or it was hidden already.
+ */
+export type Reported =
+  /** `note` replaces the usual line — the demo uses it to say nothing was sent. */
+  | { ok: true; outcome: 'reported' | 'already' | 'hidden'; note?: string }
+  | { ok: false; reason: string }
+
 export interface Env {
   listRooms(): Promise<RoomList>
   /**
@@ -61,6 +77,8 @@ export interface Env {
    * reason for the same reason `makeRoom`'s does.
    */
   describeRoom(slug: string, gloss: string): Promise<MadeRoom>
+  /** Flag something for review. Every rule lives in `report_content`. */
+  report(target: ReportTarget, reason: string): Promise<Reported>
   /**
    * Rooms by name or by what they are for.
    *
@@ -415,6 +433,35 @@ export function fixtureEnv(
       return { ok: true, slug: clean }
     },
 
+    /*
+     * The demo reports nothing anywhere — there is nobody to review it — but it
+     * checks the address the way the database does, so somebody trying the
+     * command learns whether they aimed it right.
+     */
+    async report(target) {
+      const room = rooms.find((r) => r.slug === target.room.trim().toLowerCase())
+      const address = `${target.room}${target.post ? `/${target.post}` : ''}${target.reply ? `#${target.reply}` : ''}`
+      if (!room) return { ok: false, reason: `there is nothing at ${address}` }
+      if (target.post !== undefined) {
+        const post = room.posts.find((p) => p.id === target.post)
+        if (!post || (target.reply !== undefined && !post.replies.some((r) => r.id === target.reply))) {
+          return { ok: false, reason: `there is nothing at ${address}` }
+        }
+      } else if (room.owner !== undefined) {
+        return { ok: false, reason: 'that is somebody\u2019s wall. report a post on it rather than the wall itself.' }
+      } else if (room.madeBy === undefined) {
+        return { ok: false, reason: `${address} came with the building — if something in it is wrong, report the post.` }
+      }
+      if (room.ephemeral) {
+        return { ok: false, reason: 'commons keeps nothing — whatever it is will be gone within a day.' }
+      }
+      return {
+        ok: true,
+        outcome: 'reported',
+        note: `nothing was sent — this is a demo. on the real site, ${address} would be reported.`,
+      }
+    },
+
     async readFeed() {
       return rooms
         .filter((room) => room.owner !== undefined)
@@ -515,6 +562,7 @@ export function fixtureEnv(
               body: reply.body,
               createdAt: reply.createdAt,
               isReply: true,
+              replyNo: reply.id,
             })),
           ]),
         )
