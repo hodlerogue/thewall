@@ -59,7 +59,7 @@ function harness(name: string | null = 'ryan') {
     },
     { slug: 'poker', gloss: 'the tuesday game', ephemeral: false, posts: [post(3, 'we are on')] },
     { slug: 'empty', gloss: 'nothing yet', ephemeral: false, posts: [] },
-    { slug: 'commons', gloss: 'everything, briefly', ephemeral: true, posts: [post(4, 'hello')] },
+    { slug: 'commons', gloss: 'general talk, any topic', ephemeral: true, posts: [post(4, 'hello')] },
     {
       slug: '~marisol',
       gloss: 'marisol’s wall',

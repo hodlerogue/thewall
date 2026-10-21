@@ -4949,6 +4949,29 @@ grant execute on function public.search_said (text, citext, citext, timestamptz,
 
 
 -- ==========================================================================
+-- 20261021000000_commons_says_what_it_is_for.sql
+-- ==========================================================================
+
+-- Commons says what it is for: general talk, any topic.
+--
+-- Its description was "everything, briefly", which `look` now prints as
+-- "commons is for: everything, briefly" — accurate about the 24 hours, and no
+-- help to somebody wondering what belongs there. Changed by the owner.
+--
+-- Commons came with the building, so `describe` cannot change it (only whoever
+-- made a room can, and nobody made this one). Hence a migration. Matched on the
+-- old wording as well as the slug, so running it after somebody has changed
+-- the description by hand some other way leaves theirs alone.
+
+update public.rooms
+   set gloss = 'general talk, any topic'
+ where slug = 'commons'
+   and gloss = 'everything, briefly';
+
+;
+
+
+-- ==========================================================================
 -- seed.sql — §5, the rooms arrive warm
 -- ==========================================================================
 
@@ -5019,7 +5042,7 @@ on conflict (id) do nothing;
 -- decay rules stay written-but-unenabled, because 40 rooms with three people
 -- each kills the entire feeling and the room list is the first impression.
 insert into public.rooms (slug, gloss, ephemeral, sort_order) values
-  ('commons',   'everything, briefly',        true,  0),
+  ('commons',   'general talk, any topic',    true,  0),
   ('music',     'what you are listening to',  false, 1),
   ('builders',  'what you are making',        false, 2),
   -- builders was added after launch. §4.2 leans "fixed set at launch" and the number was
@@ -5294,7 +5317,8 @@ insert into public.applied_migrations (filename) values
   ('20260907000000_furniture_is_named.sql'),
   ('20261015000000_room_descriptions.sql'),
   ('20261016000000_reports.sql'),
-  ('20261017000000_reply_numbers_in_search.sql')
+  ('20261017000000_reply_numbers_in_search.sql'),
+  ('20261021000000_commons_says_what_it_is_for.sql')
 on conflict do nothing;
 
 commit;
