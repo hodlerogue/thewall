@@ -311,9 +311,13 @@ export function renderRoom(room: Room, now = new Date()): Line[] {
    * Every way into a room comes through here — `go`, `look`, `make`, arriving
    * by link — so this is the one place it needs to be said. Dim rather than
    * accent: accent is the colour of a thing you can type.
+   *
+   * Said as a description rather than printed bare. On its own, commons'
+   * "everything, briefly" read as a stray heading above every `look`. The
+   * wording is the question `make` asks — what the room is for — answered.
    */
   if (room.gloss) {
-    lines.push({ text: room.gloss, tone: 'dim' })
+    lines.push({ text: `${room.slug} is for: ${room.gloss}`, tone: 'dim' })
     lines.push({ text: '' })
   }
 
