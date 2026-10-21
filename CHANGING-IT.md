@@ -1268,6 +1268,16 @@ ever diverge, they get two columns.
 §4.2's mitigation; without it a room-per-person is exactly the forty-rooms
 failure the doc warns about.
 
+**Nothing may hold the prompt without a limit.** It runs one command at a time,
+so a command that waits is every command waiting. `install` once froze it on a
+browser dialog; then `look` on a phone froze it for twenty-odd seconds behind a
+slow connection, because supabase-js has no request timeout and quietly retries
+reads after 1s, 2s and 4s. `lib/shell/deadline.ts` holds both limits: every
+browser request gives up at 10s, and the prompt itself at 15s whatever the
+command is waiting on. The request timeout fails as an `AbortError` on purpose —
+it is the one failure postgrest-js does not retry, and `deadline.test.ts` proves
+it against the real client.
+
 ---
 
 ## Before you push
