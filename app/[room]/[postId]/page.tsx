@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { Readable } from '@/components/Readable'
 import { Shell } from '@/components/Shell'
+import { postIsMissing } from '@/lib/brand/ogData'
 import { postMetadata } from '@/lib/seo/pages'
 import { pathToLocation } from '@/lib/shell/types'
 
@@ -39,6 +40,8 @@ export default async function Page({
 
   const location = pathToLocation(`/${room}/${postId}`)
   if (location.postId === undefined) notFound()
+  // `/music/9999`, or a post in a room that does not exist. See the room page.
+  if (await postIsMissing(location.room!, location.postId)) notFound()
 
   return (
     <Shell initialLocation={location}>

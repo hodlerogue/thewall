@@ -125,6 +125,20 @@ test('a url that points at nothing says so and leaves you somewhere real', async
   await expect(label(page)).toHaveText('guest:music$')
 })
 
+/*
+ * QA: `/nope404` answered 200 with a blank page, so every typo was a page as
+ * far as a search engine could tell. Missing things are a real 404 now — and,
+ * per the test above, still a prompt that says so rather than a dead end.
+ */
+test('an address that points at nothing is a real 404', async ({ request }) => {
+  for (const path of ['/nope404', '/music/9999', '/nope/1', '/~nobodyatall', '/a/b/c']) {
+    expect((await request.get(path)).status(), path).toBe(404)
+  }
+  for (const path of ['/music', '/music/12', '/~marisol', '/~marisol/2', '/commons', '/lobby']) {
+    expect((await request.get(path)).status(), path).toBe(200)
+  }
+})
+
 test('the url a post shows is the one you can type back in', async ({ page }) => {
   await page.goto('/lobby')
   await type(page, 'go music')
