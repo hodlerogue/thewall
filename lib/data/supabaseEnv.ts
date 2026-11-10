@@ -134,6 +134,8 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         in_lobby: boolean
         latest_at: string | null
         post_count: number
+        /** Absent before 20261022000000. */
+        listed_in?: string | null
       }[]
 
       return rows.map((row) => ({
@@ -143,6 +145,7 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         inLobby: row.in_lobby,
         posts: Number(row.post_count ?? 0),
         latestAt: row.latest_at ? new Date(row.latest_at) : undefined,
+        ...(row.listed_in ? { listedIn: row.listed_in } : {}),
       }))
     },
 

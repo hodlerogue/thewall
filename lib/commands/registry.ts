@@ -578,7 +578,7 @@ export const COMMANDS: readonly Command[] = [
     contexts: ALL,
     gloss: () => 'the rooms there are',
     detail: () =>
-      'lists every room, from anywhere, without moving you — the same list the lobby shows. leave goes there instead, if you want to be there.',
+      'lists the rooms from anywhere, without moving you — the same list the lobby shows. rooms that grew out of another one are listed there instead. leave goes to the lobby, if you want to be there.',
     insert: () => 'rooms',
     wrongContext: () => '',
     async run({ env }) {
@@ -819,7 +819,7 @@ export const COMMANDS: readonly Command[] = [
      */
     gloss: () => 'create a new room',
     detail: () =>
-      'makes a room: make garden what you are growing (create works too). the first word is its name, the rest says what it is for, up to 100 characters. you need a verified account, and you can make three a week. a room has no owner — once it exists it is everybody\u2019s — though whoever made it can change its description with describe. made from inside another room, it asks first whether that room should list it at the bottom as having grown out of it — say n and it is made without the line, because there is no undoing one. either way it is an ordinary room with an ordinary name, in the lobby and reachable by name, not something inside anything.',
+      'makes a room: make garden what you are growing (create works too). the first word is its name, the rest says what it is for, up to 100 characters. you need a verified account, and you can make three a week. a room has no owner — once it exists it is everybody\u2019s — though whoever made it can change its description with describe. made from inside another room, it asks first: y and that room lists it at the bottom as having grown out of it, and it stays out of the lobby unless that room goes quiet; n and it stands on its own, in the lobby, with no line. there is no undoing either. both ways it is an ordinary room with an ordinary name, reachable by go and find, not something inside anything.',
     insert: () => 'make ',
     wrongContext: () => '',
     async run({ arg, context, location, env, session }) {
@@ -890,7 +890,12 @@ export const COMMANDS: readonly Command[] = [
             // Said once, at the only moment it is useful: a room with nothing
             // in it drops out of the lobby, and §5 is blunt about an empty room
             // being worse than no room.
-            { text: 'it stays in the lobby while people are talking in it. it is always reachable by name.', tone: 'faint' },
+            {
+              text: grew
+                ? `it won’t be in the lobby — ${grew} lists it, and go ${made.slug} always reaches it.`
+                : 'it stays in the lobby while people are talking in it. it is always reachable by name.',
+              tone: 'faint',
+            },
             // The one moment the maker needs to know this exists, and the only
             // person it is true for — so it is said here and not in `help`.
             { text: 'describe <a few words> changes what it says it is for. only you can.', tone: 'faint', hint: true },
@@ -943,11 +948,11 @@ export const COMMANDS: readonly Command[] = [
             ...(again ? [{ text: 'y or n.', tone: 'faint' as const }] : []),
             { text: `you are in ${from}. make ${slug} here?`, tone: 'accent' as const },
             {
-              text: `${from} will list ${slug} at the bottom, and nothing can take it off again.`,
+              text: `y: ${from} lists ${slug} at the bottom, and nothing can take it off again. ${slug} will not be in the lobby.`,
               tone: 'faint' as const,
             },
             {
-              text: `y for that. n to make ${slug} on its own, with no line in ${from}.`,
+              text: `n: ${slug} stands on its own and goes in the lobby, with no line in ${from}.`,
               tone: 'faint' as const,
             },
           ],
@@ -2686,7 +2691,7 @@ function renderRoomHits(hits: readonly RoomHit[], term: string): Line[] {
           ? 'nothing in it yet'
           : `${hit.posts} ${hit.posts === 1 ? 'post' : 'posts'}${
               hit.latestAt ? `, newest ${formatAgo(hit.latestAt)}` : ''
-            }${hit.inLobby ? '' : ' — quiet, so it’s not in the lobby'}`,
+            }${offTheLobby(hit)}`,
       tone: 'faint',
       depth: 1,
     })
@@ -2694,6 +2699,12 @@ function renderRoomHits(hits: readonly RoomHit[], term: string): Line[] {
   lines.push({ text: '' })
   lines.push({ text: `go ${hits[0].slug} to walk in.`, tone: 'faint', hint: true })
   return lines
+}
+
+/** Why a room is missing from the lobby, when it is. */
+function offTheLobby(hit: RoomHit): string {
+  if (hit.inLobby) return ''
+  return hit.listedIn ? ` — not in the lobby, ${hit.listedIn} lists it` : ' — quiet, so it’s not in the lobby'
 }
 
 /**

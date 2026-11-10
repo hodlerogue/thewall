@@ -14,7 +14,7 @@
  */
 export const USAGE: Readonly<Record<string, readonly string[]>> = {
   look: ['look — what is where you are standing: rooms, posts, or replies'],
-  rooms: ['rooms — every room, without moving you'],
+  rooms: ['rooms — the lobby’s list, without moving you'],
   lobby: ['lobby — straight to the lobby, from anywhere'],
   go: [
     'go <room> — into a room: go music',

@@ -56,6 +56,9 @@ Type `go` and the room's name to walk straight in — `go cycling` — or search
 for it with `find --rooms cycling`. Say something in it and
 it's back in the lobby. The rooms that came with the site never drop off.
 
+A room made from inside another room isn't in the lobby at all, unless that
+other room has gone quiet. The room it grew out of lists it at the bottom.
+
 ## 5. What emails will I get, and what's kept about me?
 
 At most one email a day, and only on days somebody replied to you. Type

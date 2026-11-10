@@ -12,7 +12,7 @@ these fail silently — the site keeps loading and one feature is quietly dead.
 ## 1. The database
 
 Your project was set up when there were three migrations. There are now
-thirty. What the rest add: the column-scoped grants that close two console
+thirty-one. What the rest add: the column-scoped grants that close two console
 bypasses, mail, the kill switch, rename, erasure, walls, rooms people make, the
 feed, three more rooms, the daily email, rooms that grew out of a room, that
 email being on by default, never mailing an address that cannot receive, a
@@ -23,7 +23,9 @@ marked by name so none of them can fade off the lobby, room descriptions up to
 admin dashboard, search results that say which reply a hit is (either order
 with the deploy is fine — the app copes without it), commons described as
 "general talk, any topic" (`20261021000000`; until it lands, commons keeps
-saying "everything, briefly"), and the grant sweep below. **None of their features work until they are applied**, and none of
+saying "everything, briefly"), rooms that grew out of another room leaving the
+lobby (`20261022000000`; until it lands they stay listed and nothing breaks),
+and the grant sweep below. **None of their features work until they are applied**, and none of
 them fail at build time — they fail in somebody's browser.
 
 **The two to apply first, if you apply nothing else.** Both are security fixes,
@@ -93,7 +95,7 @@ This is safe to run repeatedly now. On its first run against an existing project
 it probes for each migration, records the ones already there, and applies only
 the rest — nothing runs twice and nothing is skipped.
 
-**Worked when:** `db-check.sh` shows all thirty as `applied`, every room has
+**Worked when:** `db-check.sh` shows all thirty-one as `applied`, every room has
 something in the last two columns, and the anon role reads all five objects.
 
 ### Reports and the admin dashboard

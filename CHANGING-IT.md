@@ -302,9 +302,11 @@ when the slug starts with `~` **and** matches the caller's own name.
 **A room made from inside another room records where it was made** — that is
 `rooms.from_room`, set by `create_room`'s third argument, and it is a label for
 discovery and nothing else. No address contains it (`bebop`, never
-`music/bebop`), no permission reads it, and the lobby ignores it. The parent
-lists its children at the bottom of the room listing via `rooms_from()`; that
-line is the entire feature. Nesting was asked for and argued down: an address
+`music/bebop`) and no permission reads it. The parent lists its children at the
+bottom of the room listing via `rooms_from()`, liveliest first, and a child
+stays off the lobby while its parent is alive (`room_is_alive()`, used by both
+`room_overview` and `find_rooms`); when the parent fades or is hidden the child
+comes back, or a lively room would be on no list at all. Nesting was asked for and argued down: an address
 that grows a segment per level stops being typable on a phone, `go` would have
 to mean two things, and a tree of near-empty rooms is §5's "an empty room is
 worse than no room" once per level.

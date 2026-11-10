@@ -138,8 +138,13 @@ export interface RoomHit {
   slug: string
   gloss: string
   curated: boolean
-  /** False once it has gone quiet: still reachable, just not in the listing. */
+  /** False once it has gone quiet or grown out: still reachable, just not in the listing. */
   inLobby: boolean
+  /**
+   * The living room that lists it, when that is why it is off the lobby.
+   * Absent before 20261022000000.
+   */
+  listedIn?: string
   posts: number
   latestAt?: Date
 }

@@ -10,11 +10,12 @@
 --   DATABASE_URL='postgresql://postgres:...@db.<ref>.supabase.co:5432/postgres' \
 --     psql "$DATABASE_URL" -f scripts/lobby-check.sql
 --
--- The five reasons a room is not listed, in the order they are checked:
+-- The six reasons a room is not listed, in the order they are checked:
 --
 --   hidden      an operator hid it (§6). Gone from every surface, deliberately.
 --   archived    same, for a room that was closed rather than moderated.
 --   a wall      `~name` is somebody's page, not a room. Never in the lobby.
+--   grown out   made from inside a room that is still alive, which lists it.
 --   faded       nothing said in it for 14 days, and it is not furniture. This
 --               is the one that surprises people: the room is fine, still
 --               reachable by name, and simply not on the front page.
@@ -51,6 +52,8 @@ select
     when r.archived_at is not null then 'archived'
     when r.owner_id is not null    then 'a wall, not a room'
     when r.curated                 then 'in the lobby — furniture, never fades'
+    when r.from_room is not null and public.room_is_alive (r.from_room)
+      then 'GROWN OUT — listed at the bottom of ' || r.from_room || ' instead. still reachable: go ' || r.slug
     when coalesce(
            (select max(p.created_at) from public.posts p
              where p.room_slug = r.slug and p.hidden_at is null),
