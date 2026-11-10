@@ -3054,4 +3054,110 @@ begin;
 commit;
 
 \echo ''
+\echo '§4.2 — grown-out rooms are listed where they grew (20261022000000)'
+
+-- Rolled back, like the other lineage blocks: these make rooms and age posts.
+begin;
+  insert into public.rooms (slug, gloss, sort_order, from_room, created_at)
+  values ('lineparent', 'a room somebody made', 900, null, now()),
+         ('linechild', 'grew out of it', 901, 'lineparent', now()),
+         ('linegrand', 'grew out of the child', 902, 'linechild', now()),
+         ('lineolder', 'an older sibling', 903, 'lineparent', now() - interval '3 days');
+
+  select tests.ok(
+    (select count(*) from public.room_overview where slug = 'linechild') = 0,
+    'a room grown out of a living room is not in the lobby'
+  );
+  select tests.ok(
+    (select count(*) from public.room_overview where slug = 'linegrand') = 0,
+    'and neither is its own child, whose parent is alive though unlisted'
+  );
+  select tests.ok(
+    (select not in_lobby and listed_in = 'lineparent'::citext from public.find_rooms('linechild')),
+    'find_rooms says so, and names the room that lists it'
+  );
+  select tests.ok(
+    (select array_agg(slug::text) from public.rooms_from('lineparent'::citext)) = array['linechild', 'lineolder'],
+    'the parent lists the liveliest first'
+  );
+
+  update public.rooms set created_at = now() - interval '20 days' where slug = 'lineparent';
+  select tests.ok(
+    (select count(*) from public.room_overview where slug = 'linechild') = 1,
+    'a parent that fades lets its lively child back into the lobby'
+  );
+  select tests.ok(
+    (select in_lobby and listed_in is null from public.find_rooms('linechild')),
+    'and find_rooms agrees'
+  );
+
+  update public.rooms set created_at = now(), hidden_at = now() where slug = 'lineparent';
+  select tests.ok(
+    (select count(*) from public.room_overview where slug = 'linechild') = 1,
+    'so does a parent that is hidden'
+  );
+
+  update public.rooms set from_room = 'music' where slug = 'linechild';
+  update public.rooms set curated = true where slug = 'linechild';
+  select tests.ok(
+    (select count(*) from public.room_overview where slug = 'linechild') = 1,
+    'a permanent room is listed whatever it grew out of'
+  );
+rollback;
+
+select tests.ok(
+  has_function_privilege('anon', 'public.room_is_alive(citext)', 'execute'),
+  'a signed-out reader can run the rule the lobby is drawn with'
+);
+
+begin;
+  set local role anon;
+  select tests.ok(
+    (select count(*) from public.room_overview) > 0,
+    'and the lobby still draws for one'
+  );
+rollback;
+
+\echo ''
+\echo '§4.1 — walking back through one person (20261023000000)'
+
+begin;
+  insert into public.posts (room_slug, post_no, author_id, body, created_at)
+  select 'poker', 7000 + n, '44444444-4444-4444-8444-444444444444', 'paged ' || n,
+         now() - (n || ' minutes')::interval
+    from generate_series(1, 120) n;
+
+  select tests.ok(
+    (select count(*) from public.search_said(p_by := 'ren', p_text := 'paged', p_limit := 100)) = 100,
+    'find --limit goes up to the 100 it promises'
+  );
+  select tests.ok(
+    (select count(*) from public.search_said(p_by := 'ren', p_text := 'paged', p_limit := 500)) = 100,
+    'and no further'
+  );
+  select tests.ok(
+    not exists (
+      select 1 from public.search_said(p_by := 'ren', p_text := 'paged', p_limit := 20,
+                                       p_before := now() - interval '30 minutes')
+       where created_at >= now() - interval '30 minutes'
+    ),
+    'p_before returns only what was said before it'
+  );
+  select tests.ok(
+    (select count(*) from public.search_said(p_by := 'ren', p_text := 'paged', p_limit := 20,
+                                             p_before := now() - interval '30 minutes')) = 20,
+    'and a full page of it'
+  );
+  select tests.ok(
+    (select count(*) from public.search_said('paged'::text, null::citext, 'ren'::citext, null::timestamptz, 20)) = 20,
+    'the five arguments the app has always sent still resolve'
+  );
+rollback;
+
+select tests.ok(
+  has_function_privilege('anon', 'public.search_said(text, citext, citext, timestamptz, integer, timestamptz)', 'execute'),
+  'and a signed-out reader can still search'
+);
+
+\echo ''
 \echo 'all schema tests passed'

@@ -5,7 +5,11 @@ import { ABOUT, ABOUT_SUMMARY } from '@/lib/guide/about'
 import { COMMANDS, findCommand } from '@/lib/commands/registry'
 import { ROOM_PAGE } from '@/lib/shell/env'
 import { MADE_SLOTS } from '@/lib/shell/render'
-import { Session } from '@/lib/shell/session'
+import { Session, type SignupApi, type Writer } from '@/lib/shell/session'
+import { USAGE } from '@/lib/commands/manual'
+import { createRunner } from '@/lib/commands/run'
+import { fixtureEnv } from '@/lib/shell/env'
+import type { Room } from '@/lib/shell/model'
 
 /**
  * The rundown, checked for the two ways a page like this goes wrong.
@@ -207,6 +211,98 @@ describe('the rundown', () => {
      */
     expect(words).toBeLessThan(1200)
     expect(words).toBeGreaterThan(400)
+  })
+})
+
+describe('the steps', () => {
+  const steps = ABOUT.filter((section) => section.step)
+  const examples = ABOUT.flatMap((section) => section.examples ?? [])
+
+  // A small world holding every address the examples name.
+  const post = (id: number) => ({
+    id,
+    author: 'marisol',
+    body: `post ${id}`,
+    createdAt: new Date(Date.now() - id * 60_000),
+    replies: [{ id: 2, author: 'tuck', body: 'a reply', createdAt: new Date() }],
+  })
+  const world = (): Room[] => [
+    { slug: 'music', gloss: 'songs', ephemeral: false, posts: [post(12), post(5)] },
+    { slug: 'feed', gloss: 'the walls', ephemeral: false, posts: [] },
+  ]
+
+  function typed() {
+    const env = fixtureEnv(world())
+    const writer: Writer = {
+      post: async () => 1,
+      reply: async () => 1,
+      rename: async (name) => ({ ok: true as const, name }),
+    }
+    return createRunner(env, ['commons'], new Session({} as SignupApi, writer, 'tester'))
+  }
+
+  it('teach what was asked, in that order', () => {
+    expect(steps.map((step) => step.heading)).toEqual([
+      'What is here',
+      'Look around and walk in',
+      'Post',
+      'Reply',
+      'Your page, your wall, and the feed',
+      'Go further back',
+      'Make a room, or grow one out of another',
+      'Find things',
+      'Everything else you can type',
+    ])
+    for (const word of ['A room is', 'A post is', 'A reply is', 'A wall is', 'The feed is']) {
+      expect(prose).toContain(word)
+    }
+  })
+
+  it('say that starting is for your own wall and answering is for anybody’s', () => {
+    expect(prose).toContain('You can only start posts on your own wall')
+    expect(prose).toContain('You can answer posts on anybody’s')
+  })
+
+  it('point at the whole manual', () => {
+    expect(prose).toContain('help all')
+  })
+
+  it.each(examples.map((e) => [e.type, JSON.stringify(e.at), e] as const))(
+    '%s works when typed at %s',
+    async (_type, _at, example) => {
+      const result = await typed()(example.type, example.at)
+      const errors = result.lines.filter((line) => line.tone === 'error')
+      expect(errors.map((line) => line.text)).toEqual([])
+    },
+  )
+
+  it('have examples that would notice a broken command', async () => {
+    // So the test above is known to be able to fail.
+    const result = await typed()('go 999', { room: 'music' })
+    expect(result.lines.some((line) => line.tone === 'error')).toBe(true)
+  })
+
+  it('take find’s options from the table help all prints', () => {
+    const forms = ABOUT.flatMap((section) => section.forms ?? [])
+    for (const form of forms) expect(USAGE.find).toContain(form)
+    for (const option of ['--room=', '--by=', '--since=', '--limit=', '--rooms']) {
+      expect(forms.join('\n')).toContain(option)
+    }
+  })
+
+  it('leave the pipe to help all and what find', () => {
+    expect(USAGE.find.join('\n'), 'help all keeps them').toContain('| count')
+    const page = [
+      prose,
+      ...ABOUT.flatMap((section) => section.forms ?? []),
+      ...examples.flatMap((e) => [e.type, e.does]),
+    ].join('\n')
+    expect(page).not.toContain('|')
+  })
+
+  it('never call this a place with no feed while teaching the feed', () => {
+    expect(prose).toContain('The feed is')
+    expect(prose).not.toMatch(/no feed/i)
   })
 })
 

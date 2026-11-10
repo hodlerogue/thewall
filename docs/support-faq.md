@@ -56,6 +56,9 @@ Type `go` and the room's name to walk straight in — `go cycling` — or search
 for it with `find --rooms cycling`. Say something in it and
 it's back in the lobby. The rooms that came with the site never drop off.
 
+A room made from inside another room isn't in the lobby at all, unless that
+other room has gone quiet. The room it grew out of lists it at the bottom.
+
 ## 5. What emails will I get, and what's kept about me?
 
 At most one email a day, and only on days somebody replied to you. Type
@@ -90,8 +93,8 @@ replies are waiting.
 
 ## 9. What is commons, and why did my post disappear?
 
-Commons is the room you start in, and it keeps nothing: everything said there is
-gone after 24 hours. That's deliberate — it's for passing remarks. If you want
+Commons is the one room that keeps nothing: everything said there is gone
+after 24 hours. That's deliberate — it's for passing remarks. If you want
 something to stay, post it in another room; `rooms` shows them all.
 
 ## 10. How do I write something longer than one line?

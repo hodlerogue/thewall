@@ -105,7 +105,7 @@ describe('what may be switched off', () => {
     // must not take it away.
     const room: Room = { slug: 'music', gloss: 'what you are listening to', ephemeral: false, posts: [post(4)] }
     const first = renderRoom(room, at(60))[0]
-    expect(first.text).toBe('what you are listening to')
+    expect(first.text).toBe('music is for: what you are listening to')
     expect(first.hint).toBeUndefined()
   })
 })

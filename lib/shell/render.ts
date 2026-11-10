@@ -231,6 +231,10 @@ export function renderRoomList(
  */
 export const FEED_PAGE = 40
 
+/** What somebody's page shows on arrival, and how much `older` brings after. */
+export const PROFILE_PAGE = 10
+export const OLDER_SAID = 20
+
 /**
  * The feed: everything on everybody's walls, newest first.
  *
@@ -272,18 +276,17 @@ export function renderFeed(
    * link lands.
    *
    * At the top, because the listing runs oldest-first: everything missing is
-   * older than the first line under this. And it names walls rather than an
-   * `older` command, because there is no paging here to offer — the feed
+   * older than the first line under this. The feed itself has no paging — it
    * crosses every wall at once, so "the page before this one" is not a thing it
-   * has. Naming a command that does not exist would be worse than the silence.
+   * has — but one person does, and that is the way further back.
    */
-  if (posts.length >= limit) {
-    lines.unshift({ text: '' })
-    lines.unshift({
-      text: `the newest ${limit}. the feed doesn’t go back further — a wall does: go ~name.`,
-      tone: 'faint',
-    })
-  }
+  lines.unshift(
+    ...(posts.length >= limit
+      ? [{ text: `the newest ${limit}. for further back from one person: go ~name, then older.`, tone: 'faint' as const }]
+      : []),
+    { text: 'what people started on their own walls, from everyone.', tone: 'faint' },
+    { text: '' },
+  )
 
   lines.push({
     text: 'anybody can answer any of these. say something here and it goes on your own wall.',
@@ -311,9 +314,13 @@ export function renderRoom(room: Room, now = new Date()): Line[] {
    * Every way into a room comes through here — `go`, `look`, `make`, arriving
    * by link — so this is the one place it needs to be said. Dim rather than
    * accent: accent is the colour of a thing you can type.
+   *
+   * Said as a description rather than printed bare. On its own, commons'
+   * "everything, briefly" read as a stray heading above every `look`. The
+   * wording is the question `make` asks — what the room is for — answered.
    */
   if (room.gloss) {
-    lines.push({ text: room.gloss, tone: 'dim' })
+    lines.push({ text: `${room.slug} is for: ${room.gloss}`, tone: 'dim' })
     lines.push({ text: '' })
   }
 
@@ -541,25 +548,17 @@ export function renderProfile(profile: Profile, now = new Date()): Line[] {
     return lines
   }
 
-  for (const post of oldestFirst(profile.posts)) {
-    /*
-     * The address, not the author: you already know whose page this is. But
-     * "(reply)" is not optional, and leaving it off was a real regression.
-     *
-     * A profile lists what somebody has said, and once search learned to cover
-     * replies this started including them — rendered identically to posts. So
-     * marisol's page showed `music/12` above her answer to jameson's post, as
-     * though the post were hers; following that address lands on his. `find`
-     * grew the marker at the time and this did not.
-     */
-    lines.push(
-      saidBy(
-        `${post.room}/${post.id}`,
-        `${formatAgo(post.createdAt, now)}${replyMark(post)}`,
-      ),
-    )
-    lines.push({ text: post.body, depth: 1 })
+  /*
+   * What this list is, because it is not the wall and it is not the feed: it is
+   * one person, everywhere. And no silent caps, the rule this was the last
+   * listing to break — at the top, since everything missing is older.
+   */
+  lines.push({ text: `what ${profile.name} has said — on the wall and in rooms.`, tone: 'faint' })
+  if (profile.posts.length >= PROFILE_PAGE) {
+    lines.push({ text: `the newest ${PROFILE_PAGE}. older goes back further.`, tone: 'faint' })
   }
+  lines.push({ text: '' })
+  lines.push(...renderSaid(profile.posts, now))
 
   /*
    * One instruction, and it is true of every line above it.
@@ -582,6 +581,31 @@ export function renderProfile(profile: Profile, now = new Date()): Line[] {
     hint: true,
     tone: 'faint',
   })
+  return lines
+}
+
+/** One person's lines, shared by their page and by `older` on it. */
+export function renderSaid(posts: readonly PostHit[], now = new Date()): Line[] {
+  const lines: Line[] = []
+  for (const post of oldestFirst(posts)) {
+    /*
+     * The address, not the author: you already know whose page this is. But
+     * "(reply)" is not optional, and leaving it off was a real regression.
+     *
+     * A profile lists what somebody has said, and once search learned to cover
+     * replies this started including them — rendered identically to posts. So
+     * marisol's page showed `music/12` above her answer to jameson's post, as
+     * though the post were hers; following that address lands on his. `find`
+     * grew the marker at the time and this did not.
+     */
+    lines.push(
+      saidBy(
+        `${post.room}/${post.id}`,
+        `${formatAgo(post.createdAt, now)}${replyMark(post)}`,
+      ),
+    )
+    lines.push({ text: post.body, depth: 1 })
+  }
   return lines
 }
 

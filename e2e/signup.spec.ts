@@ -176,7 +176,7 @@ test('following the key says so, and cleans up after itself', async ({ page }) =
 
   // §3.4 — the path is the prompt's location, and a query string is not part
   // of it. Read once, then gone, so a reload does not repeat the message.
-  await expect(page).toHaveURL(/\/commons$/)
+  await expect(page).toHaveURL(/\/lobby$/)
   expect(page.url()).not.toContain('key=')
 })
 

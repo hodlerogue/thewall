@@ -1,4 +1,5 @@
 import { createBrowserClient } from '@supabase/ssr'
+import { fetchWithin } from '@/lib/shell/deadline'
 
 /**
  * Browser client, holding the anon key.
@@ -16,7 +17,9 @@ export function createClient() {
     throw new MissingSupabaseConfig()
   }
 
-  return createBrowserClient(url, key)
+  // Every request with a limit — without one, a stalled connection held the
+  // prompt for as long as the phone cared to wait. See lib/shell/deadline.ts.
+  return createBrowserClient(url, key, { global: { fetch: fetchWithin() } })
 }
 
 export function isConfigured(): boolean {

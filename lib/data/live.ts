@@ -25,15 +25,31 @@ export interface Live {
     name: string | null,
     append: (lines: Line[]) => void,
   ): () => void
-  /** Who is in the room currently subscribed to. */
-  present(): Presence
+  /**
+   * Who is in the room currently subscribed to.
+   *
+   * Async because a room just walked into has not heard yet. It waits for the
+   * channel's first word on who is here, up to ARRIVAL_MS, rather than
+   * answering "nobody" to a `who` typed the moment you arrive.
+   */
+  present(): Promise<Presence>
 }
+
+/** How long `who` waits for a room's first list of who is in it. */
+export const ARRIVAL_MS = 2_000
 
 export function createLive(client: SupabaseClient, ephemeralRooms: readonly string[]): Live {
   let channel: RealtimeChannel | null = null
+  /** Settles when the current room's channel first says who is here. */
+  let arrived: Promise<void> | null = null
 
   return {
-    present(): Presence {
+    async present(): Promise<Presence> {
+      if (arrived) {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        await Promise.race([arrived, new Promise<void>((resolve) => (timer = setTimeout(resolve, ARRIVAL_MS)))])
+        clearTimeout(timer)
+      }
       if (!channel) return { names: [], guests: 0 }
 
       const state = channel.presenceState<{ name: string | null }>()
@@ -53,8 +69,14 @@ export function createLive(client: SupabaseClient, ephemeralRooms: readonly stri
 
     subscribe(location, name, append) {
       // Nothing to be present in at the lobby: it is a directory, not a room.
-      if (!location.room) return () => {}
+      if (!location.room) {
+        arrived = null
+        return () => {}
+      }
       const room = location.room
+
+      let heard = () => {}
+      arrived = new Promise<void>((resolve) => (heard = resolve))
 
       let closed = false
       let mine: RealtimeChannel | null = null
@@ -206,9 +228,20 @@ export function createLive(client: SupabaseClient, ephemeralRooms: readonly stri
       }
 
       const open = async () => {
+        /*
+         * Presence switched on, which it never was.
+         *
+         * `who` answered nobody, always, everywhere. The channel was opened
+         * with a presence key and nothing else, and realtime-js only asks the
+         * server for presence when the config says `enabled: true` or a
+         * presence listener is registered — neither was, so `track()` went
+         * nowhere and the state stayed empty. Both now, so a library that
+         * changes which one it reads still gets the answer.
+         */
         const opened = client.channel(`here:${room}`, {
-          config: { presence: { key: name ?? anonymousKey() } },
+          config: { presence: { key: name ?? anonymousKey(), enabled: true } },
         })
+        opened.on('presence', { event: 'sync' }, () => heard())
 
         // A reply belongs to a post id; a person types an address. Resolving
         // one into the other has to happen before the filter can be built.

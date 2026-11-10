@@ -19,14 +19,18 @@ import {
   renderFeed,
   renderPost,
   renderPosts,
+  OLDER_SAID,
+  PROFILE_PAGE,
   renderProfile,
+  renderSaid,
   renderRoom,
   renderRoomList,
   replyMark,
   saidBy,
 } from '@/lib/shell/render'
 import type { RoomList } from '@/lib/shell/model'
-import type { Session } from '@/lib/shell/session'
+import { NAME_WAY_OUT, type Session } from '@/lib/shell/session'
+import { USAGE } from '@/lib/commands/manual'
 import { ABOUT_SUMMARY } from '@/lib/guide/about'
 import { FEEDBACK_ROOM } from '@/lib/support/widget'
 import { PRIVACY, TERMS } from '@/lib/legal/documents'
@@ -298,11 +302,13 @@ function askLoginName(session: Session): Line[] {
     [
       { text: 'what name do you go by here?' },
       { text: 'i’ll send a key to the address it signed up with.', tone: 'faint' },
+      NAME_WAY_OUT,
     ],
     async (text) => {
       if (looksLikeACommand(text)) return { lines: confirmLoginName(session, text.trim()) }
       return { lines: await session.signIn(text) }
     },
+    { forName: true },
   )
 }
 
@@ -328,6 +334,7 @@ function confirmLoginName(session: Session, words: string, again = false): Line[
       if (answer === 'n' || answer === 'no') return { lines: askLoginName(session) }
       return { lines: confirmLoginName(session, words, true) }
     },
+    { forName: true },
   )
 }
 
@@ -452,6 +459,95 @@ function row(label: string, ok: boolean, note = ''): Line {
   }
 }
 
+/**
+ * One command, in full: what it is, what it does, how to type it.
+ *
+ * §3.8 — plain English first, aliases last. This is where terminal users find
+ * the shorthand and everyone else confirms they never needed it.
+ */
+function explain(arg: string, context: Context): RunResult {
+  const command = findCommand(arg)
+  if (!command) {
+    const near = nearestCommand(arg)
+    return error(
+      near
+        ? `i don’t know "${arg}". did you mean ${near.verb} — ${near.gloss(context)}?`
+        : `i don’t know "${arg}". try: help`,
+    )
+  }
+
+  const lines: Line[] = [
+    { text: `${command.verb} — ${command.gloss(context)}`, tone: 'accent' },
+    { text: command.detail(context), depth: 1 },
+  ]
+  const usage = USAGE[command.verb] ?? []
+  if (usage.length > 0) {
+    lines.push({ text: '' })
+    for (const form of usage) lines.push({ text: form, tone: 'dim', depth: 1 })
+  }
+  if (command.aliases.length > 0) {
+    lines.push({ text: `also: ${command.aliases.join(', ')}`, tone: 'faint', depth: 1 })
+  }
+  if (!command.contexts.includes(context)) {
+    lines.push({ text: 'not from where you’re standing, though.', tone: 'faint', depth: 1 })
+  }
+  return { lines }
+}
+
+/**
+ * `help all`: every command and the forms it takes, in the order `help`
+ * would list them, with nothing left out — `help` itself is capped to stay
+ * readable at a glance, and this is where the rest are.
+ */
+/**
+ * `older` on somebody's page.
+ *
+ * What they said is scattered across rooms, so there is no address to count
+ * back from; the cursor is the time of the oldest thing printed, kept in the
+ * session under their wall's name, which no room can share.
+ */
+async function olderSaid(name: string, env: Env, session: Session): Promise<RunResult> {
+  const wall = `~${name}`
+  let from = session.pagedFrom(wall)
+  if (from === null) {
+    const profile = await env.getProfile(name)
+    if (!profile) return error(`there’s no one called ${name}. try: leave`)
+    // Their page did not fill, so it was already all of it. No query needed.
+    if (profile.posts.length < PROFILE_PAGE) {
+      return { lines: [{ text: 'that’s all of it — there’s nothing before that.', tone: 'faint' }] }
+    }
+    from = profile.posts.reduce((low, post) => Math.min(low, post.createdAt.getTime()), Infinity)
+  }
+
+  const hits = await env.searchPosts({ by: name, before: new Date(from), limit: OLDER_SAID })
+  if (hits.length === 0) {
+    return { lines: [{ text: 'that’s as far back as it goes.', tone: 'faint' }] }
+  }
+
+  session.paged(wall, hits.reduce((low, post) => Math.min(low, post.createdAt.getTime()), Infinity))
+  return {
+    lines: [
+      ...renderSaid(hits),
+      {
+        text: hits.length < OLDER_SAID ? 'that’s as far back as it goes.' : 'older again for more.',
+        tone: 'faint',
+      },
+    ],
+  }
+}
+
+function manual(): Line[] {
+  const lines: Line[] = [{ text: 'every command, and how to type it:', tone: 'faint' }]
+  for (const command of COMMANDS) {
+    lines.push({ text: '' })
+    lines.push({ text: command.verb, tone: 'accent' })
+    for (const form of USAGE[command.verb] ?? []) lines.push({ text: form, tone: 'dim', depth: 1 })
+  }
+  lines.push({ text: '' })
+  lines.push({ text: 'what <command> explains any of them in full.', tone: 'faint' })
+  return lines
+}
+
 export const COMMANDS: readonly Command[] = [
   {
     verb: 'look',
@@ -522,7 +618,7 @@ export const COMMANDS: readonly Command[] = [
     contexts: ALL,
     gloss: () => 'the rooms there are',
     detail: () =>
-      'lists every room, from anywhere, without moving you — the same list the lobby shows. leave goes there instead, if you want to be there.',
+      'lists the rooms from anywhere, without moving you — the same list the lobby shows. rooms that grew out of another one are listed there instead. leave goes to the lobby, if you want to be there.',
     insert: () => 'rooms',
     wrongContext: () => '',
     async run({ env }) {
@@ -573,7 +669,7 @@ export const COMMANDS: readonly Command[] = [
           ? 'go to another room'
           : 'open a post',
     detail: () =>
-      'moves you. at the lobby, go music. inside a room, go 12 opens that post. a whole address works from anywhere — go music/12 — and so does go ~marisol, which shows you somebody: their page, and their wall.',
+      'moves you. at the lobby, go music. inside a room, go 12 opens that post. a whole address works from anywhere — go music/12 — and so does go ~marisol, which shows you one person: their wall, and everything else they have said. go feed is different: the newest posts from everybody’s walls.',
     insert: () => 'go ',
     wrongContext: () => '',
     async run({ arg, context, location, env, hint, session }) {
@@ -763,7 +859,7 @@ export const COMMANDS: readonly Command[] = [
      */
     gloss: () => 'create a new room',
     detail: () =>
-      'makes a room: make garden what you are growing (create works too). the first word is its name, the rest says what it is for, up to 100 characters. you need a verified account, and you can make three a week. a room has no owner — once it exists it is everybody\u2019s — though whoever made it can change its description with describe. made from inside another room, it asks first whether that room should list it at the bottom as having grown out of it — say n and it is made without the line, because there is no undoing one. either way it is an ordinary room with an ordinary name, in the lobby and reachable by name, not something inside anything.',
+      'makes a room: make garden what you are growing (create works too). the first word is its name, the rest says what it is for, up to 100 characters. you need a verified account, and you can make three a week. a room has no owner — once it exists it is everybody\u2019s — though whoever made it can change its description with describe. made from inside another room, it asks first: y and that room lists it at the bottom as having grown out of it, and it stays out of the lobby unless that room goes quiet; n and it stands on its own, in the lobby, with no line. there is no undoing either. both ways it is an ordinary room with an ordinary name, reachable by go and find, not something inside anything.',
     insert: () => 'make ',
     wrongContext: () => '',
     async run({ arg, context, location, env, session }) {
@@ -834,7 +930,12 @@ export const COMMANDS: readonly Command[] = [
             // Said once, at the only moment it is useful: a room with nothing
             // in it drops out of the lobby, and §5 is blunt about an empty room
             // being worse than no room.
-            { text: 'it stays in the lobby while people are talking in it. it is always reachable by name.', tone: 'faint' },
+            {
+              text: grew
+                ? `it won’t be in the lobby — ${grew} lists it, and go ${made.slug} always reaches it.`
+                : 'it stays in the lobby while people are talking in it. it is always reachable by name.',
+              tone: 'faint',
+            },
             // The one moment the maker needs to know this exists, and the only
             // person it is true for — so it is said here and not in `help`.
             { text: 'describe <a few words> changes what it says it is for. only you can.', tone: 'faint', hint: true },
@@ -887,11 +988,11 @@ export const COMMANDS: readonly Command[] = [
             ...(again ? [{ text: 'y or n.', tone: 'faint' as const }] : []),
             { text: `you are in ${from}. make ${slug} here?`, tone: 'accent' as const },
             {
-              text: `${from} will list ${slug} at the bottom, and nothing can take it off again.`,
+              text: `y: ${from} lists ${slug} at the bottom, and nothing can take it off again. ${slug} will not be in the lobby.`,
               tone: 'faint' as const,
             },
             {
-              text: `y for that. n to make ${slug} on its own, with no line in ${from}.`,
+              text: `n: ${slug} stands on its own and goes in the lobby, with no line in ${from}.`,
               tone: 'faint' as const,
             },
           ],
@@ -1579,13 +1680,14 @@ export const COMMANDS: readonly Command[] = [
     // change the name" out loud. Two meanings for one word in a shell whose
     // whole promise is that typing a word does the obvious thing.
     aliases: ['earlier', 'previous', 'more'],
-    contexts: ['room', 'commons'],
+    contexts: ['room', 'commons', 'person'],
     gloss: () => 'the page before this one',
     detail: () =>
-      'walks back through a room a page at a time. a room shows its newest 60; older shows the 60 before those, and again after that, until you reach the start of the room.',
+      `walks back through a room a page at a time. a room shows its newest 60; older shows the 60 before those, and again after that, until you reach the start of the room. on somebody’s page it walks back through what they have said, ${OLDER_SAID} at a time.`,
     insert: () => 'older',
     wrongContext: (_c, hint) => `there’s nothing to walk back through here. try: go ${hint}`,
     async run({ context, location, env, session }) {
+      if (context === 'person') return olderSaid(location.person!, env, session)
       const slug = location.room!
 
       /*
@@ -1653,31 +1755,8 @@ export const COMMANDS: readonly Command[] = [
     insert: () => 'what ',
     wrongContext: () => '',
     async run({ arg, context }) {
-      if (arg === '') return error('what what? try: what go')
-
-      const command = findCommand(arg)
-      if (!command) {
-        const near = nearestCommand(arg)
-        return error(
-          near
-            ? `i don’t know "${arg}". did you mean ${near.verb} — ${near.gloss(context)}?`
-            : `i don’t know "${arg}". try: help`,
-        )
-      }
-
-      // §3.8 — plain English first, aliases second. This is where terminal
-      // users find the shorthand and everyone else confirms they never needed it.
-      const lines: Line[] = [
-        { text: `${command.verb} — ${command.gloss(context)}`, tone: 'accent' },
-        { text: command.detail(context), depth: 1 },
-      ]
-      if (command.aliases.length > 0) {
-        lines.push({ text: `also: ${command.aliases.join(', ')}`, tone: 'faint', depth: 1 })
-      }
-      if (!command.contexts.includes(context)) {
-        lines.push({ text: 'not from where you’re standing, though.', tone: 'faint', depth: 1 })
-      }
-      return { lines }
+      if (arg === '') return error('what what? try: what go — or help all for every command.')
+      return explain(arg, context)
     },
   },
 
@@ -1686,10 +1765,20 @@ export const COMMANDS: readonly Command[] = [
     aliases: ['commands', 'h'],
     contexts: ALL,
     gloss: () => 'everything you can type',
-    detail: () => 'lists what you can type from where you are.',
+    detail: () =>
+      'lists what you can type from where you are. help <command> explains one, the same as what does, and help all lists every command and how to type it.',
     insert: () => 'help',
     wrongContext: () => '',
-    async run({ context }) {
+    async run({ arg, context }) {
+      /*
+       * `help find` printed the whole list, as if the word after it were not
+       * there — the form every other terminal answers with one page. It is
+       * `what find` now. `help all` is the manual: every command, folded and
+       * rarely-needed ones included, each with the forms it takes.
+       */
+      if (/^(-{0,2}all|everything|-a)$/i.test(arg)) return { lines: manual() }
+      if (arg !== '') return explain(arg, context)
+
       /*
        * Two groups, not one list of fifteen.
        *
@@ -1770,8 +1859,8 @@ export const COMMANDS: readonly Command[] = [
        */
       lines.push({ text: '' })
       lines.push({ text: 'and three places:', tone: 'faint' })
-      lines.push({ text: `go ${FEED} — everything anybody put on their own wall`, tone: 'dim' })
-      lines.push({ text: 'go ~name — somebody: who they are, and their wall', tone: 'dim' })
+      lines.push({ text: `go ${FEED} — the newest posts from everybody’s walls`, tone: 'dim' })
+      lines.push({ text: 'go ~name — one person: their wall, and all they’ve said', tone: 'dim' })
       /*
        * Asked for as "why is feedback not listed in the help menu". `help` is a
        * list of commands, and feedback is a room — but it is the one room people
@@ -1781,7 +1870,7 @@ export const COMMANDS: readonly Command[] = [
       lines.push({ text: `go ${FEEDBACK_ROOM} — something broken? tell us there`, tone: 'dim' })
 
       lines.push({ text: '' })
-      lines.push({ text: 'what <command> explains any of them.', tone: 'faint' })
+      lines.push({ text: 'help <command> explains one. help all lists every command and how to type it.', tone: 'faint' })
       return { lines }
     },
   },
@@ -2125,7 +2214,7 @@ export const COMMANDS: readonly Command[] = [
     verb: 'rename',
     aliases: ['name', 'callme'],
     contexts: ALL,
-    gloss: () => 'change my name',
+    gloss: () => 'change your name',
     detail: () =>
       'changes what you are called, as often as you like. everything you have said follows the new name, and the old one goes free for anyone to take the moment you drop it — so do not release a name you want back.',
     insert: () => 'rename ',
@@ -2343,7 +2432,7 @@ export const COMMANDS: readonly Command[] = [
     aliases: ['verify', 'key'],
     hidden: true,
     contexts: ALL,
-    gloss: () => 'send my key again',
+    gloss: () => 'send your key again',
     detail: () =>
       'sends another sign-in link to your address. the one from signup expires, and you need a followed link to keep your name and keep posting.',
     insert: () => 'resend',
@@ -2367,7 +2456,7 @@ export const COMMANDS: readonly Command[] = [
     contexts: ALL,
     gloss: () => 'find something that was said',
     detail: () =>
-      'looks for words in what people have said, everywhere or just here: find tomatoes. narrow it with --room, --by, --since or --limit. results can be piped: find --by=jameson --since=7d | count, or | go to open the newest.',
+      'looks for words in what people have said, everywhere or just here: find tomatoes. narrow it with --room, --by, --since or --limit, or look for rooms instead with --rooms. results can be piped: find --by=jameson --since=7d | count, or | go to open the newest.',
     insert: () => 'find ',
     wrongContext: () => '',
     async run({ arg, location, env, typed }) {
@@ -2389,6 +2478,15 @@ export const COMMANDS: readonly Command[] = [
       if (/(^|\s)--rooms(\s|=|$)/.test(source)) {
         if (sinks.length > 0) return error('rooms don’t pipe yet. try: find --rooms garden')
         const term = source.replace(/(^|\s)--rooms(=\S*)?/g, ' ').trim()
+        /*
+         * The other flags are about posts. They used to be read as part of
+         * the room's name — `find --rooms --since=1d` answered "no room called
+         * --since=1d" — which blames the room for what was a flag.
+         */
+        const stray = /(?:^|\s)(--?[a-z][a-z-]*)/i.exec(term)
+        if (stray) {
+          return error(`${stray[1]} is for posts — --rooms finds rooms by name or what they’re for. try: find --rooms garden`)
+        }
         return { lines: renderRoomHits(await env.findRooms(term), term) }
       }
 
@@ -2408,19 +2506,25 @@ export const COMMANDS: readonly Command[] = [
       if (sinks.length === 0) {
         // Nothing was *said* about it — but it may be the name of a room, and
         // that is the likeliest thing somebody typing one word meant (§3.7).
+        if (hits.length === 0) {
+          // A filter naming something that does not exist is the likelier
+          // story than a quiet week, and "nothing said" hid which it was.
+          const missing = await missingFilter(env, query.named)
+          if (missing) return error(missing)
+        }
         if (hits.length === 0 && query.query.text) {
           const rooms = await env.findRooms(query.query.text).catch(() => [])
           if (rooms.length > 0) {
             return {
               lines: [
-                { text: `nothing said about ${query.query.text}.`, tone: 'faint' },
+                ...nothingSaid(query),
                 { text: '' },
                 ...renderRoomHits(rooms, query.query.text),
               ],
             }
           }
         }
-        return { lines: renderHits(hits, query.query.text) }
+        return { lines: hits.length === 0 ? nothingSaid(query) : renderHits(hits) }
       }
       if (sinks.length > 1) {
         return error('one pipe at a time for now. try: find --since=7d | count')
@@ -2454,11 +2558,70 @@ export const COMMANDS: readonly Command[] = [
 
 export const FLAG_NAMES = ['room', 'rooms', 'by', 'since', 'limit']
 
-function buildQuery(
-  input: string,
-  location: Location,
-): { query: PostQuery } | { problem: string } {
+/** A search, and what it was asked so the answer can say so. */
+interface BuiltQuery {
+  query: PostQuery
+  /** The filters typed, rather than implied by where you stand. */
+  named: { room?: string; by?: string }
+  /** `--since` as typed, since the Date it became reads worse. */
+  since?: string
+  /** The room filter came from standing in it. */
+  here: boolean
+}
+
+/**
+ * "nothing said about records." — with what else narrowed it.
+ *
+ * Standing in a room filters to it without a word, so an empty search from
+ * inside music read as "nobody anywhere has said this", which was not what
+ * was asked. It says where it looked now, and how to look everywhere.
+ */
+function nothingSaid({ query, since, here }: BuiltQuery): Line[] {
+  const about = query.text ? ` about ${query.text}` : ''
+  const by = query.by ? ` by ${query.by}` : ''
+  const room = query.room ? ` in ${query.room}` : ''
+  const when = since ? ` in the last ${since}` : ''
+  const lines: Line[] = [{ text: `nothing said${about}${by}${room}${when}.`, tone: 'faint' }]
+  if (here) {
+    lines.push({ text: `that was just ${query.room}. leave, then find again, to look everywhere.`, tone: 'faint', hint: true })
+  }
+  return lines
+}
+
+/** The room or person a filter named, when there is no such thing. */
+async function missingFilter(env: Env, named: BuiltQuery['named']): Promise<string | undefined> {
+  if (named.room !== undefined && !(await env.getRoom(named.room).catch(() => undefined))) {
+    return `there’s no room called ${named.room}. try: find --rooms ${named.room}`
+  }
+  if (named.by !== undefined && !(await env.getProfile(named.by).catch(() => undefined))) {
+    return `no one here is called ${named.by}.`
+  }
+  return undefined
+}
+
+function buildQuery(input: string, location: Location): BuiltQuery | { problem: string } {
   const { values, loose } = parseFlags(input)
+
+  /*
+   * One dash, which a terminal-literate visitor reaches for first. It was
+   * searched for as a word: `find -r records` answered "nothing said about
+   * -r records".
+   */
+  const single = loose.find((word) => /^-[a-z]/i.test(word))
+  if (single) {
+    return { problem: `flags take two dashes here. try: ${FLAG_NAMES.map((f) => `--${f}`).join(', ')}` }
+  }
+
+  /*
+   * `--since 3d`, with a space. The value lands in the search words and the
+   * flag arrives empty — which printed " isn’t a length of time", naming
+   * nothing. Said with the fix, using what they typed.
+   */
+  for (const name of ['room', 'by', 'since', 'limit']) {
+    if (values.get(name) !== '') continue
+    const next = new RegExp(`--${name}\\s+([^-\\s]\\S*)`, 'i').exec(input)?.[1]
+    if (next) return { problem: `--${name} takes its value after an =. try: --${name}=${next}` }
+  }
 
   for (const name of values.keys()) {
     if (FLAG_NAMES.includes(name)) continue
@@ -2474,21 +2637,26 @@ function buildQuery(
   // away the most obvious way anyone would reach for this.
   const query: PostQuery = { limit: 20 }
   if (loose.length > 0) query.text = loose.join(' ')
+  const named: BuiltQuery['named'] = {}
+  let here = false
 
   const room = values.get('room')
   if (room !== undefined) {
     if (room === '') return { problem: 'which room? try: find --room=music' }
     query.room = room.toLowerCase()
+    named.room = query.room
   } else if (location.room !== undefined) {
     // Standing somewhere is itself a filter; naming the room again would be
     // busywork. --room from anywhere still overrides it.
     query.room = location.room
+    here = true
   }
 
   const by = values.get('by')
   if (by !== undefined) {
     if (by === '') return { problem: 'said by whom? try: find --by=marisol' }
-    query.by = by.toLowerCase()
+    query.by = by.replace(/^[~@]/, '').toLowerCase()
+    named.by = query.by
   } else if (location.person !== undefined) {
     // Standing on somebody is a filter for the same reason standing in a room
     // is: `find tomatoes` on ~marisol means the ones she said. --by overrides.
@@ -2498,7 +2666,7 @@ function buildQuery(
   const since = values.get('since')
   if (since !== undefined) {
     const from = parseSince(since)
-    if (!from) return { problem: `${since} isn’t a length of time. try: --since=7d, 24h, or 30m` }
+    if (!from) return { problem: `${since === '' ? 'that' : since} isn’t a length of time. try: --since=7d, 24h, or 30m` }
     query.since = from
   }
 
@@ -2506,19 +2674,15 @@ function buildQuery(
   if (limit !== undefined) {
     const parsed = Number(limit)
     if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
-      return { problem: 'how many? a whole number from 1 to 100.' }
+      return { problem: '--limit takes a whole number from 1 to 100. try: --limit=5' }
     }
     query.limit = parsed
   }
 
-  return { query }
+  return { query, named, since: since || undefined, here }
 }
 
-function renderHits(hits: readonly PostHit[], term?: string): Line[] {
-  if (hits.length === 0) {
-    return [{ text: term ? `nothing said about ${term}.` : 'nothing matched.', tone: 'faint' }]
-  }
-
+function renderHits(hits: readonly PostHit[]): Line[] {
   const lines: Line[] = []
   // Oldest first, like everything else printed into the scrollback: the view
   // snaps to the bottom, so the last line written is the one you actually see.
@@ -2568,7 +2732,7 @@ function renderRoomHits(hits: readonly RoomHit[], term: string): Line[] {
           ? 'nothing in it yet'
           : `${hit.posts} ${hit.posts === 1 ? 'post' : 'posts'}${
               hit.latestAt ? `, newest ${formatAgo(hit.latestAt)}` : ''
-            }${hit.inLobby ? '' : ' — quiet, so it’s not in the lobby'}`,
+            }${offTheLobby(hit)}`,
       tone: 'faint',
       depth: 1,
     })
@@ -2576,6 +2740,12 @@ function renderRoomHits(hits: readonly RoomHit[], term: string): Line[] {
   lines.push({ text: '' })
   lines.push({ text: `go ${hits[0].slug} to walk in.`, tone: 'faint', hint: true })
   return lines
+}
+
+/** Why a room is missing from the lobby, when it is. */
+function offTheLobby(hit: RoomHit): string {
+  if (hit.inLobby) return ''
+  return hit.listedIn ? ` — not in the lobby, ${hit.listedIn} lists it` : ' — quiet, so it’s not in the lobby'
 }
 
 /**

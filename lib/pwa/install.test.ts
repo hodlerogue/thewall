@@ -72,6 +72,22 @@ describe('what it tells you to do', () => {
     expect(text).not.toContain('type install')
   })
 
+  it('tells safari on a mac about the file menu, the only place it installs from', async () => {
+    browser({
+      ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+    })
+    const { advice } = await import('@/lib/pwa/install')
+    expect(advice().map((l) => l.text).join('\n')).toBe('in safari on a mac: file, then add to dock.')
+  })
+
+  it('and not chrome on a mac, which says safari in its user agent too', async () => {
+    browser({
+      ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+    })
+    const { advice } = await import('@/lib/pwa/install')
+    expect(advice().map((l) => l.text).join('\n')).toContain('menu')
+  })
+
   it('points everybody else at the menu', async () => {
     const { advice } = await import('@/lib/pwa/install')
     expect(advice().map((l) => l.text).join('\n')).toContain('menu')
@@ -190,7 +206,7 @@ describe('install never holds the prompt hostage', () => {
       new Promise<'frozen'>((resolve) => setTimeout(() => resolve('frozen'), 200)),
     ])
     expect(lines).not.toBe('frozen')
-    expect((lines as { text: string }[]).map((l) => l.text).join('\n')).toContain('answer there')
+    expect((lines as { text: string }[]).map((l) => l.text).join('\n')).toContain('answer it there')
   })
 
   it('and asks for the dialog, rather than skipping it to stay quick', async () => {

@@ -149,7 +149,12 @@ describe('§4.8 — one working pipe', () => {
   })
 
   it('says nothing matched rather than showing an empty list', async () => {
-    expect(text((await run('posts --by=nobody', LOBBY)).lines)).toBe('nothing matched.')
+    // Somebody who does not exist is named as such (find-filters.test.ts); a
+    // real person with nothing in the window is the empty answer.
+    expect(text((await run('posts --by=nobody', LOBBY)).lines)).toBe('no one here is called nobody.')
+    expect(text((await run('posts --by=marisol --since=1m', LOBBY)).lines)).toBe(
+      'nothing said by marisol in the last 1m.',
+    )
     expect(text((await run('posts --by=nobody | go', LOBBY)).lines)).toMatch(/nowhere to go/)
   })
 })

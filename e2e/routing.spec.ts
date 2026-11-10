@@ -29,13 +29,13 @@ test('the front door shows somebody new the marketing page', async ({ page }) =>
   await expect(page).toHaveURL(/\/hello$/)
 })
 
-test('and puts somebody with an account in commons (§3.10)', async ({ page, context }) => {
+test('and puts somebody with an account in the lobby', async ({ page, context }) => {
   // The cookie @supabase/ssr writes for a session. Only its presence is read at
   // the door, so any value will do here.
   await context.addCookies([{ name: 'sb-test-auth-token', value: 'x', url: 'http://127.0.0.1:3000' }])
   await page.goto('/')
-  await expect(label(page)).toHaveText('guest:commons$')
-  await expect(page).toHaveURL(/\/commons$/)
+  await expect(label(page)).toHaveText('guest:lobby$')
+  await expect(page).toHaveURL(/\/lobby$/)
 })
 
 test('and a sign-in result reaches the prompt even without a session', async ({ page }) => {
@@ -43,14 +43,14 @@ test('and a sign-in result reaches the prompt even without a session', async ({ 
   // as a query string. The marketing page cannot say what went wrong; the
   // prompt can, so a query always goes in.
   await page.goto('/?signed_in=0')
-  await expect(page).toHaveURL(/\/commons\?signed_in=0$/)
+  await expect(page).toHaveURL(/\/lobby\?signed_in=0$/)
 })
 
 test('and the marketing page’s way in goes to the prompt, not round again', async ({ page }) => {
   await page.goto('/hello')
   await page.locator('a.landing-button').first().click()
-  await expect(page).toHaveURL(/\/commons$/)
-  await expect(label(page)).toHaveText('guest:commons$')
+  await expect(page).toHaveURL(/\/lobby$/)
+  await expect(label(page)).toHaveText('guest:lobby$')
 })
 
 test('a room url lands you in the room', async ({ page }) => {

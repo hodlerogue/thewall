@@ -65,7 +65,7 @@ on conflict (id) do nothing;
 -- decay rules stay written-but-unenabled, because 40 rooms with three people
 -- each kills the entire feeling and the room list is the first impression.
 insert into public.rooms (slug, gloss, ephemeral, sort_order) values
-  ('commons',   'everything, briefly',        true,  0),
+  ('commons',   'general talk, any topic',    true,  0),
   ('music',     'what you are listening to',  false, 1),
   ('builders',  'what you are making',        false, 2),
   -- builders was added after launch. §4.2 leans "fixed set at launch" and the number was

@@ -65,12 +65,12 @@ describe('the manifest, which is what a phone reads before offering to keep this
     })
   })
 
-  it('starts in commons, not at the marketing page or the lobby', async () => {
+  it('starts in the lobby, not at the marketing page', async () => {
     // `/` shows a stranger /hello now, and an installed app opening onto a
-    // pitch for itself would be absurd. Commons is where `/` sends everybody
+    // pitch for itself would be absurd. The lobby is where `/` sends everybody
     // with an account, so an installed copy gets the same first screen they do.
     const { default: manifest } = await import('@/app/manifest')
-    expect(manifest().start_url).toBe('/commons')
+    expect(manifest().start_url).toBe('/lobby')
   })
 
   it('is drawn in the same colours as the icon', async () => {

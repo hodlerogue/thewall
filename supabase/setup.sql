@@ -4949,6 +4949,329 @@ grant execute on function public.search_said (text, citext, citext, timestamptz,
 
 
 -- ==========================================================================
+-- 20261021000000_commons_says_what_it_is_for.sql
+-- ==========================================================================
+
+-- Commons says what it is for: general talk, any topic.
+--
+-- Its description was "everything, briefly", which `look` now prints as
+-- "commons is for: everything, briefly" — accurate about the 24 hours, and no
+-- help to somebody wondering what belongs there. Changed by the owner.
+--
+-- Commons came with the building, so `describe` cannot change it (only whoever
+-- made a room can, and nobody made this one). Hence a migration. Matched on the
+-- old wording as well as the slug, so running it after somebody has changed
+-- the description by hand some other way leaves theirs alone.
+
+update public.rooms
+   set gloss = 'general talk, any topic'
+ where slug = 'commons'
+   and gloss = 'everything, briefly';
+
+;
+
+
+-- ==========================================================================
+-- 20261022000000_grown_rooms_leave_the_lobby.sql
+-- ==========================================================================
+
+-- A room that grew out of another one is listed there, not in the lobby.
+--
+-- `from_room` was a label the lobby ignored, so a room made from inside music
+-- took a lobby slot beside music for as long as anybody talked in it. §4.2 is
+-- about exactly that: the lobby is the first impression, and subtopics of rooms
+-- already on it are the thinnest thing it could be showing. They have a place
+-- to be listed — the bottom of the room they came from.
+--
+-- `go`, `find --rooms` and the parent's list do not read this view, so all
+-- three still reach them.
+--
+-- **The exception is the point of the helper.** A parent that has faded or been
+-- hidden is not somewhere anybody will find a list, and a lively child of one
+-- would be on no list at all. So a child stays off the lobby only while its
+-- parent is alive, and comes back when the parent is not. "Alive" and not "in
+-- the lobby" on purpose: the second would recurse up the chain, and a grandchild
+-- is reachable through a living child whether or not that child is listed.
+--
+-- Applies to rooms that already exist, for one rule rather than two.
+--
+-- Safe in either order with the deploy. The app asks for the same columns from
+-- `room_overview` as before, and treats `find_rooms`' new column as optional.
+
+create or replace function public.room_is_alive (p_slug citext)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+      from public.rooms r
+     where r.slug = p_slug
+       and r.hidden_at is null
+       and r.archived_at is null
+       and (
+         r.curated
+         or coalesce(
+              (select max(p.created_at)
+                 from public.posts p
+                where p.room_slug = r.slug
+                  and p.hidden_at is null
+                  and public.is_visible (p.room_slug, p.created_at)),
+              r.created_at
+            ) > now() - interval '14 days'
+       )
+  );
+$$;
+
+revoke all on function public.room_is_alive (citext) from public;
+grant execute on function public.room_is_alive (citext) to anon, authenticated;
+
+create or replace view public.room_overview
+with (security_invoker = true) as
+select
+  r.slug,
+  r.gloss,
+  r.ephemeral,
+  r.sort_order,
+  -- One of the two is always null: the guards are mutually exclusive, so
+  -- coalesce is a choice between them rather than a fallback.
+  coalesce(own.body, feed.body)             as latest_body,
+  coalesce(own.created_at, feed.created_at) as latest_at,
+  coalesce(own_author.name, feed_author.name) as latest_author,
+  r.curated
+from public.rooms r
+
+-- An ordinary room: its own newest post. See 20260810000000 for why these are
+-- two laterals with the guard inside.
+left join lateral (
+  select p.body, p.created_at, p.author_id
+    from public.posts p
+   where r.slug <> 'feed'
+     and p.room_slug = r.slug
+     and p.hidden_at is null
+     and public.is_visible (p.room_slug, p.created_at)
+   order by p.created_at desc
+   limit 1
+) own on true
+
+-- The feed: the newest thing on anybody's wall.
+left join lateral (
+  select p.body, p.created_at, p.author_id
+    from public.posts p
+    join public.rooms pr on pr.slug = p.room_slug
+   where r.slug = 'feed'
+     and pr.owner_id is not null
+     and pr.hidden_at is null
+     and pr.archived_at is null
+     and p.hidden_at is null
+     and public.is_visible (p.room_slug, p.created_at)
+   order by p.created_at desc
+   limit 1
+) feed on true
+
+left join public.profiles own_author on own_author.id = own.author_id
+left join public.profiles feed_author on feed_author.id = feed.author_id
+where r.hidden_at is null
+  and r.archived_at is null
+  and r.owner_id is null
+  and (
+    r.curated
+    or coalesce(own.created_at, r.created_at) > now() - interval '14 days'
+  )
+  and (
+    -- Furniture is listed whatever it says about itself.
+    r.curated
+    or r.from_room is null
+    or not public.room_is_alive (r.from_room)
+  );
+
+-- find_rooms says which rooms are off the lobby, so it has to use the same rule,
+-- and says where a grown-out one lives so the reason it prints is the true one.
+-- Dropped and recreated because a return type cannot be changed in place.
+drop function if exists public.find_rooms (text, integer);
+
+create function public.find_rooms (p_term text, p_limit integer default 20)
+returns table (
+  slug        citext,
+  gloss       text,
+  curated     boolean,
+  in_lobby    boolean,
+  latest_at   timestamptz,
+  post_count  bigint,
+  listed_in   citext
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    r.slug,
+    r.gloss,
+    r.curated,
+    r.archived_at is null
+      and (
+        r.curated
+        or coalesce(newest.at, r.created_at) > now() - interval '14 days'
+      )
+      and (r.curated or lineage.living_parent is null),
+    newest.at,
+    coalesce(counted.n, 0),
+    lineage.living_parent
+  from public.rooms r
+  left join lateral (
+    select max(p.created_at) as at
+      from public.posts p
+     where p.room_slug = r.slug and p.hidden_at is null
+  ) newest on true
+  left join lateral (
+    select count(*) as n
+      from public.posts p
+     where p.room_slug = r.slug and p.hidden_at is null
+  ) counted on true
+  left join lateral (
+    select case when public.room_is_alive (r.from_room) then r.from_room end as living_parent
+  ) lineage on true
+  where r.hidden_at is null
+    and r.owner_id is null
+    and (
+      p_term is null
+      or btrim(p_term) = ''
+      -- `like` with the term escaped, not ilike with it interpolated: a search
+      -- for "100%" must not become a wildcard that matches every room.
+      or r.slug::text ilike '%' || replace(replace(replace(btrim(p_term), '\', '\\'), '%', '\%'), '_', '\_') || '%' escape '\'
+      or r.gloss ilike '%' || replace(replace(replace(btrim(p_term), '\', '\\'), '%', '\%'), '_', '\_') || '%' escape '\'
+    )
+  order by r.curated desc, newest.at desc nulls last, r.slug
+  limit greatest(1, least(coalesce(p_limit, 20), 50));
+$$;
+
+revoke all on function public.find_rooms (text, integer) from public;
+grant execute on function public.find_rooms (text, integer) to anon, authenticated;
+
+-- The parent's list is now the main way to these rooms and it shows eight, so
+-- the eight had better be the ones with people in them. It was oldest first,
+-- which cut off exactly the rooms somebody had just made.
+create or replace function public.rooms_from (p_slug citext)
+returns table (slug citext, gloss text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select r.slug, r.gloss
+    from public.rooms r
+    left join lateral (
+      select max(p.created_at) as at
+        from public.posts p
+       where p.room_slug = r.slug and p.hidden_at is null
+    ) newest on true
+   where r.from_room = p_slug
+     and r.hidden_at is null
+   order by coalesce(newest.at, r.created_at) desc, r.slug;
+$$;
+
+;
+
+
+-- ==========================================================================
+-- 20261023000000_older_on_a_person.sql
+-- ==========================================================================
+
+-- `older` on somebody's page, and `find --limit` meaning what it says.
+--
+-- A person's page showed the newest ten things they had said and nothing could
+-- reach the eleventh, while the feed's footer sent people there for exactly
+-- that. `search_said` learns to start from a point in time, which is all paging
+-- through one person needs: their items have no shared numbering, because they
+-- are scattered across rooms, but they do have an order.
+--
+-- `find --limit` has always promised 1 to 100 and this stopped at 50.
+--
+-- Safe in either order with the deploy. Without this migration the app's
+-- ordinary searches still resolve, because it sends `p_before` only when paging,
+-- and paging says it is not switched on yet. With it, a call naming the old five
+-- arguments still resolves, because the new one has a default.
+
+-- Dropped rather than left beside the new one: two overloads that both accept
+-- five named arguments are ambiguous, and PostgREST refuses those outright.
+drop function if exists public.search_said (text, citext, citext, timestamptz, integer);
+
+create function public.search_said (
+  p_text  text default null,
+  p_room  citext default null,
+  p_by    citext default null,
+  p_since timestamptz default null,
+  p_limit integer default 20,
+  -- Only what was said before this. Sent only when paging, so nothing else
+  -- depends on this migration having landed.
+  p_before timestamptz default null
+)
+returns table (
+  room       citext,
+  post_no    integer,
+  author     citext,
+  body       text,
+  created_at timestamptz,
+  is_reply   boolean,
+  reply_no   integer
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with term as (
+    select case
+             when p_text is null or btrim(p_text) = '' then null
+             else '%' || replace(replace(replace(btrim(p_text), '\', '\\'), '%', '\%'), '_', '\_') || '%'
+           end as pattern
+  ),
+  said as (
+    select p.room_slug as room, p.post_no, a.name as author, p.body, p.created_at,
+           false as is_reply, null::integer as reply_no
+      from public.posts p
+      join public.rooms rm on rm.slug = p.room_slug
+      join public.profiles a on a.id = p.author_id
+     where p.hidden_at is null
+       and rm.hidden_at is null
+       and not rm.ephemeral
+
+    union all
+
+    select p.room_slug as room, p.post_no, a.name as author, r.body, r.created_at,
+           true as is_reply, r.reply_no
+      from public.replies r
+      join public.posts p on p.id = r.post_id
+      join public.rooms rm on rm.slug = p.room_slug
+      join public.profiles a on a.id = r.author_id
+     where r.hidden_at is null
+       -- A reply under a hidden post is hidden with it: the address it would
+       -- send you to shows nothing, so a hit there is a dead end.
+       and p.hidden_at is null
+       and rm.hidden_at is null
+       and not rm.ephemeral
+  )
+  select said.room, said.post_no, said.author, said.body, said.created_at, said.is_reply, said.reply_no
+    from said, term
+   where (term.pattern is null or said.body ilike term.pattern escape '\')
+     and (p_room  is null or said.room = p_room)
+     and (p_by    is null or said.author = p_by)
+     and (p_since is null or said.created_at >= p_since)
+     and (p_before is null or said.created_at < p_before)
+   order by said.created_at desc
+   limit greatest(1, least(coalesce(p_limit, 20), 100));
+$$;
+
+revoke all on function public.search_said (text, citext, citext, timestamptz, integer, timestamptz) from public;
+grant execute on function public.search_said (text, citext, citext, timestamptz, integer, timestamptz) to anon, authenticated;
+
+;
+
+
+-- ==========================================================================
 -- seed.sql — §5, the rooms arrive warm
 -- ==========================================================================
 
@@ -5019,7 +5342,7 @@ on conflict (id) do nothing;
 -- decay rules stay written-but-unenabled, because 40 rooms with three people
 -- each kills the entire feeling and the room list is the first impression.
 insert into public.rooms (slug, gloss, ephemeral, sort_order) values
-  ('commons',   'everything, briefly',        true,  0),
+  ('commons',   'general talk, any topic',    true,  0),
   ('music',     'what you are listening to',  false, 1),
   ('builders',  'what you are making',        false, 2),
   -- builders was added after launch. §4.2 leans "fixed set at launch" and the number was
@@ -5294,7 +5617,10 @@ insert into public.applied_migrations (filename) values
   ('20260907000000_furniture_is_named.sql'),
   ('20261015000000_room_descriptions.sql'),
   ('20261016000000_reports.sql'),
-  ('20261017000000_reply_numbers_in_search.sql')
+  ('20261017000000_reply_numbers_in_search.sql'),
+  ('20261021000000_commons_says_what_it_is_for.sql'),
+  ('20261022000000_grown_rooms_leave_the_lobby.sql'),
+  ('20261023000000_older_on_a_person.sql')
 on conflict do nothing;
 
 commit;

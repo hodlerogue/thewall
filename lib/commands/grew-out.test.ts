@@ -18,9 +18,10 @@ import type { Line, Location } from '@/lib/shell/types'
  * over.
  *
  * So the property under test is narrow and everywhere: **where you were
- * standing gets recorded, and the parent lists what left it.** Everything else
- * — permissions, addressing, the lobby — is unchanged by design, and the tests
- * that would notice otherwise are the ones asserting it stays a label.
+ * standing gets recorded, and the parent lists what left it.** The lobby leaves
+ * those rooms to the parent while the parent is alive. Permissions and
+ * addressing are unchanged by design, and the tests that would notice otherwise
+ * are the ones asserting it stays a label.
  */
 
 const text = (lines: Line[]) => lines.map((l) => l.text).join('\n')
@@ -150,6 +151,7 @@ describe('it asks before attaching, because attaching is forever', () => {
     expect(text(asked.lines)).toContain('you are in kitchen. make boardgames here?')
     // The part that makes it worth asking at all.
     expect(text(asked.lines)).toMatch(/nothing can take it off again/)
+    expect(text(asked.lines)).toMatch(/boardgames will not be in the lobby/)
     // And nothing has happened yet.
     expect(await env.getRoom('boardgames')).toBeUndefined()
   })
@@ -371,13 +373,6 @@ describe('lineage is a label and never a permission or an address', () => {
     expect(made.lines.some((l) => l.text.includes('bebop is open'))).toBe(true)
     expect((await env.getRoom('bebop'))?.fromRoom).toBe('music')
   })
-
-  it('does not put a room in the lobby twice for having a parent', async () => {
-    const { run } = harness([room('music')])
-    await makeFrom(run, 'make bebop the fast stuff', { room: 'music' } as Location)
-    const out = text((await run('look', {} as Location)).lines)
-    expect(out.split('\n').filter((line) => line === 'bebop')).toHaveLength(1)
-  })
 })
 
 describe('the fixture refuses the same parents the database does', () => {
@@ -445,5 +440,75 @@ describe('you can find it under the word you already have in mind', () => {
   it('explains the lineage in what make, since it is the surprising half', async () => {
     const { run } = harness([room('music')])
     expect(text((await run('what make', {} as Location)).lines)).toContain('grown out of')
+  })
+})
+
+describe('a grown-out room is listed where it grew, not in the lobby', () => {
+  const long = (slug: string, daysAgo: number) => ({
+    id: 1,
+    author: 'tuck',
+    body: `said in ${slug}`,
+    createdAt: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000),
+    replies: [],
+  })
+  const made = (slug: string, extra: Partial<Room> = {}) => room(slug, { madeBy: 'someone', ...extra })
+  const lobby = async (env: Env) => (await env.listRooms()).rooms.map((r) => r.slug)
+
+  it('leaves the lobby and the count while its parent is alive', async () => {
+    const { env, run } = harness([room('music')])
+    await makeFrom(run, 'make bebop the fast stuff', { room: 'music' } as Location)
+    expect(await lobby(env)).toEqual(['music'])
+    expect((await env.listRooms()).total).toBe(1)
+  })
+
+  it('stays in the lobby when you answered n', async () => {
+    const { env, run } = harness([room('music')])
+    await makeFrom(run, 'make bebop the fast stuff', { room: 'music' } as Location, 'n')
+    expect(await lobby(env)).toContain('bebop')
+  })
+
+  it('tells you so when it opens', async () => {
+    const { run } = harness([room('music')])
+    const { done } = await makeFrom(run, 'make bebop the fast stuff', { room: 'music' } as Location)
+    expect(text(done.lines)).toContain('it won’t be in the lobby — music lists it, and go bebop always reaches it.')
+  })
+
+  it('is still reached by go, by find, and from its parent', async () => {
+    const { env, run } = harness([room('music'), made('bebop', { fromRoom: 'music', posts: [long('bebop', 1)] })])
+    expect((await run('go bebop', {} as Location)).location).toEqual({ room: 'bebop' })
+    expect(text((await run('find --rooms bebop', {} as Location)).lines)).toContain('not in the lobby, music lists it')
+    expect((await env.getRoom('music'))?.grewOut?.map((r) => r.slug)).toEqual(['bebop'])
+  })
+
+  it('comes back to the lobby when a parent somebody made has faded', async () => {
+    const { env, run } = harness([
+      made('music', { posts: [long('music', 20)] }),
+      made('bebop', { fromRoom: 'music', posts: [long('bebop', 1)] }),
+    ])
+    expect(await lobby(env)).toContain('bebop')
+    expect(text((await run('find --rooms bebop', {} as Location)).lines)).not.toContain('not in the lobby')
+  })
+
+  it('is judged by its own parent only, so a grandchild waits on a living child', async () => {
+    const { env } = harness([
+      room('music'),
+      made('bebop', { fromRoom: 'music', posts: [long('bebop', 1)] }),
+      made('hardbop', { fromRoom: 'bebop', posts: [long('hardbop', 1)] }),
+    ])
+    expect(await lobby(env)).toEqual(['music'])
+  })
+
+  it('lists the liveliest first, because the list has a cap', async () => {
+    const { env } = harness([
+      room('music'),
+      made('quiet', { fromRoom: 'music', posts: [long('quiet', 9)] }),
+      made('busy', { fromRoom: 'music', posts: [long('busy', 1)] }),
+    ])
+    expect((await env.getRoom('music'))?.grewOut?.map((r) => r.slug)).toEqual(['busy', 'quiet'])
+  })
+
+  it('says plainly in what make that it will not be in the lobby', async () => {
+    const { run } = harness([room('music')])
+    expect(text((await run('what make', {} as Location)).lines)).toMatch(/stays out of the lobby/)
   })
 })

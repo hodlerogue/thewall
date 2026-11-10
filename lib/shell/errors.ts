@@ -1,4 +1,5 @@
 import type { Line } from '@/lib/shell/types'
+import { GaveUp, NO_ANSWER } from '@/lib/shell/deadline'
 
 /**
  * Turns whatever was thrown into something a person can act on.
@@ -13,6 +14,22 @@ import type { Line } from '@/lib/shell/types'
  */
 export function describeError(error: unknown): Line[] {
   const detail = extract(error)
+
+  /*
+   * A request that ran out of time, or a prompt that stopped waiting. Both
+   * reach here wrapped — postgrest-js prefixes the error's name and adds a hint
+   * of its own — and neither the prefix nor the hint means anything to
+   * somebody who typed `look`.
+   */
+  if (error instanceof GaveUp || detail.message.includes(NO_ANSWER)) {
+    return [
+      { text: error instanceof GaveUp ? error.message : NO_ANSWER, tone: 'error' },
+      {
+        text: 'the connection may have dropped. try again — and if it was something you said, look first, since it may have gone through.',
+        tone: 'faint',
+      },
+    ]
+  }
   const lines: Line[] = [{ text: detail.message, tone: 'error' }]
 
   const fix = suggestFix(detail)

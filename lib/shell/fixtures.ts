@@ -36,7 +36,7 @@ export const PEOPLE: readonly {
 
 export const ROOMS: Room[] = [  {
     slug: 'commons',
-    gloss: 'everything, briefly',
+    gloss: 'general talk, any topic',
     ephemeral: true,
     posts: [
       // Newest first, and the higher address is the newer post — which is what

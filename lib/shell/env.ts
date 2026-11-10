@@ -10,6 +10,7 @@
  */
 
 import { DEFAULT_ROOM, PEOPLE, ROOMS } from '@/lib/shell/fixtures'
+import { PROFILE_PAGE } from '@/lib/shell/render'
 import type {
   Post,
   PostHit,
@@ -226,6 +227,17 @@ export function fixtureEnv(
       ? room.posts.filter((p) => Date.now() - p.createdAt.getTime() < 24 * 60 * 60 * 1000)
       : room.posts
 
+  const newestAt = (room: Room): number =>
+    visiblePosts(room).reduce((at, post) => Math.max(at, post.createdAt.getTime()), 0)
+
+  // `room_is_alive`. A fixture room records no creation time, so an empty one
+  // counts as just made, which is the only way one gets here empty.
+  const alive = (room: Room): boolean =>
+    room.madeBy === undefined || newestAt(room) === 0 || Date.now() - newestAt(room) < FADE_MS
+
+  const livingParent = (room: Room): boolean =>
+    room.fromRoom !== undefined && rooms.some((r) => r.slug === room.fromRoom && alive(r))
+
   // Demo-only, and per session: nothing is stored and nothing is sent.
   // On, like the database. A demo that shows `notify` as off would teach the
   // opposite of what the real site does, and the whole point of the demo is
@@ -252,7 +264,9 @@ export function fixtureEnv(
       // Walls are rooms everywhere except here (§4.2). The real Env gets this
       // for free — `room_overview` filters on `owner_id is null` — and this
       // mirrors it so the lobby reads the same against fixtures.
-      const listable = rooms.filter((room) => room.owner === undefined)
+      const listable = rooms.filter(
+        (room) => room.owner === undefined && (room.madeBy === undefined || !livingParent(room)),
+      )
 
       const summaries = listable.map((room) => {
         const latest = room.slug === 'feed' ? newestOnAWall : visiblePosts(room)[0]
@@ -312,6 +326,8 @@ export function fixtureEnv(
         // reaches this listing too.
         grewOut: rooms
           .filter((other) => other.fromRoom === room.slug)
+          // Liveliest first, as `rooms_from` does, because the list has a cap.
+          .sort((a, b) => newestAt(b) - newestAt(a))
           .map((other) => ({ slug: other.slug, gloss: other.gloss })),
         posts: visible.slice(0, ROOM_PAGE),
         more: visible.length > ROOM_PAGE,
@@ -500,7 +516,8 @@ export function fixtureEnv(
             // reached against fixtures, and therefore never seen by a test.
             inLobby:
               room.madeBy === undefined ||
-              (newest !== undefined && Date.now() - newest.getTime() < FADE_MS),
+              (newest !== undefined && Date.now() - newest.getTime() < FADE_MS && !livingParent(room)),
+            ...(livingParent(room) ? { listedIn: room.fromRoom } : {}),
             posts: posts.length,
             latestAt: newest,
           }
@@ -572,6 +589,7 @@ export function fixtureEnv(
             query.text === undefined || hit.body.toLowerCase().includes(query.text.toLowerCase()),
         )
         .filter((hit) => query.since === undefined || hit.createdAt >= query.since)
+        .filter((hit) => query.before === undefined || hit.createdAt < query.before)
 
       hits.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       return hits.slice(0, query.limit)
@@ -591,7 +609,7 @@ export function fixtureEnv(
         nameChangedHands: person.nameChangedHands,
         // The same query `find --by=marisol` runs, which is what keeps a
         // profile from being able to show anything a search could not.
-        posts: await env.searchPosts({ by: person.name, limit: 10 }),
+        posts: await env.searchPosts({ by: person.name, limit: PROFILE_PAGE }),
       }
     },
   }

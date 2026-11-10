@@ -130,9 +130,12 @@ describe('the front door redirects, so its card is not its own', () => {
   const page = readFileSync(join(process.cwd(), 'app/page.tsx'), 'utf8')
   const card = readFileSync(join(process.cwd(), 'app/[room]/opengraph-image.tsx'), 'utf8')
 
-  it('sends the bare domain to the room the card is pinned to', () => {
-    expect(page).toContain('FRONT_DOOR')
-    expect(page).toMatch(/redirect\(.*FRONT_DOOR/s)
+  it('pins commons to the fixed card, and no longer sends the bare domain there', () => {
+    // The bare domain goes to the lobby (START) or /hello now, so a crawler
+    // following `/` never reaches commons. The pin stays on commons' own
+    // merits: it keeps nothing, so a generated card would advertise posts
+    // already deleted.
+    expect(page).not.toContain('FRONT_DOOR')
     expect(card).toContain('slug === FRONT_DOOR')
   })
 

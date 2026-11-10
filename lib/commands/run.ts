@@ -106,16 +106,33 @@ export function createRunner(
     // Only for input a person actually typed: anything the shell issues itself
     // must stay a command, or navigating during signup answers the question
     // for you.
+    /*
+     * Out of a name question by typing what you meant to do.
+     *
+     * QA: no way out of "what do you want to be called?" short of knowing to
+     * type cancel. A name has no spaces, so `go music` or `say hi` there cannot
+     * be an answer — it is somebody who forgot they were being asked, or never
+     * noticed. It cancels the question, says so, and runs. A bare command word
+     * stays an answer (somebody may be called `look`) and is confirmed as one.
+     */
+    let left: Line[] = []
+    if (session.asksForName() && options?.typed !== false && /\s/.test(input.trim())) {
+      const meant = parse(input)
+      if (meant?.command && meant.command.verb !== 'login') left = session.cancel()
+    }
+    const out = (result: RunResult) =>
+      answer(left.length ? { ...result, lines: [...left, ...result.lines] } : result)
+
     if (session.isAsking() && options?.typed !== false) {
       const { lines, identity, retry, location: moved, answered } = await session.answer(input)
       // `location` because an answer can now move you: naming what a room is
       // for opens it and walks you in, and dropping it here left the lines
       // saying "you are in it" while the prompt still named the old room.
-      return answer({ lines, identity, retry, location: moved, answered })
+      return out({ lines, identity, retry, location: moved, answered })
     }
 
     const parsed = parse(input)
-    if (!parsed) return answer({ lines: [] })
+    if (!parsed) return out({ lines: [] })
 
     const context = contextOf(location, ephemeralRooms)
 
@@ -128,7 +145,7 @@ export function createRunner(
       // the one word every question on the site tells you to type. It is not
       // a command (it would sit in help doing nothing), so it is caught here.
       if (/^(cancel|nevermind|never mind|quit|stop)$/i.test(input.trim())) {
-        return answer({ lines: session.cancel() })
+        return out({ lines: session.cancel() })
       }
 
       /*
@@ -144,7 +161,7 @@ export function createRunner(
       const slashed = /^([a-z]+)\/(\d{1,6})$/i.exec(parsed.head)
       const meant = slashed && findCommand(slashed[1])
       if (slashed && meant) {
-        return answer({
+        return out({
           lines: [
             {
               text: `the number goes after a space — try: ${slashed[1]} ${slashed[2]}${
@@ -157,7 +174,7 @@ export function createRunner(
       }
 
       const near = nearestCommand(parsed.head)
-      return answer({
+      return out({
         lines: [
           {
             text: near
@@ -170,7 +187,7 @@ export function createRunner(
     }
 
     if (!parsed.command.contexts.includes(context)) {
-      return answer({
+      return out({
         lines: [{ text: parsed.command.wrongContext(context, await hint()), tone: 'error' }],
       })
     }
@@ -199,8 +216,8 @@ export function createRunner(
      * removed. `parsed.head` is what they typed, so an alias comes back as the
      * alias.
      */
-    if (result.retry === undefined) return answer(result)
-    return answer({ ...result, retry: `${parsed.head} ${result.retry}` })
+    if (result.retry === undefined) return out(result)
+    return out({ ...result, retry: `${parsed.head} ${result.retry}` })
   }
 }
 

@@ -14,7 +14,10 @@ what do I edit, and what will bite me". It is a checklist, not an argument.
 
 **There is a user-facing rundown, and it is not a command reference.**
 `/about` — `lib/guide/about.ts` for the prose, `app/about/page.tsx` for the
-page — says what the place is, why it is a prompt, and how the pieces fit.
+page — says what the place is, walks a newcomer through it in numbered steps,
+and says why it is a prompt. The things to type in those steps are data, and
+`about.test.ts` runs each one through the real commands; `find`'s options come
+from the table `help all` prints, without the pipe (§4.8).
 
 That was argued against here for a while, on the grounds that a hand-written
 command list drifts away from the registry and leaves two answers to one
@@ -302,9 +305,11 @@ when the slug starts with `~` **and** matches the caller's own name.
 **A room made from inside another room records where it was made** — that is
 `rooms.from_room`, set by `create_room`'s third argument, and it is a label for
 discovery and nothing else. No address contains it (`bebop`, never
-`music/bebop`), no permission reads it, and the lobby ignores it. The parent
-lists its children at the bottom of the room listing via `rooms_from()`; that
-line is the entire feature. Nesting was asked for and argued down: an address
+`music/bebop`) and no permission reads it. The parent lists its children at the
+bottom of the room listing via `rooms_from()`, liveliest first, and a child
+stays off the lobby while its parent is alive (`room_is_alive()`, used by both
+`room_overview` and `find_rooms`); when the parent fades or is hidden the child
+comes back, or a lively room would be on no list at all. Nesting was asked for and argued down: an address
 that grows a segment per level stops being typable on a phone, `go` would have
 to mean two things, and a tree of near-empty rooms is §5's "an empty room is
 worse than no room" once per level.
@@ -313,6 +318,13 @@ The claim is checked in `create_room` rather than trusted, because `p_from`
 comes from a browser: a parent that does not exist, is a wall, or is the room
 being made is dropped — **and the room is still made**. Refusing there would
 lose somebody's sentence over a label they never asked for.
+
+**New code has to run on the database as it was.** The site deploys when main
+moves and migrations are applied separately, sometimes days later. So a new
+argument to an existing function is sent only by the feature that needs it, a
+new column in a result is optional on the way in, and the feature itself says
+it isn't switched on. `lib/data/old-database.test.ts` runs the app against a
+stand-in for the older schema; add to it when you add a migration the app reads.
 
 **Adding a route to `app/` means adding a row to `reserved_slugs`.** Every entry
 there is a real path. A room called `terms` would be shadowed by `/terms`
@@ -1267,6 +1279,16 @@ ever diverge, they get two columns.
 `room_overview` filters `owner_id is null`. That single filter is the whole of
 §4.2's mitigation; without it a room-per-person is exactly the forty-rooms
 failure the doc warns about.
+
+**Nothing may hold the prompt without a limit.** It runs one command at a time,
+so a command that waits is every command waiting. `install` once froze it on a
+browser dialog; then `look` on a phone froze it for twenty-odd seconds behind a
+slow connection, because supabase-js has no request timeout and quietly retries
+reads after 1s, 2s and 4s. `lib/shell/deadline.ts` holds both limits: every
+browser request gives up at 10s, and the prompt itself at 15s whatever the
+command is waiting on. The request timeout fails as an `AbortError` on purpose —
+it is the one failure postgrest-js does not retry, and `deadline.test.ts` proves
+it against the real client.
 
 ---
 

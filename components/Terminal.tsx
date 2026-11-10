@@ -7,6 +7,7 @@ import { append, MAX_LINES, Scrollback, type Keyed } from '@/components/Scrollba
 import { echoOf } from '@/lib/commands/run'
 import { withOneMoreReply } from '@/lib/shell/render'
 import { describeError } from '@/lib/shell/errors'
+import { SLOW_MS, within } from '@/lib/shell/deadline'
 import type { Chip, Line, Location, Runner } from '@/lib/shell/types'
 import { locationToPath, pathToLocation, promptLabel } from '@/lib/shell/types'
 import { Session } from '@/lib/shell/session'
@@ -102,6 +103,8 @@ export function Terminal({
   const [input, setInput] = useState('')
 
   const [pending, setPending] = useState(false)
+  // Past SLOW_MS the `…` says what it is waiting for.
+  const [slow, setSlow] = useState(false)
   const [mail, setMail] = useState(initialMail)
   // Null unless a longer post is being written. Set from every result rather
   // than only when it changes — see RunResult.composing for why that matters.
@@ -295,6 +298,7 @@ export function Terminal({
       if (inFlight.current) return
       inFlight.current = true
       setPending(true)
+      const slowTimer = setTimeout(() => setSlow(true), SLOW_MS)
 
       // Kept before anything can fail, so a command that errored is still
       // something you can press Up and edit rather than retype.
@@ -303,13 +307,30 @@ export function Terminal({
       }
       historyAt.current = null
 
+      /*
+       * Your own command always lands where you can see it.
+       *
+       * Following the bottom only if you were already there is right for
+       * somebody else's message and wrong for this. Reported on a phone: scroll
+       * up to find a room, type go, and the room arrived below the screen with
+       * nothing to say it had.
+       */
+      pinnedToBottom.current = true
       const echo = echoOf(text, promptLabel(name, location))
       setInput('')
       setLines((prev) => append(prev, [echo]))
 
       let result
       try {
-        result = await run(text, location)
+        /*
+         * With a limit. Without one, a command that never answered held this
+         * prompt forever, and one that took twenty seconds — `look` on a phone
+         * behind a stalled connection — held it for twenty, with only `…` to
+         * show for it. Past the limit the prompt is handed back; whatever the
+         * command eventually returns is dropped, since printing it under
+         * whatever was typed since is the ordering bug the lock exists to stop.
+         */
+        result = await within(run(text, location))
       } catch (error) {
         // A command that throws used to render nothing at all, which reads as
         // a dead prompt. Whatever went wrong, say it and stay usable — and
@@ -320,8 +341,10 @@ export function Terminal({
         setInput(text)
         return
       } finally {
+        clearTimeout(slowTimer)
         inFlight.current = false
         setPending(false)
+        setSlow(false)
       }
 
       setLines((prev) => append(prev, result.lines))
@@ -385,6 +408,8 @@ export function Terminal({
     const onPop = async () => {
       const target = pathToLocation(window.location.pathname)
       setLocation(target)
+      // Back is a move you made, the same as `go`.
+      pinnedToBottom.current = true
       try {
         const result = await run('look', target, { typed: false })
         setLines((prev) => append(prev, [{ text: '', tone: 'faint' }, ...result.lines]))
@@ -558,7 +583,7 @@ export function Terminal({
               your input and printed no reply. */}
           {pending && (
             <p className="pending" data-testid="pending">
-              …
+              {slow ? '… still waiting on the server' : '…'}
             </p>
           )}
         {/* The Unix precedent §4.1 cites is the login line. This is the same

@@ -349,14 +349,14 @@ describe('a room says what it is for when you walk in', () => {
     const { run } = harness()
     await run('make pulsechain decentralized blockchain talk', lobby)
     const out = (await run('go pulsechain', lobby)).lines
-    expect(out[0]).toMatchObject({ text: 'decentralized blockchain talk', tone: 'dim' })
+    expect(out[0]).toMatchObject({ text: 'pulsechain is for: decentralized blockchain talk', tone: 'dim' })
   })
 
   it('on look', async () => {
     const { run } = harness()
     await run('make pulsechain decentralized blockchain talk', lobby)
     const out = (await run('look', { room: 'pulsechain' } as Location)).lines
-    expect(out[0].text).toBe('decentralized blockchain talk')
+    expect(out[0].text).toBe('pulsechain is for: decentralized blockchain talk')
   })
 
   it('right after it is made, so its maker sees where it went', async () => {
@@ -370,6 +370,6 @@ describe('a room says what it is for when you walk in', () => {
     await run('make pulsechain leave', lobby)
     await run('describe decentralized blockchain talk', { room: 'pulsechain' } as Location)
     const out = (await run('look', { room: 'pulsechain' } as Location)).lines
-    expect(out[0].text).toBe('decentralized blockchain talk')
+    expect(out[0].text).toBe('pulsechain is for: decentralized blockchain talk')
   })
 })

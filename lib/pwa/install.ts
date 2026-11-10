@@ -71,6 +71,12 @@ export function isIOS(): boolean {
 }
 
 /** Whether the browser has offered us a prompt we can replay. */
+function isMacSafari(): boolean {
+  if (typeof navigator === 'undefined' || isIOS()) return false
+  const ua = navigator.userAgent
+  return /Macintosh/.test(ua) && /Safari\//.test(ua) && !/Chrome|Chromium|Edg|Firefox|OPR/.test(ua)
+}
+
 export function promptable(): boolean {
   return deferred !== null
 }
@@ -113,16 +119,33 @@ export async function offerInstall(): Promise<Line[]> {
     try {
       void Promise.resolve(event.prompt()).catch(() => {})
     } catch {
-      return [{ text: 'your browser wouldn’t open the prompt. the menu will have it.', tone: 'faint' }]
+      return [{ text: 'your browser wouldn’t show its install box.', tone: 'faint' }, ...ELSEWHERE]
     }
+    /*
+     * Worded for the dialog the person may or may not be looking at.
+     *
+     * It said "your browser is asking whether to add it", which is true of a
+     * phone and often not of a desktop, where Chrome shows a small icon in the
+     * address bar instead — so the line described a box that was not there,
+     * and "it" left open what was being added to what.
+     */
     return [
-      { text: 'your browser is asking whether to add it — answer there.', tone: 'faint' },
-      { text: 'nothing appeared? the browser menu has "install" or "add to home screen".', tone: 'faint' },
+      { text: 'your browser should be asking whether to install thewall — answer it there.', tone: 'faint' },
+      { text: 'nothing came up?', tone: 'faint' },
+      ...ELSEWHERE,
     ]
   }
 
   return advice()
 }
+
+/** Where the same offer lives when no box appears. */
+const ELSEWHERE: Line[] = [
+  {
+    text: 'look for an install icon at the right of the address bar, or "install" or "add to home screen" in the browser menu.',
+    tone: 'faint',
+  },
+]
 
 /**
  * What to do by hand, per platform.
@@ -134,10 +157,19 @@ export async function offerInstall(): Promise<Line[]> {
  */
 export function advice(): Line[] {
   if (isIOS()) {
+    /*
+     * Share moved. Safari on recent iOS folds it into the ⋯ button beside the
+     * address — the screen QA reported from had no share button showing — so
+     * "tap share" sent people looking for a thing that was not on screen.
+     */
     return [
-      { text: 'on iphone: tap share, then add to home screen.', tone: 'faint' },
+      { text: 'in safari: tap share (on newer iphones it’s inside ⋯), then add to home screen.', tone: 'faint' },
       { text: 'it opens full screen after that, with the keyboard where you expect it.', tone: 'faint' },
     ]
+  }
+  // Safari on a Mac installs from the File menu and nowhere else.
+  if (isMacSafari()) {
+    return [{ text: 'in safari on a mac: file, then add to dock.', tone: 'faint' }]
   }
   return [
     { text: 'your browser’s menu will have "install" or "add to home screen".', tone: 'faint' },
@@ -171,7 +203,7 @@ export function suggestion(): Line[] {
   return [
     {
       text: isIOS()
-        ? 'you can keep this on your home screen — share, then add to home screen.'
+        ? 'you can keep this on your home screen — share (inside ⋯ on newer iphones), then add to home screen.'
         : 'you can keep this on your home screen — type install.',
       tone: 'faint',
     },

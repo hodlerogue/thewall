@@ -353,3 +353,30 @@ test('having scrolled back, the keyboard does not yank you to the bottom', async
   const top = await page.getByTestId('scrollback').evaluate((el) => el.scrollTop)
   expect(top, 'left where they were reading').toBeLessThan(40)
 })
+
+test('go shows where you arrived, even from halfway up the scrollback', async ({ page }) => {
+  /*
+   * Reported on a phone: scroll up to find a room or a post, type go, and the
+   * room arrives below the screen with nothing to say it did. Following the
+   * bottom was only for people already there — right for somebody else's
+   * message, wrong for your own command, which is always the thing you want
+   * to see next.
+   */
+  for (let i = 0; i < 4; i++) {
+    await prompt(page).fill('look')
+    await prompt(page).press('Enter')
+  }
+  const scrollback = page.getByTestId('scrollback')
+  await scrollback.evaluate((el) => {
+    el.scrollTop = 0
+    el.dispatchEvent(new Event('scroll'))
+  })
+
+  await prompt(page).fill('go music')
+  await prompt(page).press('Enter')
+  await expect(page.getByTestId('prompt-label')).toContainText('music')
+
+  await expect
+    .poll(() => scrollback.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop))
+    .toBeLessThan(2)
+})
