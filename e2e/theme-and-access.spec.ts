@@ -175,14 +175,18 @@ test('the rundown is a page, readable without typing anything', async ({ page })
   // this page is allowed to exist — a hand-written one would drift away from
   // what `help` prints and leave two answers to one question.
   for (const verb of ['say', 'go', 'look', 'make', 'find', 'mail', 'install']) {
-    await expect(page.locator('.glossary'), verb).toContainText(verb)
+    await expect(page.locator('.glossary-commands'), verb).toContainText(verb)
   }
+  // The steps are numbered, and find's options are on the page.
+  await expect(page.locator('h2').filter({ hasText: '1. What is here' })).toBeVisible()
+  await expect(page.locator('main')).toContainText('find --since=<time> <words>')
   // §4.8 — the pipe is still not advertised, here or anywhere.
-  await expect(page.locator('.glossary')).not.toContainText('| count')
+  await expect(page.locator('main')).not.toContainText('| count')
+  await expect(page.locator('main')).not.toContainText('| go')
 
-  // And it leads back to the prompt and to the policies. `/commons`, not `/`:
+  // And it leads back to the prompt and to the policies. `/lobby`, not `/`:
   // the bare domain shows somebody without a session the marketing page now.
-  await expect(page.locator('a[href="/commons"]')).toBeVisible()
+  await expect(page.locator('a[href="/lobby"]')).toBeVisible()
   await expect(page.locator('a[href="/terms"]')).toBeVisible()
   await expect(page.locator('a[href="/privacy"]')).toBeVisible()
 })

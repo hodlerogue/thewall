@@ -14,7 +14,10 @@ what do I edit, and what will bite me". It is a checklist, not an argument.
 
 **There is a user-facing rundown, and it is not a command reference.**
 `/about` — `lib/guide/about.ts` for the prose, `app/about/page.tsx` for the
-page — says what the place is, why it is a prompt, and how the pieces fit.
+page — says what the place is, walks a newcomer through it in numbered steps,
+and says why it is a prompt. The things to type in those steps are data, and
+`about.test.ts` runs each one through the real commands; `find`'s options come
+from the table `help all` prints, without the pipe (§4.8).
 
 That was argued against here for a while, on the grounds that a hand-written
 command list drifts away from the registry and leaves two answers to one
