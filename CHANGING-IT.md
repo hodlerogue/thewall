@@ -316,6 +316,13 @@ comes from a browser: a parent that does not exist, is a wall, or is the room
 being made is dropped — **and the room is still made**. Refusing there would
 lose somebody's sentence over a label they never asked for.
 
+**New code has to run on the database as it was.** The site deploys when main
+moves and migrations are applied separately, sometimes days later. So a new
+argument to an existing function is sent only by the feature that needs it, a
+new column in a result is optional on the way in, and the feature itself says
+it isn't switched on. `lib/data/old-database.test.ts` runs the app against a
+stand-in for the older schema; add to it when you add a migration the app reads.
+
 **Adding a route to `app/` means adding a row to `reserved_slugs`.** Every entry
 there is a real path. A room called `terms` would be shadowed by `/terms`
 forever — `go terms` would work, `thewall.social/terms` would not, and §3.4

@@ -279,11 +279,9 @@ describe('the feed says when it has stopped', () => {
     const out = renderFeed(full).map((l) => l.text).join('\n')
 
     expect(out).toContain(`the newest ${FEED_PAGE}`)
-    // A wall, not an `older` command. The feed crosses every wall at once, so
-    // "the page before this one" is not a thing it has — and naming a command
-    // that does not exist is worse than the silence it replaces.
-    expect(out).toContain('go ~name')
-    expect(out).not.toContain('older')
+    // Not `older` here: the feed crosses every wall at once, so "the page before
+    // this one" is not a thing it has. One person is the way further back.
+    expect(out).toContain('go ~name, then older')
   })
 
   it('says nothing when it did not fill', () => {

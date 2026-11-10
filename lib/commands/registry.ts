@@ -19,7 +19,10 @@ import {
   renderFeed,
   renderPost,
   renderPosts,
+  OLDER_SAID,
+  PROFILE_PAGE,
   renderProfile,
+  renderSaid,
   renderRoom,
   renderRoomList,
   replyMark,
@@ -496,6 +499,43 @@ function explain(arg: string, context: Context): RunResult {
  * would list them, with nothing left out — `help` itself is capped to stay
  * readable at a glance, and this is where the rest are.
  */
+/**
+ * `older` on somebody's page.
+ *
+ * What they said is scattered across rooms, so there is no address to count
+ * back from; the cursor is the time of the oldest thing printed, kept in the
+ * session under their wall's name, which no room can share.
+ */
+async function olderSaid(name: string, env: Env, session: Session): Promise<RunResult> {
+  const wall = `~${name}`
+  let from = session.pagedFrom(wall)
+  if (from === null) {
+    const profile = await env.getProfile(name)
+    if (!profile) return error(`there’s no one called ${name}. try: leave`)
+    // Their page did not fill, so it was already all of it. No query needed.
+    if (profile.posts.length < PROFILE_PAGE) {
+      return { lines: [{ text: 'that’s all of it — there’s nothing before that.', tone: 'faint' }] }
+    }
+    from = profile.posts.reduce((low, post) => Math.min(low, post.createdAt.getTime()), Infinity)
+  }
+
+  const hits = await env.searchPosts({ by: name, before: new Date(from), limit: OLDER_SAID })
+  if (hits.length === 0) {
+    return { lines: [{ text: 'that’s as far back as it goes.', tone: 'faint' }] }
+  }
+
+  session.paged(wall, hits.reduce((low, post) => Math.min(low, post.createdAt.getTime()), Infinity))
+  return {
+    lines: [
+      ...renderSaid(hits),
+      {
+        text: hits.length < OLDER_SAID ? 'that’s as far back as it goes.' : 'older again for more.',
+        tone: 'faint',
+      },
+    ],
+  }
+}
+
 function manual(): Line[] {
   const lines: Line[] = [{ text: 'every command, and how to type it:', tone: 'faint' }]
   for (const command of COMMANDS) {
@@ -629,7 +669,7 @@ export const COMMANDS: readonly Command[] = [
           ? 'go to another room'
           : 'open a post',
     detail: () =>
-      'moves you. at the lobby, go music. inside a room, go 12 opens that post. a whole address works from anywhere — go music/12 — and so does go ~marisol, which shows you somebody: their page, and their wall.',
+      'moves you. at the lobby, go music. inside a room, go 12 opens that post. a whole address works from anywhere — go music/12 — and so does go ~marisol, which shows you one person: their wall, and everything else they have said. go feed is different: the newest posts from everybody’s walls.',
     insert: () => 'go ',
     wrongContext: () => '',
     async run({ arg, context, location, env, hint, session }) {
@@ -1640,13 +1680,14 @@ export const COMMANDS: readonly Command[] = [
     // change the name" out loud. Two meanings for one word in a shell whose
     // whole promise is that typing a word does the obvious thing.
     aliases: ['earlier', 'previous', 'more'],
-    contexts: ['room', 'commons'],
+    contexts: ['room', 'commons', 'person'],
     gloss: () => 'the page before this one',
     detail: () =>
-      'walks back through a room a page at a time. a room shows its newest 60; older shows the 60 before those, and again after that, until you reach the start of the room.',
+      `walks back through a room a page at a time. a room shows its newest 60; older shows the 60 before those, and again after that, until you reach the start of the room. on somebody’s page it walks back through what they have said, ${OLDER_SAID} at a time.`,
     insert: () => 'older',
     wrongContext: (_c, hint) => `there’s nothing to walk back through here. try: go ${hint}`,
     async run({ context, location, env, session }) {
+      if (context === 'person') return olderSaid(location.person!, env, session)
       const slug = location.room!
 
       /*
@@ -1818,8 +1859,8 @@ export const COMMANDS: readonly Command[] = [
        */
       lines.push({ text: '' })
       lines.push({ text: 'and three places:', tone: 'faint' })
-      lines.push({ text: `go ${FEED} — everything anybody put on their own wall`, tone: 'dim' })
-      lines.push({ text: 'go ~name — somebody: who they are, and their wall', tone: 'dim' })
+      lines.push({ text: `go ${FEED} — the newest posts from everybody’s walls`, tone: 'dim' })
+      lines.push({ text: 'go ~name — one person: their wall, and all they’ve said', tone: 'dim' })
       /*
        * Asked for as "why is feedback not listed in the help menu". `help` is a
        * list of commands, and feedback is a room — but it is the one room people

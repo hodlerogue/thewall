@@ -10,6 +10,7 @@
  */
 
 import { DEFAULT_ROOM, PEOPLE, ROOMS } from '@/lib/shell/fixtures'
+import { PROFILE_PAGE } from '@/lib/shell/render'
 import type {
   Post,
   PostHit,
@@ -588,6 +589,7 @@ export function fixtureEnv(
             query.text === undefined || hit.body.toLowerCase().includes(query.text.toLowerCase()),
         )
         .filter((hit) => query.since === undefined || hit.createdAt >= query.since)
+        .filter((hit) => query.before === undefined || hit.createdAt < query.before)
 
       hits.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       return hits.slice(0, query.limit)
@@ -607,7 +609,7 @@ export function fixtureEnv(
         nameChangedHands: person.nameChangedHands,
         // The same query `find --by=marisol` runs, which is what keeps a
         // profile from being able to show anything a search could not.
-        posts: await env.searchPosts({ by: person.name, limit: 10 }),
+        posts: await env.searchPosts({ by: person.name, limit: PROFILE_PAGE }),
       }
     },
   }

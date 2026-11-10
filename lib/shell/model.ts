@@ -217,6 +217,8 @@ export interface PostQuery {
   room?: string
   by?: string
   since?: Date
+  /** Only what was said before this: how `older` walks back through a person. */
+  before?: Date
   limit: number
 }
 

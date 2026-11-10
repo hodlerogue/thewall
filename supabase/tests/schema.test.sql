@@ -3119,4 +3119,45 @@ begin;
 rollback;
 
 \echo ''
+\echo '§4.1 — walking back through one person (20261023000000)'
+
+begin;
+  insert into public.posts (room_slug, post_no, author_id, body, created_at)
+  select 'poker', 7000 + n, '44444444-4444-4444-8444-444444444444', 'paged ' || n,
+         now() - (n || ' minutes')::interval
+    from generate_series(1, 120) n;
+
+  select tests.ok(
+    (select count(*) from public.search_said(p_by := 'ren', p_text := 'paged', p_limit := 100)) = 100,
+    'find --limit goes up to the 100 it promises'
+  );
+  select tests.ok(
+    (select count(*) from public.search_said(p_by := 'ren', p_text := 'paged', p_limit := 500)) = 100,
+    'and no further'
+  );
+  select tests.ok(
+    not exists (
+      select 1 from public.search_said(p_by := 'ren', p_text := 'paged', p_limit := 20,
+                                       p_before := now() - interval '30 minutes')
+       where created_at >= now() - interval '30 minutes'
+    ),
+    'p_before returns only what was said before it'
+  );
+  select tests.ok(
+    (select count(*) from public.search_said(p_by := 'ren', p_text := 'paged', p_limit := 20,
+                                             p_before := now() - interval '30 minutes')) = 20,
+    'and a full page of it'
+  );
+  select tests.ok(
+    (select count(*) from public.search_said('paged'::text, null::citext, 'ren'::citext, null::timestamptz, 20)) = 20,
+    'the five arguments the app has always sent still resolve'
+  );
+rollback;
+
+select tests.ok(
+  has_function_privilege('anon', 'public.search_said(text, citext, citext, timestamptz, integer, timestamptz)', 'execute'),
+  'and a signed-out reader can still search'
+);
+
+\echo ''
 \echo 'all schema tests passed'

@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Live } from '@/lib/data/live'
 import { ROOM_PAGE, type Check, type Env, type MadeRoom, type MailItem, type ReportTarget, type Reported, LOBBY_FETCH } from '@/lib/shell/env'
 import type { Post, PostHit, Profile, Room, RoomHit, RoomSummary, RoomList } from '@/lib/shell/model'
-import { FEED_PAGE } from '@/lib/shell/render'
+import { FEED_PAGE, PROFILE_PAGE } from '@/lib/shell/render'
 
 /**
  * The Env the commands actually run against.
@@ -360,14 +360,35 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
        * the term straight into `ilike`, so a search for "100%" was a wildcard
        * that matched everything.
        */
-      const { data, error } = await client.rpc('search_said', {
-        p_text: query.text ?? null,
-        p_room: query.room ?? null,
-        p_by: query.by ?? null,
-        p_since: query.since?.toISOString() ?? null,
-        p_limit: query.limit,
-      })
-      if (error) throw error
+      /*
+       * `p_before` is sent only when paging, and that is load-bearing. PostgREST
+       * resolves a function by the exact names it is given, so naming it on
+       * every call would turn a database without 20261023000000 into a site
+       * where nothing can be searched and no page opens, instead of one where
+       * `older` on a page has to wait.
+       */
+      const { data, error } = query.before
+        ? await client.rpc('search_said', {
+            p_text: query.text ?? null,
+            p_room: query.room ?? null,
+            p_by: query.by ?? null,
+            p_since: query.since?.toISOString() ?? null,
+            p_limit: query.limit,
+            p_before: query.before.toISOString(),
+          })
+        : await client.rpc('search_said', {
+            p_text: query.text ?? null,
+            p_room: query.room ?? null,
+            p_by: query.by ?? null,
+            p_since: query.since?.toISOString() ?? null,
+            p_limit: query.limit,
+          })
+      if (error) {
+        if (query.before && /Could not find the function|schema cache|PGRST202/i.test(error.message)) {
+          throw new Error('going further back on somebody’s page isn’t switched on yet — the database is missing an update.')
+        }
+        throw error
+      }
 
       const rows = (data ?? []) as {
         room: string
@@ -474,7 +495,7 @@ export function supabaseEnv(client: SupabaseClient, live?: Live): Env {
         // resolved at all. Showing it is what makes §4.7 legible rather than
         // a silent condition people hit without knowing why.
         verified: data.verified_at !== null,
-        posts: await env.searchPosts({ by: data.name, limit: 10 }),
+        posts: await env.searchPosts({ by: data.name, limit: PROFILE_PAGE }),
       }
     },
   }
